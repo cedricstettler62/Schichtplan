@@ -15,8 +15,8 @@
 }
 
 /* Basis für die eigenständige Seite (im Artifact kam das von der Host-Seite). */
-html, body { height: 100%; }
-body { margin: 0; background: var(--sb-bg); }
+html, body { height: 100%; background: var(--sb-bg); color-scheme: light; }
+body { margin: 0; }
 #root { min-height: 100%; }
 
 .sb-root { background: var(--sb-bg); color: var(--sb-ink); font-family: var(--sb-font-sans); min-height: 100%; padding: 0; }

@@ -8,7 +8,7 @@ const children = [
     stdio: "inherit",
     env: { ...process.env, SB_SEED_DEMO: process.env.SB_SEED_DEMO ?? "1" },
   }),
-  spawn("npx", ["vite"], { stdio: "inherit" }),
+  spawn("npx", ["vite"], { stdio: "inherit", shell: process.platform === "win32" }),
 ];
 
 const stopAll = () => children.forEach((c) => c.kill("SIGTERM"));

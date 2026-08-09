@@ -35,7 +35,7 @@ export default function CompanyRow({ company, onDelete, onUpdateName }) {
             {saved && <span className="sb-saved-note">Gespeichert.</span>}
           </div>
           <div className="sb-manage-actions">
-            <ConfirmDelete onConfirm={() => onDelete(company.id)} label="Unternehmen löschen" />
+            <ConfirmDelete onConfirm={() => onDelete(company.id)} label="Unternehmen löschen" variant="button" />
           </div>
         </div>
       )}

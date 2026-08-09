@@ -1,0 +1,24 @@
+[Unit]
+Description=Schichtboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=schichtplan
+Group=schichtplan
+WorkingDirectory=/opt/schichtplan
+EnvironmentFile=/opt/schichtplan/.env
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+RestartSec=3
+
+# Der Dienst darf nur in seine eigenen Datenverzeichnisse schreiben.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/schichtplan/data /opt/schichtplan/backups
+
+[Install]
+WantedBy=multi-user.target

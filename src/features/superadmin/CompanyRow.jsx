@@ -16,9 +16,9 @@ export default function CompanyRow({ company, onDelete, onUpdateName }) {
 
   return (
     <div className="sb-manage-row">
-      <button type="button" className="sb-manage-row-head" onClick={() => setOpen((o) => !o)}>
+      <button type="button" className="sb-manage-row-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <span className="sb-manage-name">{company.name}</span>
-        <span className="sb-manage-email sb-mono">{company.code}</span>
+        <span className="sb-manage-meta sb-mono">{company.code}</span>
         <span className="sb-manage-email">
           {company.adminCount} Admin{company.adminCount === 1 ? "" : "s"} · {company.employeeCount} Mitarbeitende
         </span>
@@ -26,16 +26,21 @@ export default function CompanyRow({ company, onDelete, onUpdateName }) {
       </button>
       {open && (
         <div className="sb-manage-row-body">
-          <div className="sb-inline-add">
-            <label className="sb-field" style={{ flex: 1 }}>
-              <span>Name des Unternehmens</span>
+          <div className="sb-manage-section">
+            <span className="sb-detail-label">Name des Unternehmens</span>
+            <div className="sb-inline-add">
               <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} />
-            </label>
-            <button type="button" className="sb-btn sb-btn-ink" onClick={saveName}>Speichern</button>
-            {saved && <span className="sb-saved-note">Gespeichert.</span>}
+              <button type="button" className="sb-btn sb-btn-ink" onClick={saveName}>Speichern</button>
+              {saved && <span className="sb-saved-note">Gespeichert.</span>}
+            </div>
           </div>
           <div className="sb-manage-actions">
-            <ConfirmDelete onConfirm={() => onDelete(company.id)} label="Unternehmen löschen" variant="button" />
+            <ConfirmDelete
+              onConfirm={() => onDelete(company.id)}
+              label="Unternehmen löschen"
+              question={`„${company.name}“ mit allen Konten und Schichten wirklich löschen?`}
+              variant="button"
+            />
           </div>
         </div>
       )}

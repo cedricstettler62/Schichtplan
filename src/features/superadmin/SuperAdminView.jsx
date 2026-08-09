@@ -16,31 +16,32 @@ export default function SuperAdminView({ companies, superAdminName, onCreateComp
 
   return (
     <div className="sb-app">
-      <div className="sb-header">
+      <header className="sb-header">
         <div className="sb-header-top">
           <h1 className="sb-app-title sb-app-title-sm">Schichtboard – Verwaltung</h1>
           <div className="sb-header-user">
-            <span>{superAdminName}</span>
+            <span className="sb-header-name">{superAdminName}</span>
             <Badge tone="rust">Verwaltung</Badge>
-            <button type="button" className="sb-link-btn" onClick={onLogout}>Abmelden</button>
+            <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={onLogout}>Abmelden</button>
           </div>
         </div>
-      </div>
-      <main className="sb-main">
+      </header>
+      <main>
         <div className="sb-tab">
-          <p className="sb-tab-intro">Übersicht aller Unternehmen im System, jeweils identifiziert durch ihren Firmencode.</p>
-
-          <div className="sb-tab-toolbar">
-            <button type="button" className="sb-btn sb-btn-amber" onClick={() => setFormOpen((o) => !o)}>
-              {formOpen ? "Formular schliessen" : "+ Neues Unternehmen"}
+          <div className="sb-tab-head">
+            <div className="sb-tab-head-text">
+              <h2 className="sb-tab-head-title">Unternehmen</h2>
+              <p className="sb-tab-intro">Alle Unternehmen im System, jeweils identifiziert durch ihren sechsstelligen Firmencode.</p>
+            </div>
+            <button type="button" className={`sb-btn ${formOpen ? "sb-btn-quiet" : "sb-btn-amber"}`} onClick={() => setFormOpen((o) => !o)}>
+              {formOpen ? "Abbrechen" : "Neues Unternehmen"}
             </button>
           </div>
           {formOpen && <NewCompanyForm onCreate={createCompany} />}
 
           <div className="sb-card">
-            <h3 className="sb-subheading">Unternehmen</h3>
             <div className="sb-manage-list">
-              {companies.length === 0 && <p className="sb-empty">Noch keine Unternehmen vorhanden.</p>}
+              {companies.length === 0 && <p className="sb-empty">Noch keine Unternehmen angelegt.</p>}
               {companies.map((c) => <CompanyRow key={c.id} company={c} onDelete={onDeleteCompany} onUpdateName={onUpdateCompanyName} />)}
             </div>
           </div>

@@ -9,6 +9,9 @@
   --sb-rust: #C1543C;
   --sb-paper: #FBF9F4;
   --sb-line: rgba(30,42,56,0.14);
+  --sb-ink-50: rgba(30,42,56,0.5);
+  --sb-ink-65: rgba(30,42,56,0.65);
+  --sb-ink-75: rgba(30,42,56,0.75);
   --sb-font-head: Georgia, "Times New Roman", serif;
   --sb-font-mono: "Courier New", Courier, monospace;
   --sb-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -24,76 +27,113 @@ body { margin: 0; }
 .sb-app { max-width: 980px; margin: 0 auto; padding: 0 20px 60px; }
 .sb-mono { font-family: var(--sb-font-mono); }
 
+/* Sichtbarer Fokus für alle bedienbaren Elemente – vorher hatten nur Eingabefelder einen. */
+.sb-root :focus-visible { outline: 2px solid var(--sb-petrol); outline-offset: 2px; }
+
 /* Login */
 .sb-login-wrap { max-width: 900px; margin: 0 auto; padding: 60px 24px; }
 .sb-login-head { text-align: center; margin-bottom: 36px; }
 .sb-app-title { font-family: var(--sb-font-head); font-size: 40px; font-weight: 700; letter-spacing: 0.5px; margin: 0; color: var(--sb-ink); }
 .sb-app-title-sm { font-size: 22px; }
-.sb-login-sub { color: rgba(30,42,56,0.65); margin-top: 8px; font-size: 15px; }
-.sb-login-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.sb-login-sub { color: var(--sb-ink-65); margin-top: 8px; font-size: 15px; }
 .sb-login-card { max-width: 380px; margin: 0 auto; }
-.sb-login-btn { width: 100%; margin-top: 6px; padding: 11px 16px; }
-.sb-account-card { background: var(--sb-paper); border: 1px solid var(--sb-line); border-radius: 8px; padding: 20px 16px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; font-family: var(--sb-font-sans); transition: border-color .15s, transform .1s; }
-.sb-account-card:hover { border-color: var(--sb-ink); transform: translateY(-2px); }
-.sb-avatar { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--sb-font-head); font-weight: 700; font-size: 16px; border: 2px solid; }
+.sb-login-btn { width: 100%; padding: 11px 16px; }
+.sb-avatar { width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--sb-font-head); font-weight: 700; font-size: 16px; border: 2px solid; }
 .sb-avatar-admin { border-color: var(--sb-amber); color: var(--sb-amber); background: rgba(226,163,59,0.1); }
 .sb-avatar-employee { border-color: var(--sb-petrol); color: var(--sb-petrol); background: rgba(63,124,116,0.1); }
-.sb-account-name { font-weight: 600; font-size: 15px; }
 .sb-account-name-lg { font-family: var(--sb-font-head); font-size: 20px; font-weight: 700; }
-.sb-account-email { font-size: 13px; color: rgba(30,42,56,0.6); }
+.sb-account-email { font-size: 13px; color: var(--sb-ink-65); }
 
 /* Header / Nav */
 .sb-header { padding-top: 22px; border-bottom: 1px solid var(--sb-line); margin-bottom: 24px; }
 .sb-header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
-.sb-header-user { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.sb-header-user { display: flex; align-items: center; gap: 10px; font-size: 14px; flex-wrap: wrap; }
+.sb-header-name { font-weight: 600; }
 .sb-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-.sb-tab-btn { font-family: var(--sb-font-sans); background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 14px; font-size: 14px; cursor: pointer; color: rgba(30,42,56,0.65); }
+.sb-tab-btn { font-family: var(--sb-font-sans); background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 14px; font-size: 14px; cursor: pointer; color: var(--sb-ink-65); }
 .sb-tab-btn:hover { color: var(--sb-ink); }
 .sb-tab-btn-active { color: var(--sb-ink); border-bottom-color: var(--sb-petrol); font-weight: 600; }
 
 /* Tab content */
 .sb-tab { display: flex; flex-direction: column; gap: 16px; }
-.sb-tab-intro { color: rgba(30,42,56,0.65); font-size: 14px; margin: 0; }
-.sb-tab-toolbar { display: flex; justify-content: flex-end; }
-.sb-subheading { font-family: var(--sb-font-head); font-size: 18px; margin: 0 0 12px; }
+.sb-tab-intro { color: var(--sb-ink-65); font-size: 14px; margin: 0; }
+.sb-subheading { font-family: var(--sb-font-head); font-size: 18px; margin: 0; }
+
+/* Kopfzeile eines Tabs: Titel links, Hauptaktion rechts auf derselben Höhe.
+   Vorher stand der Knopf allein rechts über dem Inhalt und wirkte verloren. */
+.sb-tab-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.sb-tab-head-text { display: flex; flex-direction: column; gap: 4px; min-width: 220px; flex: 1; }
+.sb-tab-head-title { font-family: var(--sb-font-head); font-size: 20px; font-weight: 700; margin: 0; }
 
 /* Buttons */
-.sb-btn { font-family: var(--sb-font-sans); border: none; border-radius: 5px; padding: 9px 16px; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+.sb-btn {
+  font-family: var(--sb-font-sans); border: 1px solid transparent; border-radius: 5px; padding: 9px 16px;
+  font-size: 13.5px; font-weight: 600; line-height: 1.2; cursor: pointer; text-align: center; max-width: 100%;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px;
+  transition: opacity .15s, background-color .15s, border-color .15s;
+}
 .sb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .sb-btn:not(:disabled):hover { opacity: 0.88; }
 .sb-btn-ink { background: var(--sb-ink); color: var(--sb-bg); }
 .sb-btn-amber { background: var(--sb-amber); color: var(--sb-ink); }
 .sb-btn-petrol { background: var(--sb-petrol); color: #fff; }
 .sb-btn-rust { background: var(--sb-rust); color: #fff; }
-.sb-link-btn { background: none; border: none; color: var(--sb-petrol); font-size: 13px; cursor: pointer; text-decoration: underline; padding: 0; }
-.sb-link-rust { color: var(--sb-rust); }
-.sb-icon-btn { background: none; border: 1px solid var(--sb-line); border-radius: 50%; width: 20px; height: 20px; line-height: 1; cursor: pointer; color: var(--sb-rust); font-size: 14px; }
+/* Zurückhaltende Zweitaktion (Abbrechen, Abmelden) – gleiche Form wie die
+   Hauptknöpfe, damit Knopfreihen nicht aus Knopf + unterstrichenem Link bestehen. */
+.sb-btn-quiet { background: transparent; border-color: var(--sb-line); color: var(--sb-ink-75); }
+.sb-btn-quiet:not(:disabled):hover { opacity: 1; border-color: var(--sb-ink); color: var(--sb-ink); }
+.sb-btn-sm { padding: 6px 12px; min-height: 30px; font-size: 12.5px; }
+/* Für <label>-Knöpfe (Datei-Auswahl), die kein :disabled kennen. */
+.sb-btn-disabled { opacity: 0.4; cursor: not-allowed; }
+.sb-icon-btn {
+  background: none; border: 1px solid var(--sb-line); border-radius: 50%; width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  cursor: pointer; color: var(--sb-rust); font-size: 15px; line-height: 1; padding: 0;
+  transition: background-color .15s, border-color .15s;
+}
+.sb-icon-btn:hover { background: rgba(193,84,60,0.12); border-color: var(--sb-rust); }
 
 /* Forms */
-.sb-card { background: var(--sb-paper); border: 1px solid var(--sb-line); border-radius: 8px; padding: 18px 20px; }
+.sb-card { background: var(--sb-paper); border: 1px solid var(--sb-line); border-radius: 8px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+/* Abschnitt innerhalb eines Formulars (»Was & wann«, »Wiederholung«). */
+.sb-form-section { display: flex; flex-direction: column; gap: 10px; }
+/* Abschlusszeile eines Formulars – hält die Hauptaktion links und in eigener Breite. */
+.sb-form-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+/* Senkrechter Stapel mit einheitlichem Abstand, für Teilformulare in einer Karte. */
+.sb-stack { display: flex; flex-direction: column; gap: 10px; }
 .sb-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; align-items: end; }
-.sb-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: rgba(30,42,56,0.75); }
-.sb-field-btn { justify-content: flex-end; }
+.sb-form-grid-1col { grid-template-columns: 1fr; }
+.sb-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--sb-ink-75); min-width: 0; }
+/* Knopf in einer Formularspalte: unten bündig mit den Feldern, aber in seiner
+   natürlichen Breite statt über die ganze Spalte gezogen. */
+.sb-field-btn { justify-content: flex-end; align-items: flex-start; }
 .sb-field input, .sb-field select, .sb-inline-add input, .sb-select-inline {
-  font-family: var(--sb-font-sans); border: 1px solid var(--sb-line); border-radius: 5px; padding: 8px 10px; font-size: 14px; background: #fff; color: var(--sb-ink);
+  font-family: var(--sb-font-sans); border: 1px solid var(--sb-line); border-radius: 5px; padding: 8px 10px; font-size: 14px; background: #fff; color: var(--sb-ink); min-width: 0;
 }
 .sb-field input:focus, .sb-field select:focus { outline: 2px solid var(--sb-petrol); outline-offset: 1px; }
-.sb-error { color: var(--sb-rust); font-size: 13px; margin: 4px 0 0; }
-.sb-password-expand { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--sb-line); animation: sb-expand .18s ease-out; }
+.sb-error { color: var(--sb-rust); font-size: 13px; margin: 0; }
+.sb-password-expand { padding-top: 14px; border-top: 1px dashed var(--sb-line); animation: sb-expand .18s ease-out; display: flex; flex-direction: column; gap: 10px; }
 @keyframes sb-expand { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-.sb-inline-add { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-.sb-saved-note { color: var(--sb-petrol); font-size: 13px; }
+.sb-inline-add { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.sb-inline-add input { flex: 1 1 200px; }
+.sb-saved-note { color: var(--sb-petrol); font-size: 13px; margin: 0; }
+/* Schmales Zahlenfeld (Zuteilungstag) – soll nicht die ganze Zeile füllen. */
+.sb-field-compact { flex: 0 0 auto; }
+.sb-field-compact input { width: 90px; flex: 0 0 90px; }
+.sb-status { color: var(--sb-ink-65); font-size: 13px; margin: 0; }
 
 /* Filters */
 .sb-filter-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
 .sb-select-inline { padding: 7px 10px; }
-.sb-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.sb-chip-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sb-chip { font-family: var(--sb-font-sans); border: 1px solid var(--sb-line); background: #fff; border-radius: 20px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; color: var(--sb-ink); }
+.sb-chip:hover { border-color: var(--sb-ink); }
 .sb-chip-active { background: var(--sb-petrol); border-color: var(--sb-petrol); color: #fff; }
+.sb-chip-active:hover { border-color: var(--sb-petrol); }
 .sb-checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
 
 /* Badges */
-.sb-badge { font-family: var(--sb-font-sans); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.3px; }
+.sb-badge { font-family: var(--sb-font-sans); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.3px; white-space: nowrap; }
 .sb-badge-amber { background: rgba(226,163,59,0.18); color: #7a5410; }
 .sb-badge-petrol { background: rgba(63,124,116,0.18); color: #234f49; }
 .sb-badge-rust { background: rgba(193,84,60,0.18); color: #7d3325; }
@@ -101,13 +141,13 @@ body { margin: 0; }
 
 /* Ticket / shift cards */
 .sb-shift-list { display: flex; flex-direction: column; gap: 10px; }
-.sb-ticket-error { margin: -4px 0 0; padding: 0 4px; }
+.sb-ticket-error { padding: 0 4px; }
 .sb-ticket { display: flex; align-items: stretch; background: var(--sb-paper); border: 1px solid var(--sb-line); border-radius: 8px; overflow: hidden; }
-.sb-ticket-body { flex: 1; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
-.sb-ticket-top { display: flex; align-items: center; gap: 10px; }
+.sb-ticket-body { flex: 1; min-width: 0; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.sb-ticket-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sb-ticket-name { font-weight: 600; font-size: 14.5px; }
-.sb-ticket-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; color: rgba(30,42,56,0.7); }
-.sb-ticket-action { align-self: center; margin: 10px 14px; white-space: nowrap; }
+.sb-ticket-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--sb-ink-65); }
+.sb-ticket-action { align-self: center; margin: 10px 14px 10px 0; white-space: nowrap; }
 
 .sb-date-stub { width: 58px; flex-shrink: 0; background: var(--sb-ink); color: var(--sb-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--sb-font-mono); border-right: 1px dashed rgba(246,243,236,0.35); padding: 6px 0; }
 .sb-date-wd { font-size: 10px; text-transform: uppercase; opacity: 0.75; }
@@ -116,63 +156,72 @@ body { margin: 0; }
 
 /* Overview */
 .sb-bar { border: 1px solid var(--sb-line); border-radius: 8px; overflow: hidden; background: var(--sb-paper); }
-.sb-bar-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: none; cursor: pointer; font-family: var(--sb-font-sans); font-size: 14.5px; font-weight: 600; color: var(--sb-ink); background: #fff; }
+.sb-bar-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: none; cursor: pointer; font-family: var(--sb-font-sans); font-size: 14.5px; font-weight: 600; color: var(--sb-ink); background: #fff; text-align: left; }
 .sb-bar-amber { border-left: 5px solid var(--sb-amber); }
 .sb-bar-rust { border-left: 5px solid var(--sb-rust); }
 .sb-bar-petrol { border-left: 5px solid var(--sb-petrol); }
 .sb-bar-count { font-family: var(--sb-font-mono); background: rgba(30,42,56,0.08); border-radius: 10px; padding: 1px 9px; font-size: 12.5px; }
-.sb-bar-caret { margin-left: auto; }
+.sb-bar-caret { margin-left: auto; flex-shrink: 0; color: var(--sb-ink-65); }
 .sb-bar-body { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
-.sb-empty { color: rgba(30,42,56,0.5); font-size: 13px; margin: 6px 2px; }
+.sb-empty { color: var(--sb-ink-50); font-size: 13px; margin: 0; }
 
 .sb-ov-row { border: 1px solid var(--sb-line); border-radius: 6px; background: #fff; overflow: hidden; }
 .sb-ov-row-head { width: 100%; display: flex; align-items: stretch; border: none; background: none; cursor: pointer; padding: 0; text-align: left; font-family: var(--sb-font-sans); }
-.sb-ov-row-main { flex: 1; padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.sb-ov-row-head:hover { background: rgba(30,42,56,0.03); }
+.sb-ov-row-main { flex: 1; min-width: 0; padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 .sb-ov-row-title { font-weight: 600; font-size: 14px; }
-.sb-ov-row-sub { font-size: 12px; color: rgba(30,42,56,0.65); }
-.sb-ov-row-detail { padding: 10px 14px 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 8px; }
-.sb-ov-help-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; flex-wrap: wrap; }
+.sb-ov-row-sub { font-size: 12px; color: var(--sb-ink-65); }
+.sb-ov-row-detail { padding: 10px 14px 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.sb-ov-help-line { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; flex-wrap: wrap; }
 
 /* My shifts */
 .sb-myshifts-list { display: flex; flex-direction: column; gap: 8px; }
 .sb-myshift { border: 1px solid var(--sb-line); border-radius: 6px; background: var(--sb-paper); overflow: hidden; }
-.sb-myshift-row { width: 100%; display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; align-items: center; padding: 12px 14px; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--sb-font-sans); font-size: 14px; }
-.sb-myshift-name { font-weight: 600; }
-.sb-myshift-detail { padding: 4px 14px 16px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 12px; }
-.sb-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 13.5px; }
-.sb-detail-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: rgba(30,42,56,0.55); }
+.sb-myshift-row { width: 100%; display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; align-items: center; padding: 12px 14px; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--sb-font-sans); font-size: 14px; color: var(--sb-ink); }
+.sb-myshift-row:hover { background: rgba(30,42,56,0.03); }
+.sb-myshift-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-myshift-detail { padding: 4px 14px 16px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.sb-detail-grid { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; font-size: 13.5px; }
+.sb-detail-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: rgba(30,42,56,0.55); margin-bottom: 2px; }
 
-/* Toggle */
-.sb-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--sb-line); font-size: 14px; }
+/* Toggle – die ganze Zeile ist der Schalter, nicht nur der Knopf rechts. */
+.sb-toggle-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border: none; border-bottom: 1px solid var(--sb-line); background: none; font-family: var(--sb-font-sans); font-size: 14px; color: var(--sb-ink); text-align: left; cursor: pointer; }
 .sb-toggle-row:last-child { border-bottom: none; }
-.sb-toggle { width: 40px; height: 22px; border-radius: 20px; background: rgba(30,42,56,0.2); border: none; position: relative; cursor: pointer; padding: 0; }
+.sb-toggle { width: 40px; height: 22px; flex-shrink: 0; border-radius: 20px; background: rgba(30,42,56,0.2); position: relative; transition: background-color .15s; }
 .sb-toggle-on { background: var(--sb-petrol); }
 .sb-toggle-knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; }
 .sb-toggle-on .sb-toggle-knob { left: 20px; }
+.sb-toggle-list { display: flex; flex-direction: column; }
 
 /* Qualifications management */
-.sb-qual-manage-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--sb-line); border-radius: 20px; padding: 5px 8px 5px 13px; font-size: 12.5px; background: #fff; }
-.sb-confirm { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
-
-/* Matrix */
-.sb-matrix-wrap { overflow-x: auto; }
-.sb-matrix { border-collapse: collapse; width: 100%; font-size: 13px; }
-.sb-matrix th, .sb-matrix td { border-bottom: 1px solid var(--sb-line); padding: 8px 10px; text-align: left; white-space: nowrap; }
-.sb-matrix th { font-weight: 700; color: rgba(30,42,56,0.7); font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
-.sb-matrix-cell { text-align: center; font-family: var(--sb-font-mono); }
+.sb-qual-manage-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--sb-line); border-radius: 20px; padding: 4px 6px 4px 13px; font-size: 12.5px; background: #fff; }
+/* Rückfrage »Sicher?« – umbricht, statt aus der Karte zu laufen. */
+.sb-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
 
 /* Mitarbeitende verwalten */
 .sb-manage-list { display: flex; flex-direction: column; gap: 8px; }
 .sb-manage-row { border: 1px solid var(--sb-line); border-radius: 6px; background: #fff; overflow: hidden; }
-.sb-manage-row-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--sb-font-sans); }
-.sb-manage-name { font-weight: 600; font-size: 14px; }
-.sb-manage-email { margin-left: auto; margin-right: 8px; font-size: 12.5px; color: rgba(30,42,56,0.6); }
-.sb-manage-row-body { padding: 12px 14px 16px; border-top: 1px solid var(--sb-line); }
-.sb-manage-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--sb-line); }
+.sb-manage-row-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--sb-font-sans); font-size: 14px; color: var(--sb-ink); }
+.sb-manage-row-head:hover { background: rgba(30,42,56,0.03); }
+.sb-manage-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Nur dieses Element schiebt sich nach rechts; alles davor bleibt am Namen. */
+.sb-manage-email { margin-left: auto; font-size: 12.5px; color: var(--sb-ink-65); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-manage-meta { font-size: 12.5px; color: var(--sb-ink-65); white-space: nowrap; }
+.sb-manage-row-body { padding: 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px; }
+.sb-manage-section { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+.sb-manage-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; padding-top: 14px; border-top: 1px dashed var(--sb-line); }
 
-.sb-account-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.sb-account-head { display: flex; align-items: center; gap: 14px; }
 
 @media (max-width: 640px) {
-  .sb-myshift-row { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .sb-app { padding: 0 14px 48px; }
+  .sb-myshift-row { grid-template-columns: 1fr auto; row-gap: 4px; gap: 10px; }
   .sb-header-top { flex-direction: column; align-items: flex-start; }
+  /* Aktionsknopf unter die Schichtdaten statt daneben in die Enge. */
+  .sb-ticket { flex-wrap: wrap; }
+  .sb-ticket-body { flex-basis: calc(100% - 58px); }
+  .sb-ticket-action { width: calc(100% - 28px); margin: 0 14px 12px; }
+  .sb-manage-email { margin-left: 0; flex-basis: 100%; }
+  .sb-manage-row-head { flex-wrap: wrap; }
+  .sb-tab-head .sb-btn { width: 100%; }
 }

@@ -33,8 +33,9 @@ export default function PasswordChangeForm({ verify, onChangePassword }) {
   };
 
   return (
-    <div className="sb-card sb-form">
+    <div className="sb-card">
       <h3 className="sb-subheading">Passwort ändern</h3>
+      <p className="sb-tab-intro">Zuerst das aktuelle Passwort bestätigen, danach das neue zweimal eingeben.</p>
       <div className="sb-form-grid">
         <label className="sb-field">
           <span>Aktuelles Passwort</span>
@@ -43,6 +44,7 @@ export default function PasswordChangeForm({ verify, onChangePassword }) {
             value={currentPw}
             onChange={(e) => { setCurrentPw(e.target.value); setVerified(false); setVerifyError(""); }}
             onKeyDown={(e) => e.key === "Enter" && submitVerify()}
+            autoComplete="current-password"
           />
         </label>
         {!verified && <div className="sb-field sb-field-btn"><button type="button" className="sb-btn sb-btn-ink" onClick={submitVerify}>Bestätigen</button></div>}
@@ -52,14 +54,14 @@ export default function PasswordChangeForm({ verify, onChangePassword }) {
       {verified && (
         <div className="sb-password-expand">
           <div className="sb-form-grid">
-            <label className="sb-field"><span>Neues Passwort</span><input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitPassword()} /></label>
-            <label className="sb-field"><span>Wiederholen</span><input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitPassword()} /></label>
+            <label className="sb-field"><span>Neues Passwort</span><input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitPassword()} autoComplete="new-password" /></label>
+            <label className="sb-field"><span>Neues Passwort wiederholen</span><input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitPassword()} autoComplete="new-password" /></label>
             <div className="sb-field sb-field-btn"><button type="button" className="sb-btn sb-btn-ink" onClick={submitPassword}>Speichern</button></div>
           </div>
           {pwError && <p className="sb-error">{pwError}</p>}
         </div>
       )}
-      {pwSaved && <span className="sb-saved-note">Passwort gespeichert.</span>}
+      {pwSaved && <p className="sb-saved-note">Passwort gespeichert.</p>}
     </div>
   );
 }

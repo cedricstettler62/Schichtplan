@@ -27,33 +27,34 @@ export default function LoginScreen({ onLogin }) {
     <div className="sb-login-wrap">
       <div className="sb-login-head">
         <h1 className="sb-app-title">Schichtboard</h1>
-        <p className="sb-login-sub">Anmelden, um fortzufahren</p>
+        <p className="sb-login-sub">Mit Firmencode, Name und Passwort anmelden.</p>
       </div>
       <div className="sb-card sb-login-card">
-        <div className="sb-form-grid" style={{ gridTemplateColumns: "1fr" }}>
+        <div className="sb-form-grid sb-form-grid-1col">
           <label className="sb-field">
-            <span>Firmencode (6-stellig)</span>
+            <span>Firmencode</span>
             <input
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               onKeyDown={handleKey}
-              placeholder="z. B. 111111"
+              placeholder="6 Ziffern"
               inputMode="numeric"
+              autoComplete="off"
               className="sb-mono"
             />
           </label>
           <label className="sb-field">
             <span>Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={handleKey} placeholder="Vor- und Nachname" />
+            <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={handleKey} placeholder="Vor- und Nachname" autoComplete="username" />
           </label>
           <label className="sb-field">
             <span>Passwort</span>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={handleKey} />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={handleKey} autoComplete="current-password" />
           </label>
         </div>
         {error && <p className="sb-error">{error}</p>}
         <button type="button" className="sb-btn sb-btn-ink sb-login-btn" onClick={submit} disabled={busy}>
-          {busy ? "Anmelden …" : "Anmelden"}
+          {busy ? "Wird angemeldet …" : "Anmelden"}
         </button>
       </div>
     </div>

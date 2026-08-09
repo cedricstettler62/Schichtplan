@@ -27,7 +27,7 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
 
   const handleClick = (s, qualified, enrolled, qualName) => {
     if (!qualified && !enrolled) {
-      setEnrollError({ shiftId: s.id, message: `Du kannst dich für diese Schicht nicht einschreiben, da du in ${qualName || "der erforderlichen Qualifikation"} nicht ausgebildet bist.` });
+      setEnrollError({ shiftId: s.id, message: `Dafür fehlt dir die Qualifikation „${qualName || "der Schicht"}“. Wende dich an einen Admin, wenn das nicht stimmt.` });
       return;
     }
     setEnrollError(null);
@@ -36,7 +36,12 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
 
   return (
     <div className="sb-tab">
-      <p className="sb-tab-intro">Offene Schichten ab dem nächsten Monat. Einschreiben reicht – die Zuteilung erfolgt automatisch.</p>
+      <div className="sb-tab-head">
+        <div className="sb-tab-head-text">
+          <h2 className="sb-tab-head-title">Schichten</h2>
+          <p className="sb-tab-intro">Offene Schichten ab dem nächsten Monat. Einschreiben genügt – zugeteilt wird automatisch.</p>
+        </div>
+      </div>
       <div className="sb-filter-row">
         <label className="sb-checkbox-row">
           <input type="checkbox" checked={onlyMatching} onChange={(e) => setOnlyMatching(e.target.checked)} />
@@ -54,7 +59,11 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
       </div>
 
       <div className="sb-shift-list">
-        {filtered.length === 0 && <p className="sb-empty">Keine offenen Schichten für diese Filter.</p>}
+        {filtered.length === 0 && (
+          <p className="sb-empty">
+            {onlyEnrolled ? "Du hast dich noch für keine Schicht eingeschrieben." : "Zu diesen Filtern gibt es keine offenen Schichten."}
+          </p>
+        )}
         {filtered.map((s) => {
           const qual = qualifications.find((q) => q.id === s.qualificationId);
           const enrolled = s.enrolled.includes(currentUser.id);
@@ -66,21 +75,22 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
                 <div className="sb-ticket-body">
                   <div className="sb-ticket-top">
                     <span className="sb-ticket-name">{s.name}</span>
-                    {!qualified && <Badge tone="rust">Ausbildung fehlt</Badge>}
+                    {enrolled && <Badge tone="petrol">Eingeschrieben</Badge>}
+                    {!qualified && <Badge tone="rust">Qualifikation fehlt</Badge>}
                   </div>
                   <div className="sb-ticket-meta">
                     <span className="sb-mono">{s.startTime}–{s.endTime}</span>
-                    <span>{qual ? qual.name : "–"}</span>
-                    <span>{s.seats - s.assigned.length} von {s.seats} frei</span>
+                    <span>{qual ? qual.name : "ohne Qualifikation"}</span>
+                    <span>{s.seats - s.assigned.length} von {s.seats} Plätzen frei</span>
                     <span>{REPEAT_LABELS[s.repeat]}</span>
                   </div>
                 </div>
                 <button
                   type="button"
-                  className={`sb-btn sb-ticket-action ${enrolled ? "sb-btn-rust" : "sb-btn-petrol"}`}
+                  className={`sb-btn sb-ticket-action ${enrolled ? "sb-btn-quiet" : "sb-btn-petrol"}`}
                   onClick={() => handleClick(s, qualified, enrolled, qual ? qual.name : null)}
                 >
-                  {enrolled ? "Abmelden" : "Einschreiben"}
+                  {enrolled ? "Austragen" : "Einschreiben"}
                 </button>
               </div>
               {enrollError && enrollError.shiftId === s.id && <p className="sb-error sb-ticket-error">{enrollError.message}</p>}

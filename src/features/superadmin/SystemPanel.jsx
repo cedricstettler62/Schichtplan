@@ -109,10 +109,10 @@ export default function SystemPanel({ onDataChanged }) {
       </p>
 
       <div className="sb-detail-grid">
-        <div><span className="sb-detail-label">Version</span><br /><span className="sb-mono">{info.version.commit}</span></div>
-        <div><span className="sb-detail-label">Stand vom</span><br />{lesbaresDatum(info.version.date)}</div>
-        <div><span className="sb-detail-label">Datenbank</span><br />{lesbareGroesse(info.db.groesse)}</div>
-        <div><span className="sb-detail-label">Inhalt</span><br />{info.db.companies} Unternehmen · {info.db.accounts} Konten · {info.db.shifts} Schichten</div>
+        <div><span className="sb-detail-label">Version</span><span className="sb-mono">{info.version.commit}</span></div>
+        <div><span className="sb-detail-label">Stand vom</span>{lesbaresDatum(info.version.date)}</div>
+        <div><span className="sb-detail-label">Datenbank</span>{lesbareGroesse(info.db.groesse)}</div>
+        <div><span className="sb-detail-label">Inhalt</span>{info.db.companies} Unternehmen · {info.db.accounts} Konten · {info.db.shifts} Schichten</div>
       </div>
 
       <div className="sb-manage-actions">
@@ -120,7 +120,7 @@ export default function SystemPanel({ onDataChanged }) {
           {beschaeftigt === "export" ? "Wird erstellt …" : "Sicherung herunterladen"}
         </button>
 
-        <label className="sb-btn sb-btn-petrol" style={{ cursor: "pointer" }}>
+        <label className={`sb-btn sb-btn-petrol ${beschaeftigt ? "sb-btn-disabled" : ""}`}>
           Sicherung einspielen
           <input
             ref={dateiFeld}
@@ -138,16 +138,16 @@ export default function SystemPanel({ onDataChanged }) {
       </div>
 
       {nachfrage && (
-        <p className="sb-confirm" style={{ marginTop: "12px" }}>
+        <div className="sb-confirm">
           <span>
-            <strong>{nachfrage.name}</strong> ersetzt alle jetzigen Daten. Der bisherige Stand wird vorher gesichert. Sicher?
+            <strong>{nachfrage.name}</strong> ersetzt alle jetzigen Daten. Der bisherige Stand wird vorher gesichert.
           </span>
-          <button type="button" className="sb-link-btn sb-link-rust" onClick={() => importieren(nachfrage)}>Ja, einspielen</button>
-          <button type="button" className="sb-link-btn" onClick={() => { setNachfrage(null); if (dateiFeld.current) dateiFeld.current.value = ""; }}>Abbrechen</button>
-        </p>
+          <button type="button" className="sb-btn sb-btn-rust sb-btn-sm" onClick={() => importieren(nachfrage)}>Ja, einspielen</button>
+          <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => { setNachfrage(null); if (dateiFeld.current) dateiFeld.current.value = ""; }}>Abbrechen</button>
+        </div>
       )}
 
-      {beschaeftigt === "import" && <p className="sb-tab-intro">Wird eingespielt …</p>}
+      {beschaeftigt === "import" && <p className="sb-status">Wird eingespielt …</p>}
 
       {haengt && (
         <p className="sb-error">

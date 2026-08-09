@@ -27,19 +27,23 @@ export default function AdminShiftsTab({ shifts, qualifications, today, onCreate
 
   return (
     <div className="sb-tab">
-      <div className="sb-tab-toolbar">
-        <button type="button" className="sb-btn sb-btn-amber" onClick={() => setFormOpen((o) => !o)}>
-          {formOpen ? "Formular schliessen" : "+ Neue Schicht"}
+      <div className="sb-tab-head">
+        <div className="sb-tab-head-text">
+          <h2 className="sb-tab-head-title">Schichten</h2>
+          <p className="sb-tab-intro">Alle Schichten der nächsten {HORIZON_DAYS} Tage. Neue anlegen oder offene sofort zuteilen.</p>
+        </div>
+        <button type="button" className={`sb-btn ${formOpen ? "sb-btn-quiet" : "sb-btn-amber"}`} onClick={() => setFormOpen((o) => !o)}>
+          {formOpen ? "Abbrechen" : "Neue Schicht"}
         </button>
       </div>
       {formOpen && <NewShiftForm qualifications={qualifications} onCreate={async (f) => { await onCreate(f); setFormOpen(false); }} onAddQualification={onAddQualification} />}
 
       <div className="sb-filter-row">
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="sb-select-inline">
-          <option value="all">Alle</option>
-          <option value="assigned">Zugeteilt</option>
-          <option value="open">Offen</option>
-          <option value="future">Zukünftige Schichten</option>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="sb-select-inline" aria-label="Nach Status filtern">
+          <option value="all">Alle Schichten</option>
+          <option value="assigned">Nur vollständig besetzte</option>
+          <option value="open">Nur mit freien Plätzen</option>
+          <option value="future">Erst ab übernächstem Monat</option>
         </select>
         <div className="sb-chip-row">
           {qualifications.map((q) => (
@@ -49,7 +53,7 @@ export default function AdminShiftsTab({ shifts, qualifications, today, onCreate
       </div>
 
       <div className="sb-shift-list">
-        {filtered.length === 0 && <p className="sb-empty">Keine Schichten für diese Filter.</p>}
+        {filtered.length === 0 && <p className="sb-empty">Zu diesen Filtern gibt es keine Schichten.</p>}
         {filtered.map((s) => {
           const qual = qualifications.find((q) => q.id === s.qualificationId);
           const full = s.assigned.length >= s.seats;
@@ -59,18 +63,24 @@ export default function AdminShiftsTab({ shifts, qualifications, today, onCreate
               <div className="sb-ticket-body">
                 <div className="sb-ticket-top">
                   <span className="sb-ticket-name">{s.name}</span>
-                  <Badge tone={full ? "petrol" : "amber"}>{full ? "Zugeteilt" : "Offen"}</Badge>
+                  <Badge tone={full ? "petrol" : "amber"}>{full ? "Besetzt" : "Freie Plätze"}</Badge>
                 </div>
                 <div className="sb-ticket-meta">
                   <span className="sb-mono">{s.startTime}–{s.endTime}</span>
-                  <span>{qual ? qual.name : "– keine Qualifikation –"}</span>
-                  <span>{s.assigned.length}/{s.seats} Plätze</span>
+                  <span>{qual ? qual.name : "ohne Qualifikation"}</span>
+                  <span>{s.assigned.length} von {s.seats} Plätzen besetzt</span>
                   <span>{s.enrolled.length} eingeschrieben</span>
                   <span>{REPEAT_LABELS[s.repeat]}</span>
                 </div>
               </div>
               {!full && (
-                <button type="button" className="sb-btn sb-btn-petrol sb-ticket-action" onClick={() => onForceAssign(s.id)}>
+                <button
+                  type="button"
+                  className="sb-btn sb-btn-petrol sb-ticket-action"
+                  onClick={() => onForceAssign(s.id)}
+                  disabled={s.enrolled.length === 0}
+                  title={s.enrolled.length === 0 ? "Niemand ist für diese Schicht eingeschrieben." : undefined}
+                >
                   Jetzt zuteilen
                 </button>
               )}

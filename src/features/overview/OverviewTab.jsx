@@ -9,13 +9,28 @@ export default function OverviewTab({ shifts, qualifications, accounts, currentU
 
   return (
     <div className="sb-tab">
-      <p className="sb-tab-intro">Ein gemeinsamer Feed für alle: offene Schichten, unbesetzte Zuteilungen und Hilfegesuche.</p>
-      <CollapsibleBar title="Unbesetzte Schichten" count={openShifts.length} tone="amber">
+      <div className="sb-tab-head">
+        <div className="sb-tab-head-text">
+          <h2 className="sb-tab-head-title">Übersicht</h2>
+          <p className="sb-tab-intro">Was gerade offen ist und wo jemand Unterstützung sucht – für alle sichtbar.</p>
+        </div>
+      </div>
+      <CollapsibleBar
+        title="Schichten mit freien Plätzen"
+        count={openShifts.length}
+        tone="amber"
+        emptyText="Alle kommenden Schichten sind besetzt."
+      >
         {openShifts.map((s) => (
           <OverviewShiftRow key={s.id} shift={s} qualifications={qualifications} accounts={accounts} currentUser={currentUser} onTakeOver={onTakeOver} />
         ))}
       </CollapsibleBar>
-      <CollapsibleBar title="Hilfegesuche" count={helpRequests.length} tone="petrol">
+      <CollapsibleBar
+        title="Hilfegesuche"
+        count={helpRequests.length}
+        tone="petrol"
+        emptyText="Zurzeit bittet niemand um Hilfe."
+      >
         {helpRequests.map((s) => (
           <OverviewShiftRow key={s.id} shift={s} qualifications={qualifications} accounts={accounts} currentUser={currentUser} onTakeOver={onTakeOver} requesterIds={s.helpRequests} />
         ))}

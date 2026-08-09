@@ -13,16 +13,22 @@ export default function AccountTab({ currentUser, qualifications, verifySelf, on
             <div className="sb-account-email">{currentUser.email}</div>
           </div>
         </div>
-        <h3 className="sb-subheading">Meine Ausbildung</h3>
-        {qualifications.length === 0 && <p className="sb-empty">Noch keine Qualifikationen im System.</p>}
-        {qualifications.map((q) => (
-          <Toggle
-            key={q.id}
-            label={q.name}
-            checked={currentUser.qualifications.includes(q.id)}
-            onChange={(val) => onToggleQualification(q.id, val)}
-          />
-        ))}
+        <h3 className="sb-subheading">Meine Qualifikationen</h3>
+        <p className="sb-tab-intro">Bestimmt, für welche Schichten du dich einschreiben kannst.</p>
+        {qualifications.length === 0 ? (
+          <p className="sb-empty">Für dieses Unternehmen sind noch keine Qualifikationen angelegt.</p>
+        ) : (
+          <div className="sb-toggle-list">
+            {qualifications.map((q) => (
+              <Toggle
+                key={q.id}
+                label={q.name}
+                checked={currentUser.qualifications.includes(q.id)}
+                onChange={(val) => onToggleQualification(q.id, val)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <PasswordChangeForm verify={verifySelf} onChangePassword={onChangePassword} />

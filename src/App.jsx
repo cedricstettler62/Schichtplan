@@ -178,7 +178,7 @@ export default function App() {
     <div className="sb-root">
       <div className="sb-app">
         <Header currentUser={currentUser} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
-        <main className="sb-main">
+        <main>
           {activeTab === "overview" && (
             <OverviewTab
               shifts={shifts} qualifications={qualifications} accounts={accounts}

@@ -1,15 +1,16 @@
+/** Die ganze Zeile schaltet um, nicht nur der Schieber rechts. */
 export default function Toggle({ checked, onChange, label }) {
   return (
-    <label className="sb-toggle-row">
+    <button
+      type="button"
+      className="sb-toggle-row"
+      onClick={() => onChange(!checked)}
+      aria-pressed={checked}
+    >
       <span>{label}</span>
-      <button
-        type="button"
-        className={`sb-toggle ${checked ? "sb-toggle-on" : ""}`}
-        onClick={() => onChange(!checked)}
-        aria-pressed={checked}
-      >
+      <span className={`sb-toggle ${checked ? "sb-toggle-on" : ""}`}>
         <span className="sb-toggle-knob" />
-      </button>
-    </label>
+      </span>
+    </button>
   );
 }

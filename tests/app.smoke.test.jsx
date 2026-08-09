@@ -33,7 +33,7 @@ async function openApp() {
 }
 
 async function login(user, { code, name, password }) {
-  await user.type(screen.getByPlaceholderText("z. B. 111111"), code);
+  await user.type(screen.getByPlaceholderText("6 Ziffern"), code);
   await user.type(screen.getByPlaceholderText("Vor- und Nachname"), name);
   await user.type(document.querySelector('input[type="password"]'), password);
   await user.click(screen.getByRole("button", { name: "Anmelden" }));
@@ -42,7 +42,7 @@ async function login(user, { code, name, password }) {
 describe("Anmeldung", () => {
   test("zeigt den Login-Bildschirm", async () => {
     await openApp();
-    expect(screen.getByText("Anmelden, um fortzufahren")).toBeInTheDocument();
+    expect(screen.getByText("Mit Firmencode, Name und Passwort anmelden.")).toBeInTheDocument();
   });
 
   test("weist einen unbekannten Firmencode ab", async () => {
@@ -68,7 +68,7 @@ describe("Admin", () => {
     const nav = screen.getByRole("navigation");
 
     await user.click(within(nav).getByRole("button", { name: "Schichten" }));
-    expect(screen.getByRole("button", { name: "+ Neue Schicht" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Neue Schicht" })).toBeInTheDocument();
 
     await user.click(within(nav).getByRole("button", { name: "Mitarbeitende" }));
     expect(screen.getByText("Lea Brunner")).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("Admin", () => {
     const nav = await screen.findByRole("navigation");
 
     await user.click(within(nav).getByRole("button", { name: "Schichten" }));
-    await user.click(screen.getByRole("button", { name: "+ Neue Schicht" }));
+    await user.click(screen.getByRole("button", { name: "Neue Schicht" }));
 
     // Nächster Monat, damit die Schicht auch im Mitarbeiter-Tab auftaucht.
     const next = new Date();
@@ -101,8 +101,7 @@ describe("Admin", () => {
     await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
 
     const ticket = (await screen.findByText("Spätschicht Verkauf")).closest(".sb-ticket");
-    // "Offen" steht auch im Filter-Dropdown — deshalb gezielt das Badge prüfen.
-    expect(within(ticket).getByText("Offen")).toHaveClass("sb-badge");
+    expect(within(ticket).getByText("Freie Plätze")).toHaveClass("sb-badge");
     expect(within(ticket).getByText("0 eingeschrieben")).toBeInTheDocument();
   });
 });
@@ -112,19 +111,19 @@ describe("Mitarbeitende", () => {
     const user = await openApp();
     await login(user, EMPLOYEE);
 
-    expect(await screen.findByText("Mitarbeiter")).toBeInTheDocument();
-    const nav = screen.getByRole("navigation");
+    const nav = await screen.findByRole("navigation");
+    expect(screen.getByText("Mitarbeitende")).toHaveClass("sb-badge");
     expect(within(nav).queryByRole("button", { name: "Mitarbeitende" })).not.toBeInTheDocument();
 
     await user.click(within(nav).getByRole("button", { name: "Schichten" }));
     expect(screen.getByText(/Offene Schichten ab dem nächsten Monat/)).toBeInTheDocument();
 
     await user.click(within(nav).getByRole("button", { name: "Meine Schichten" }));
-    expect(screen.getByText("Aktuell bist du keiner Schicht zugeteilt.")).toBeInTheDocument();
+    expect(screen.getByText("Dir ist zurzeit keine Schicht zugeteilt.")).toBeInTheDocument();
 
     await user.click(within(nav).getByRole("button", { name: "Konto" }));
     expect(screen.getByText("lea@firma.ch")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Meine Ausbildung" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Meine Qualifikationen" })).toBeInTheDocument();
   });
 });
 
@@ -154,12 +153,12 @@ describe("Super-Admin", () => {
     await login(user, SUPER);
     await screen.findByRole("heading", { name: "Schichtboard – Verwaltung" });
 
-    await user.click(screen.getByRole("button", { name: "+ Neues Unternehmen" }));
+    await user.click(screen.getByRole("button", { name: "Neues Unternehmen" }));
     await user.type(screen.getByPlaceholderText("z. B. Muster GmbH"), "Zweite Firma AG");
-    await user.type(screen.getByPlaceholderText("z. B. 222222"), "111111");
-    await user.type(screen.getByLabelText(/Name \(Admin\)/), "Neue Chefin");
-    await user.type(screen.getByLabelText(/E-Mail \(Admin\)/), "chefin@zweite.ch");
-    await user.type(screen.getByLabelText(/Passwort \(Admin\)/), "geheim");
+    await user.type(screen.getByPlaceholderText("6 Ziffern"), "111111");
+    await user.type(screen.getByLabelText("Name"), "Neue Chefin");
+    await user.type(screen.getByLabelText("E-Mail"), "chefin@zweite.ch");
+    await user.type(screen.getByLabelText("Startpasswort"), "geheim");
     await user.click(screen.getByRole("button", { name: "Unternehmen anlegen" }));
 
     expect(await screen.findByText("Dieser Firmencode wird bereits verwendet.")).toBeInTheDocument();

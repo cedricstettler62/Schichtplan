@@ -31,11 +31,21 @@ export default function SettingsTab({
 
   return (
     <div className="sb-tab">
-      <div className="sb-card sb-form">
+      <div className="sb-tab-head">
+        <div className="sb-tab-head-text">
+          <h2 className="sb-tab-head-title">Einstellungen</h2>
+          <p className="sb-tab-intro">Regeln für dieses Unternehmen und dein eigenes Admin-Konto.</p>
+        </div>
+      </div>
+
+      <div className="sb-card">
         <h3 className="sb-subheading">Zuteilungstag</h3>
         <p className="sb-tab-intro">An diesem Tag jedes Monats werden alle Schichten des Folgemonats automatisch zugeteilt, sobald jemand eingeschrieben ist.</p>
         <div className="sb-inline-add">
-          <input type="number" min="1" max="28" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} style={{ width: "90px" }} />
+          <label className="sb-field sb-field-compact">
+            <span>Tag im Monat (1–28)</span>
+            <input type="number" min="1" max="28" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+          </label>
           <button type="button" className="sb-btn sb-btn-ink" onClick={save}>Speichern</button>
           {saved && <span className="sb-saved-note">Gespeichert.</span>}
         </div>
@@ -43,24 +53,29 @@ export default function SettingsTab({
 
       <div className="sb-card">
         <h3 className="sb-subheading">Qualifikationen</h3>
-        <p className="sb-tab-intro">Gelten nur für dieses Unternehmen. Neue anlegen oder nicht mehr gebrauchte löschen.</p>
+        <p className="sb-tab-intro">Gelten nur für dieses Unternehmen. Eine Schicht kann nur übernehmen, wer die passende Qualifikation hat.</p>
         <div className="sb-chip-row">
-          {qualifications.length === 0 && <p className="sb-empty">Noch keine Qualifikationen vorhanden.</p>}
+          {qualifications.length === 0 && <p className="sb-empty">Noch keine Qualifikationen angelegt.</p>}
           {qualifications.map((q) => (
             <span key={q.id} className="sb-qual-manage-chip">
               {q.name}
-              <ConfirmDelete onConfirm={() => onDeleteQualification(q.id)} />
+              <ConfirmDelete
+                onConfirm={() => onDeleteQualification(q.id)}
+                label={`Qualifikation „${q.name}“ löschen`}
+                question={`„${q.name}“ löschen?`}
+              />
             </span>
           ))}
         </div>
         <div className="sb-inline-add">
-          <input value={newQual} onChange={(e) => setNewQual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addQual()} placeholder="Neue Qualifikation" />
+          <input value={newQual} onChange={(e) => setNewQual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addQual()} placeholder="z. B. Kassenschulung" />
           <button type="button" className="sb-btn sb-btn-ink" onClick={addQual}>Hinzufügen</button>
         </div>
       </div>
 
-      <div className="sb-card sb-form">
-        <h3 className="sb-subheading">Mein Konto – E-Mail ändern</h3>
+      <div className="sb-card">
+        <h3 className="sb-subheading">E-Mail ändern</h3>
+        <p className="sb-tab-intro">Deine eigene Adresse. Zum Ändern zuerst dein Passwort bestätigen.</p>
         <EmailChangeForm verify={verifySelf} initialEmail={currentUser.email} onSave={onUpdateOwnEmail} />
       </div>
 
@@ -70,11 +85,17 @@ export default function SettingsTab({
         <h3 className="sb-subheading">Konto löschen</h3>
         {canDeleteSelf ? (
           <>
-            <p className="sb-tab-intro">Dies löscht dein eigenes Admin-Konto unwiderruflich.</p>
-            <DeleteAccountButton onConfirm={onDeleteOwnAccount} />
+            <p className="sb-tab-intro">Löscht dein eigenes Admin-Konto endgültig. Du wirst dabei abgemeldet.</p>
+            <div className="sb-form-actions">
+              <DeleteAccountButton
+                onConfirm={onDeleteOwnAccount}
+                label="Mein Konto löschen"
+                question="Dein Admin-Konto wirklich löschen? Das lässt sich nicht rückgängig machen."
+              />
+            </div>
           </>
         ) : (
-          <p className="sb-empty">Das letzte Admin-Konto kann nicht gelöscht werden.</p>
+          <p className="sb-empty">Du bist der einzige Admin – das letzte Admin-Konto kann nicht gelöscht werden.</p>
         )}
       </div>
     </div>

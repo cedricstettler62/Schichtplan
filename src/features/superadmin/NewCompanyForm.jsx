@@ -28,22 +28,35 @@ export default function NewCompanyForm({ onCreate }) {
   };
 
   return (
-    <div className="sb-card sb-form">
-      <div className="sb-form-grid">
-        <label className="sb-field">
-          <span>Name des Unternehmens</span>
-          <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="z. B. Muster GmbH" />
-        </label>
-        <label className="sb-field">
-          <span>Firmencode (6-stellig)</span>
-          <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="z. B. 222222" className="sb-mono" inputMode="numeric" />
-        </label>
-        <label className="sb-field"><span>Name (Admin)</span><input value={adminName} onChange={(e) => setAdminName(e.target.value)} /></label>
-        <label className="sb-field"><span>E-Mail (Admin)</span><input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} /></label>
-        <label className="sb-field"><span>Passwort (Admin)</span><input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} /></label>
+    <div className="sb-card">
+      <div className="sb-form-section">
+        <span className="sb-detail-label">Unternehmen</span>
+        <div className="sb-form-grid">
+          <label className="sb-field">
+            <span>Name des Unternehmens</span>
+            <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="z. B. Muster GmbH" />
+          </label>
+          <label className="sb-field">
+            <span>Firmencode</span>
+            <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6 Ziffern" className="sb-mono" inputMode="numeric" />
+          </label>
+        </div>
       </div>
+
+      <div className="sb-form-section">
+        <span className="sb-detail-label">Erstes Admin-Konto</span>
+        <div className="sb-form-grid">
+          <label className="sb-field"><span>Name</span><input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Vor- und Nachname" /></label>
+          <label className="sb-field"><span>E-Mail</span><input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} /></label>
+          <label className="sb-field"><span>Startpasswort</span><input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} /></label>
+        </div>
+      </div>
+
       {error && <p className="sb-error">{error}</p>}
-      <button type="button" className="sb-btn sb-btn-ink" onClick={submit}>Unternehmen anlegen</button>
+      <div className="sb-form-actions">
+        <button type="button" className="sb-btn sb-btn-ink" onClick={submit}>Unternehmen anlegen</button>
+        <span className="sb-status">Mit Firmencode, Name und Passwort meldet sich der Admin danach an.</span>
+      </div>
     </div>
   );
 }

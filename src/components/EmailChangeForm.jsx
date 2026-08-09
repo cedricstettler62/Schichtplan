@@ -25,7 +25,7 @@ export default function EmailChangeForm({ verify, initialEmail, onSave }) {
   };
 
   return (
-    <div>
+    <div className="sb-stack">
       <div className="sb-form-grid">
         <label className="sb-field">
           <span>Passwort zur Bestätigung</span>
@@ -34,6 +34,7 @@ export default function EmailChangeForm({ verify, initialEmail, onSave }) {
             value={currentPw}
             onChange={(e) => { setCurrentPw(e.target.value); setVerified(false); setVerifyError(""); }}
             onKeyDown={(e) => e.key === "Enter" && submitVerify()}
+            autoComplete="current-password"
           />
         </label>
         {!verified && <div className="sb-field sb-field-btn"><button type="button" className="sb-btn sb-btn-ink" onClick={submitVerify}>Bestätigen</button></div>}
@@ -44,14 +45,14 @@ export default function EmailChangeForm({ verify, initialEmail, onSave }) {
         <div className="sb-password-expand">
           <div className="sb-form-grid">
             <label className="sb-field">
-              <span>E-Mail</span>
+              <span>Neue E-Mail-Adresse</span>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmail()} />
             </label>
-            <div className="sb-field sb-field-btn"><button type="button" className="sb-btn sb-btn-ink" onClick={submitEmail}>E-Mail speichern</button></div>
+            <div className="sb-field sb-field-btn"><button type="button" className="sb-btn sb-btn-ink" onClick={submitEmail}>Speichern</button></div>
           </div>
         </div>
       )}
-      {saved && <span className="sb-saved-note">Gespeichert.</span>}
+      {saved && <p className="sb-saved-note">E-Mail-Adresse gespeichert.</p>}
     </div>
   );
 }

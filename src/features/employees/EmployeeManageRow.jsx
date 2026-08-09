@@ -14,37 +14,52 @@ export default function EmployeeManageRow({ account, qualifications, verifyAdmin
       <button type="button" className="sb-manage-row-head" onClick={() => setOpen((o) => !o)}>
         <Avatar name={account.name} role={account.role} small />
         <span className="sb-manage-name">{account.name}</span>
-        <Badge tone="petrol">Mitarbeiter</Badge>
+        <Badge tone="petrol">Mitarbeitende</Badge>
         <span className="sb-manage-email">{account.email}</span>
         <span className="sb-bar-caret">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
         <div className="sb-manage-row-body">
-          <h4 className="sb-detail-label" style={{ marginBottom: 4 }}>E-Mail ändern (Bestätigung mit deinem Admin-Passwort)</h4>
-          <EmailChangeForm verify={verifyAdmin} initialEmail={account.email} onSave={(email, pw) => onUpdateEmail(account.id, email, pw)} />
+          <div className="sb-manage-section">
+            <span className="sb-detail-label">E-Mail-Adresse</span>
+            <p className="sb-status">Zum Ändern zuerst dein eigenes Admin-Passwort bestätigen.</p>
+            <EmailChangeForm verify={verifyAdmin} initialEmail={account.email} onSave={(email, pw) => onUpdateEmail(account.id, email, pw)} />
+          </div>
 
-          <h4 className="sb-detail-label" style={{ marginTop: 14, marginBottom: 4 }}>Qualifikationen</h4>
-          {qualifications.length === 0 && <p className="sb-empty">Noch keine Qualifikationen im System.</p>}
-          {qualifications.map((q) => (
-            <Toggle
-              key={q.id}
-              label={q.name}
-              checked={account.qualifications.includes(q.id)}
-              onChange={(val) => onSetQualification(account.id, q.id, val)}
-            />
-          ))}
+          <div className="sb-manage-section">
+            <span className="sb-detail-label">Qualifikationen</span>
+            {qualifications.length === 0 ? (
+              <p className="sb-empty">Noch keine Qualifikationen angelegt – das geht unter „Einstellungen“.</p>
+            ) : (
+              <div className="sb-toggle-list">
+                {qualifications.map((q) => (
+                  <Toggle
+                    key={q.id}
+                    label={q.name}
+                    checked={account.qualifications.includes(q.id)}
+                    onChange={(val) => onSetQualification(account.id, q.id, val)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="sb-manage-actions">
             {confirmingPromote ? (
               <span className="sb-confirm">
-                <span>{account.name} zum Admin befördern?</span>
-                <button type="button" className="sb-btn sb-btn-amber" onClick={() => { onPromote(account.id); setConfirmingPromote(false); }}>Ja, befördern</button>
-                <button type="button" className="sb-link-btn" onClick={() => setConfirmingPromote(false)}>Abbrechen</button>
+                <span>{account.name} zum Admin befördern? Admins können alle Schichten und Konten verwalten.</span>
+                <button type="button" className="sb-btn sb-btn-amber sb-btn-sm" onClick={() => { onPromote(account.id); setConfirmingPromote(false); }}>Ja, befördern</button>
+                <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => setConfirmingPromote(false)}>Abbrechen</button>
               </span>
             ) : (
-              <button type="button" className="sb-btn sb-btn-amber" onClick={() => setConfirmingPromote(true)}>Zum Admin befördern</button>
+              <>
+                <button type="button" className="sb-btn sb-btn-amber" onClick={() => setConfirmingPromote(true)}>Zum Admin befördern</button>
+                <DeleteAccountButton
+                  onConfirm={() => onDeleteAccount(account.id)}
+                  question={`Konto von ${account.name} wirklich löschen? Das lässt sich nicht rückgängig machen.`}
+                />
+              </>
             )}
-            <DeleteAccountButton onConfirm={() => onDeleteAccount(account.id)} />
           </div>
         </div>
       )}

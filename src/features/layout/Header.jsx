@@ -12,13 +12,13 @@ export default function Header({ currentUser, activeTab, setActiveTab, onLogout 
   const tabs = isAdmin ? ADMIN_TABS : EMPLOYEE_TABS;
 
   return (
-    <div className="sb-header">
+    <header className="sb-header">
       <div className="sb-header-top">
         <h1 className="sb-app-title sb-app-title-sm">Schichtboard</h1>
         <div className="sb-header-user">
-          <span>{currentUser.name}</span>
-          <Badge tone={isAdmin ? "amber" : "petrol"}>{isAdmin ? "Admin" : "Mitarbeiter"}</Badge>
-          <button type="button" className="sb-link-btn" onClick={onLogout}>Abmelden</button>
+          <span className="sb-header-name">{currentUser.name}</span>
+          <Badge tone={isAdmin ? "amber" : "petrol"}>{isAdmin ? "Admin" : "Mitarbeitende"}</Badge>
+          <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={onLogout}>Abmelden</button>
         </div>
       </div>
       <nav className="sb-tabs">
@@ -28,6 +28,6 @@ export default function Header({ currentUser, activeTab, setActiveTab, onLogout 
           </button>
         ))}
       </nav>
-    </div>
+    </header>
   );
 }

@@ -39,78 +39,86 @@ export default function NewShiftForm({ qualifications, onCreate, onAddQualificat
   };
 
   return (
-    <div className="sb-card sb-form">
-      <p className="sb-detail-label">Was &amp; wann</p>
-      <div className="sb-form-grid">
-        <label className="sb-field">
-          <span>Name der Schicht</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Spätschicht Verkauf" />
-        </label>
-        <label className="sb-field">
-          <span>Datum</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <label className="sb-field">
-          <span>Startzeit</span>
-          <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        </label>
-        <label className="sb-field">
-          <span>Endzeit</span>
-          <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-        </label>
-      </div>
-
-      <p className="sb-detail-label" style={{ marginTop: 16 }}>Wiederholung</p>
-      <div className="sb-form-grid">
-        <label className="sb-field">
-          <span>Wiederholt sich</span>
-          <select value={repeat} onChange={(e) => setRepeat(e.target.value)}>
-            {REPEAT_KEYS.map((key) => <option key={key} value={key}>{REPEAT_LABELS[key]}</option>)}
-          </select>
-        </label>
-        {repeat !== "once" && (
+    <div className="sb-card">
+      <div className="sb-form-section">
+        <span className="sb-detail-label">Was &amp; wann</span>
+        <div className="sb-form-grid">
           <label className="sb-field">
-            <span>Enddatum (optional)</span>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <span>Name der Schicht</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Spätschicht Verkauf" />
           </label>
-        )}
+          <label className="sb-field">
+            <span>Datum</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label className="sb-field">
+            <span>Startzeit</span>
+            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </label>
+          <label className="sb-field">
+            <span>Endzeit</span>
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </label>
+        </div>
       </div>
 
-      <p className="sb-detail-label" style={{ marginTop: 16 }}>Plätze &amp; Qualifikation</p>
-      <div className="sb-form-grid">
-        <label className="sb-field">
-          <span>Plätze</span>
-          <input type="number" min="1" value={seats} onChange={(e) => setSeats(e.target.value)} />
-        </label>
-        <label className="sb-field">
-          <span>Erforderliche Qualifikation</span>
-          <select value={qualificationId} onChange={(e) => setQualificationId(e.target.value)}>
-            <option value="">– wählen –</option>
-            {qualifications.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
-          </select>
-        </label>
-        <div className="sb-field sb-field-btn">
-          {!newQualOpen && (
-            <button type="button" className="sb-link-btn" onClick={() => setNewQualOpen(true)}>+ neue Qualifikation</button>
+      <div className="sb-form-section">
+        <span className="sb-detail-label">Wiederholung</span>
+        <div className="sb-form-grid">
+          <label className="sb-field">
+            <span>Wiederholt sich</span>
+            <select value={repeat} onChange={(e) => setRepeat(e.target.value)}>
+              {REPEAT_KEYS.map((key) => <option key={key} value={key}>{REPEAT_LABELS[key]}</option>)}
+            </select>
+          </label>
+          {repeat !== "once" && (
+            <label className="sb-field">
+              <span>Enddatum (optional)</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </label>
           )}
         </div>
       </div>
-      {newQualOpen && (
-        <div className="sb-inline-add">
-          <input
-            autoFocus
-            value={newQual}
-            onChange={(e) => setNewQual(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addQualification()}
-            placeholder="Name eingeben, Enter drücken"
-          />
-          <button type="button" className="sb-btn sb-btn-ink" onClick={addQualification}>Hinzufügen</button>
-          <button type="button" className="sb-link-btn" onClick={() => { setNewQualOpen(false); setNewQual(""); }}>Abbrechen</button>
+
+      <div className="sb-form-section">
+        <span className="sb-detail-label">Plätze &amp; Qualifikation</span>
+        <div className="sb-form-grid">
+          <label className="sb-field">
+            <span>Plätze</span>
+            <input type="number" min="1" value={seats} onChange={(e) => setSeats(e.target.value)} />
+          </label>
+          <label className="sb-field">
+            <span>Erforderliche Qualifikation</span>
+            <select value={qualificationId} onChange={(e) => setQualificationId(e.target.value)}>
+              <option value="">– bitte wählen –</option>
+              {qualifications.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
+            </select>
+          </label>
+          {!newQualOpen && (
+            <div className="sb-field sb-field-btn">
+              <button type="button" className="sb-btn sb-btn-quiet" onClick={() => setNewQualOpen(true)}>Qualifikation anlegen</button>
+            </div>
+          )}
         </div>
-      )}
+        {newQualOpen && (
+          <div className="sb-inline-add">
+            <input
+              autoFocus
+              value={newQual}
+              onChange={(e) => setNewQual(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addQualification()}
+              placeholder="Name der neuen Qualifikation"
+            />
+            <button type="button" className="sb-btn sb-btn-ink" onClick={addQualification}>Hinzufügen</button>
+            <button type="button" className="sb-btn sb-btn-quiet" onClick={() => { setNewQualOpen(false); setNewQual(""); }}>Abbrechen</button>
+          </div>
+        )}
+      </div>
 
       {error && <p className="sb-error">{error}</p>}
-      <button type="button" className="sb-btn sb-btn-ink" style={{ marginTop: 16 }} onClick={submit}>Schicht anlegen</button>
+      <div className="sb-form-actions">
+        <button type="button" className="sb-btn sb-btn-ink" onClick={submit}>Schicht anlegen</button>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,11 @@
+[Unit]
+Description=Schichtboard: wartet auf eine Update-Anforderung aus der Oberfläche
+
+[Path]
+# Die Weboberfläche legt diese Datei an. Der Webdienst selbst hat keine
+# erhöhten Rechte — das Update führt schichtplan-update.service als root aus.
+PathExists=/opt/schichtplan/data/update-requested
+Unit=schichtplan-update.service
+
+[Install]
+WantedBy=multi-user.target

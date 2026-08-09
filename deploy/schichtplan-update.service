@@ -1,0 +1,12 @@
+[Unit]
+Description=Schichtboard aktualisieren
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/schichtplan
+# update.sh entfernt die Marker-Datei als Erstes — sonst würde der Pfad-Dienst
+# sofort wieder auslösen.
+ExecStart=/bin/bash /opt/schichtplan/deploy/update.sh
+TimeoutStartSec=900

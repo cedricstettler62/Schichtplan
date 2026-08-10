@@ -130,7 +130,6 @@ body { margin: 0; }
 .sb-chip:hover { border-color: var(--sb-ink); }
 .sb-chip-active { background: var(--sb-petrol); border-color: var(--sb-petrol); color: #fff; }
 .sb-chip-active:hover { border-color: var(--sb-petrol); }
-.sb-checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
 
 /* Badges */
 .sb-badge { font-family: var(--sb-font-sans); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.3px; white-space: nowrap; }
@@ -148,6 +147,12 @@ body { margin: 0; }
 .sb-ticket-name { font-weight: 600; font-size: 14.5px; }
 .sb-ticket-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--sb-ink-65); }
 .sb-ticket-action { align-self: center; margin: 10px 14px 10px 0; white-space: nowrap; }
+/* Aufklappbares Ticket: Kopfzeile sieht aus wie ein normales Ticket,
+   die Details wachsen darunter aus derselben Karte heraus. */
+.sb-ticket-expandable { display: block; }
+.sb-ticket-main { width: 100%; display: flex; align-items: stretch; padding: 0; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--sb-font-sans); color: var(--sb-ink); }
+.sb-ticket-main:hover { background: rgba(30,42,56,0.03); }
+.sb-ticket-main .sb-bar-caret { align-self: center; padding-right: 14px; }
 
 .sb-date-stub { width: 58px; flex-shrink: 0; background: var(--sb-ink); color: var(--sb-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--sb-font-mono); border-right: 1px dashed rgba(246,243,236,0.35); padding: 6px 0; }
 .sb-date-wd { font-size: 10px; text-transform: uppercase; opacity: 0.75; }
@@ -174,13 +179,8 @@ body { margin: 0; }
 .sb-ov-row-detail { padding: 10px 14px 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .sb-ov-help-line { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; flex-wrap: wrap; }
 
-/* My shifts */
-.sb-myshifts-list { display: flex; flex-direction: column; gap: 8px; }
-.sb-myshift { border: 1px solid var(--sb-line); border-radius: 6px; background: var(--sb-paper); overflow: hidden; }
-.sb-myshift-row { width: 100%; display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; align-items: center; padding: 12px 14px; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--sb-font-sans); font-size: 14px; color: var(--sb-ink); }
-.sb-myshift-row:hover { background: rgba(30,42,56,0.03); }
-.sb-myshift-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sb-myshift-detail { padding: 4px 14px 16px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+/* My shifts – Kopfzeile ist ein Ticket, hier folgt nur noch der Detailteil. */
+.sb-myshift-detail { padding: 12px 14px 16px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .sb-detail-grid { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; font-size: 13.5px; }
 .sb-detail-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: rgba(30,42,56,0.55); margin-bottom: 2px; }
 
@@ -215,11 +215,12 @@ body { margin: 0; }
 
 @media (max-width: 640px) {
   .sb-app { padding: 0 14px 48px; }
-  .sb-myshift-row { grid-template-columns: 1fr auto; row-gap: 4px; gap: 10px; }
   .sb-header-top { flex-direction: column; align-items: flex-start; }
   /* Aktionsknopf unter die Schichtdaten statt daneben in die Enge. */
   .sb-ticket { flex-wrap: wrap; }
   .sb-ticket-body { flex-basis: calc(100% - 58px); }
+  /* Der schmale Pfeil passt immer daneben — hier nichts umbrechen lassen. */
+  .sb-ticket-expandable .sb-ticket-body { flex-basis: auto; }
   .sb-ticket-action { width: calc(100% - 28px); margin: 0 14px 12px; }
   .sb-manage-email { margin-left: 0; flex-basis: 100%; }
   .sb-manage-row-head { flex-wrap: wrap; }

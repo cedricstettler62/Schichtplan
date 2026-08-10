@@ -7,6 +7,7 @@ import {
   attemptAssign,
   canTakeOver,
   expandShiftDates,
+  extendSeriesDates,
   isAssignable,
 } from "#shared/assignment.js";
 import { fromISO, toISO } from "#shared/dates.js";
@@ -95,6 +96,29 @@ describe("Serien", () => {
       .toEqual(["2026-03-10", "2026-03-11", "2026-03-12"]);
     expect(expandShiftDates({ date: "2026-03-29", repeat: "daily", endDate: "2026-12-31" }, horizon))
       .toEqual(["2026-03-29", "2026-03-30", "2026-03-31"]);
+  });
+});
+
+describe("Serien nachfüllen", () => {
+  const horizon = fromISO("2026-04-30");
+
+  test("läuft ohne Enddatum einfach am letzten Termin weiter", () => {
+    expect(extendSeriesDates("weekly", "2026-03-31", null, horizon))
+      .toEqual(["2026-04-07", "2026-04-14", "2026-04-21", "2026-04-28"]);
+  });
+
+  test("bleibt am Enddatum der Serie stehen, auch wenn der Horizont weiter reicht", () => {
+    expect(extendSeriesDates("daily", "2026-04-28", "2026-04-29", horizon))
+      .toEqual(["2026-04-29"]);
+  });
+
+  test("einmalige Schichten werden nie verlängert", () => {
+    expect(extendSeriesDates("once", "2026-03-10", null, horizon)).toEqual([]);
+  });
+
+  test("Wochenend-Serien lassen weiterhin Werktage aus", () => {
+    expect(extendSeriesDates("weekend", "2026-03-29", null, fromISO("2026-04-06")))
+      .toEqual(["2026-04-04", "2026-04-05"]);
   });
 });
 

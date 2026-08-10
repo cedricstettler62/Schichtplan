@@ -61,6 +61,15 @@ export function runAssignmentPass(shifts, accounts, today, assignmentDay, forceI
   return shifts.map((s) => attemptAssign(s, accounts, today, assignmentDay, forceIds.includes(s.id), random));
 }
 
+function repeatStep(repeat) { return repeat === "weekly" ? 7 : 1; }
+
+function keepDate(repeat, d) {
+  const wd = d.getDay();
+  if (repeat === "weekday") return wd >= 1 && wd <= 5;
+  if (repeat === "weekend") return wd === 0 || wd === 6;
+  return true;
+}
+
 /**
  * Termine einer Schichtserie. Reine Datumsrechnung — wer daraus Datensätze
  * baut (Frontend-State oder DB-Zeilen), entscheidet der Aufrufer.
@@ -69,24 +78,36 @@ export function expandShiftDates(form, horizonDate) {
   const start = fromISO(form.date);
   const limit = form.endDate ? fromISO(form.endDate) : horizonDate;
   const capped = limit < horizonDate ? limit : horizonDate;
-  const out = [];
 
   if (form.repeat === "once") {
-    if (start <= capped) out.push(toISO(start));
-    return out;
+    return start <= capped ? [toISO(start)] : [];
   }
 
-  const step = form.repeat === "weekly" ? 7 : 1;
-  const keep = (d) => {
-    const wd = d.getDay();
-    if (form.repeat === "weekday") return wd >= 1 && wd <= 5;
-    if (form.repeat === "weekend") return wd === 0 || wd === 6;
-    return true;
-  };
-
+  const step = repeatStep(form.repeat);
+  const out = [];
   let d = new Date(start);
   while (d <= capped) {
-    if (keep(d)) out.push(toISO(d));
+    if (keepDate(form.repeat, d)) out.push(toISO(d));
+    d = addDays(d, step);
+  }
+  return out;
+}
+
+/**
+ * Weitere Termine einer bereits bestehenden Serie, ab dem letzten schon
+ * erzeugten Datum bis zum neuen Horizont — damit Serien nicht nach
+ * HORIZON_DAYS stillschweigend auslaufen, sondern laufend nachgefüllt werden.
+ */
+export function extendSeriesDates(repeat, lastDateISO, endDateISO, horizonDate) {
+  if (repeat === "once") return [];
+  const limit = endDateISO ? fromISO(endDateISO) : horizonDate;
+  const capped = limit < horizonDate ? limit : horizonDate;
+  const step = repeatStep(repeat);
+
+  const out = [];
+  let d = addDays(fromISO(lastDateISO), step);
+  while (d <= capped) {
+    if (keepDate(repeat, d)) out.push(toISO(d));
     d = addDays(d, step);
   }
   return out;
@@ -105,6 +126,7 @@ export function buildShiftsFromForm(form, horizonDate, makeId) {
     repeat: form.repeat,
     seats: form.seats,
     qualificationId: form.qualificationId,
+    endDate: form.endDate || null,
     enrolled: [],
     assigned: [],
     helpRequests: [],

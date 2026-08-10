@@ -48,13 +48,13 @@ export default function shiftRoutes(db) {
 
     const insert = db.prepare(
       `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
-                           repeat, seats, qualification_id, assignment_attempted, assigned_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`
+                           repeat, seats, qualification_id, end_date, assignment_attempted, assigned_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`
     );
     db.transaction(() => {
       for (const s of shifts) {
         insert.run(s.id, req.session.companyId, s.seriesId, s.name, s.date,
-          s.startTime, s.endTime, s.repeat, s.seats, s.qualificationId);
+          s.startTime, s.endTime, s.repeat, s.seats, s.qualificationId, s.endDate);
       }
     })();
 

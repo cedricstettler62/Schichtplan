@@ -17,7 +17,7 @@ export default function MyShiftsTab({ shifts, qualifications, currentUser, today
       {mine.length === 0 ? (
         <p className="sb-empty">Dir ist zurzeit keine Schicht zugeteilt.</p>
       ) : (
-        <div className="sb-myshifts-list">
+        <div className="sb-shift-list">
           {mine.map((s) => <MyShiftRow key={s.id} shift={s} qualifications={qualifications} currentUser={currentUser} onAskForHelp={onAskForHelp} />)}
         </div>
       )}

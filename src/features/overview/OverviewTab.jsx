@@ -4,7 +4,9 @@ import { isFutureOrToday } from "#shared/dates.js";
 
 export default function OverviewTab({ shifts, qualifications, accounts, currentUser, today, onTakeOver }) {
   const future = shifts.filter((s) => isFutureOrToday(s.date, today));
-  const openShifts = future.filter((s) => s.assigned.length < s.seats);
+  // Nur Schichten, bei denen die Zuteilung schon lief und trotzdem Plätze frei
+  // blieben. Was erst später an der Reihe ist, ist noch nicht »offen«.
+  const openShifts = future.filter((s) => s.assignmentAttempted && s.assigned.length < s.seats);
   const helpRequests = future.filter((s) => s.helpRequests.length > 0);
 
   return (
@@ -16,10 +18,10 @@ export default function OverviewTab({ shifts, qualifications, accounts, currentU
         </div>
       </div>
       <CollapsibleBar
-        title="Schichten mit freien Plätzen"
+        title="Noch offene Plätze"
         count={openShifts.length}
         tone="amber"
-        emptyText="Alle kommenden Schichten sind besetzt."
+        emptyText="Alle bereits zugeteilten Schichten sind vollständig besetzt."
       >
         {openShifts.map((s) => (
           <OverviewShiftRow key={s.id} shift={s} qualifications={qualifications} accounts={accounts} currentUser={currentUser} onTakeOver={onTakeOver} />

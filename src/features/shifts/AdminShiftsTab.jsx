@@ -5,7 +5,6 @@ import DateStub from "../../components/DateStub.jsx";
 import NewShiftForm from "./NewShiftForm.jsx";
 import { addDays, fromISO, isFutureOrToday, monthDiff } from "#shared/dates.js";
 import { HORIZON_DAYS } from "#shared/assignment.js";
-import { REPEAT_LABELS } from "#shared/labels.js";
 
 export default function AdminShiftsTab({ shifts, qualifications, today, onCreate, onAddQualification, onForceAssign }) {
   const [formOpen, setFormOpen] = useState(false);
@@ -70,7 +69,6 @@ export default function AdminShiftsTab({ shifts, qualifications, today, onCreate
                   <span>{qual ? qual.name : "ohne Qualifikation"}</span>
                   <span>{s.assigned.length} von {s.seats} Plätzen besetzt</span>
                   <span>{s.enrolled.length} eingeschrieben</span>
-                  <span>{REPEAT_LABELS[s.repeat]}</span>
                 </div>
               </div>
               {!full && (

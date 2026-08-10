@@ -18,6 +18,14 @@ export default function OverviewShiftRow({ shift, qualifications, accounts, curr
   const canTake =
     currentUser.role === "employee" && qualified && !shift.assigned.includes(currentUser.id);
   const freeSeats = shift.seats - shift.assigned.length;
+  // Bei einem Hilfegesuch ist die Schicht zwar voll besetzt — genau das zu
+  // melden wäre hier aber irreführend: gesucht wird ja ein Ersatz.
+  const requesterCount = requesterIds ? requesterIds.length : 0;
+  const seatText = requesterCount > 0
+    ? (requesterCount === 1 ? "1 Person sucht Ersatz" : `${requesterCount} Personen suchen Ersatz`)
+    : freeSeats > 0
+      ? `${freeSeats} von ${shift.seats} Plätzen frei`
+      : "alle Plätze besetzt";
 
   return (
     <div className="sb-ov-row">
@@ -26,8 +34,7 @@ export default function OverviewShiftRow({ shift, qualifications, accounts, curr
         <div className="sb-ov-row-main">
           <div className="sb-ov-row-title">{shift.name}</div>
           <div className="sb-ov-row-sub">
-            {shift.startTime}–{shift.endTime} · {qualName || "ohne Qualifikation"} ·{" "}
-            {freeSeats > 0 ? `${freeSeats} von ${shift.seats} Plätzen frei` : "alle Plätze besetzt"}
+            {shift.startTime}–{shift.endTime} · {qualName || "ohne Qualifikation"} · {seatText}
           </div>
         </div>
         <span className="sb-bar-caret">{open ? "▾" : "▸"}</span>

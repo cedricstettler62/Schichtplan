@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS shifts (
   repeat              TEXT NOT NULL,
   seats               INTEGER NOT NULL,
   qualification_id    TEXT REFERENCES qualifications(id) ON DELETE SET NULL,
+  end_date            TEXT,
   assignment_attempted INTEGER NOT NULL DEFAULT 0,
   assigned_at         TEXT
 );
@@ -70,12 +71,22 @@ CREATE TABLE IF NOT EXISTS help_requests (
 );
 `;
 
+/** Fügt einer bereits bestehenden Tabelle eine Spalte hinzu, falls sie fehlt
+ *  — CREATE TABLE IF NOT EXISTS erreicht ältere Datenbanken nicht mehr. */
+function ensureColumn(db, table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function openDb(file) {
   if (file !== ":memory:") fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   const db = new Database(file);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  ensureColumn(db, "shifts", "end_date", "TEXT");
   return db;
 }
 
@@ -171,6 +182,7 @@ export function toShift(db, s) {
     repeat: s.repeat,
     seats: s.seats,
     qualificationId: s.qualification_id,
+    endDate: s.end_date,
     enrolled: enrollments.map((e) => e.account_id),
     assigned: enrollments.filter((e) => e.assigned).map((e) => e.account_id),
     helpRequests: db

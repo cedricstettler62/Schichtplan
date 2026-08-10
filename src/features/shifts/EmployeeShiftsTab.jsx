@@ -4,7 +4,6 @@ import Chip from "../../components/Chip.jsx";
 import DateStub from "../../components/DateStub.jsx";
 import { fromISO, isFutureOrToday, monthDiff } from "#shared/dates.js";
 import { hasQualification } from "#shared/assignment.js";
-import { REPEAT_LABELS } from "#shared/labels.js";
 
 export default function EmployeeShiftsTab({ shifts, qualifications, accounts, currentUser, today, onToggleEnroll }) {
   const [onlyMatching, setOnlyMatching] = useState(false);
@@ -43,14 +42,10 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
         </div>
       </div>
       <div className="sb-filter-row">
-        <label className="sb-checkbox-row">
-          <input type="checkbox" checked={onlyMatching} onChange={(e) => setOnlyMatching(e.target.checked)} />
-          <span>Nur mit passender Ausbildung</span>
-        </label>
-        <label className="sb-checkbox-row">
-          <input type="checkbox" checked={onlyEnrolled} onChange={(e) => setOnlyEnrolled(e.target.checked)} />
-          <span>Nur eigene Einschreibungen</span>
-        </label>
+        <div className="sb-chip-row">
+          <Chip active={onlyMatching} onClick={() => setOnlyMatching((v) => !v)}>Passende Qualifikationen</Chip>
+          <Chip active={onlyEnrolled} onClick={() => setOnlyEnrolled((v) => !v)}>Bereits eingeschrieben</Chip>
+        </div>
         <div className="sb-chip-row">
           {qualifications.map((q) => (
             <Chip key={q.id} active={qualFilter.includes(q.id)} onClick={() => toggleQual(q.id)}>{q.name}</Chip>
@@ -82,7 +77,6 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
                     <span className="sb-mono">{s.startTime}–{s.endTime}</span>
                     <span>{qual ? qual.name : "ohne Qualifikation"}</span>
                     <span>{s.seats - s.assigned.length} von {s.seats} Plätzen frei</span>
-                    <span>{REPEAT_LABELS[s.repeat]}</span>
                   </div>
                 </div>
                 <button

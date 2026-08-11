@@ -2,6 +2,7 @@ import { useState } from "react";
 import Badge from "../../components/Badge.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import DateStub from "../../components/DateStub.jsx";
+import EditShiftForm from "./EditShiftForm.jsx";
 
 /*
  * Eine Schicht in der Admin-Ansicht. Aufgeklappt zeigt sie, wer eingeschrieben
@@ -47,9 +48,11 @@ function PersonList({ title, people, emptyText, helpRequests, onRemove }) {
   );
 }
 export default function AdminShiftRow({
-  shift, qualName, accounts, onForceAssign, onRemoveEnrollment, onDeleteShift, onDeleteSeries,
+  shift, qualName, accounts, qualifications, seriesShifts,
+  onForceAssign, onRemoveEnrollment, onUpdateShift, onDeleteShift, onDeleteSeries,
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const full = shift.assigned.length >= shift.seats;
 
   const nameOf = (id) => accounts.find((a) => a.id === id)?.name || "Unbekannt";
@@ -119,6 +122,22 @@ export default function AdminShiftRow({
             helpRequests={shift.helpRequests}
             onRemove={(id) => onRemoveEnrollment(shift.id, id)}
           />
+
+          {editing ? (
+            <EditShiftForm
+              shift={shift}
+              seriesShifts={seriesShifts}
+              qualifications={qualifications}
+              onSave={onUpdateShift}
+              onCancel={() => setEditing(false)}
+            />
+          ) : (
+            <div className="sb-manage-actions">
+              <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => setEditing(true)}>
+                Bearbeiten
+              </button>
+            </div>
+          )}
 
           <div className="sb-manage-actions">
             <ConfirmDelete

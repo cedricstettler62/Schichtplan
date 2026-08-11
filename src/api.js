@@ -33,19 +33,13 @@ export const api = {
   del: (path) => request("DELETE", path),
 };
 
-/* Die beiden Datei-Übertragungen gehen an fetch vorbei am JSON-Wrapper
-   vorbei — einmal kommt eine Datei zurück, einmal geht eine hin. */
+/* Die Datei-Übertragungen gehen am JSON-Wrapper vorbei — mal kommt eine Datei
+   zurück, mal geht eine hin. */
 
-/** Lädt die Datenbank als Datei herunter und gibt den Dateinamen zurück. */
-export async function downloadDatabase() {
-  const res = await fetch("/api/admin/db/export", { credentials: "same-origin" });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new ApiError(data?.error || "Der Export ist fehlgeschlagen.", res.status);
-  }
-
+/** Legt die Antwort im Download-Ordner ab und gibt den Dateinamen zurück. */
+async function alsDateiSpeichern(res, ersatzName) {
   const zuordnung = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "");
-  const name = zuordnung ? zuordnung[1] : "schichtplan.db";
+  const name = zuordnung ? zuordnung[1] : ersatzName;
 
   const url = URL.createObjectURL(await res.blob());
   const link = document.createElement("a");
@@ -56,6 +50,26 @@ export async function downloadDatabase() {
   link.remove();
   URL.revokeObjectURL(url);
   return name;
+}
+
+/** Lädt die Datenbank als Datei herunter und gibt den Dateinamen zurück. */
+export async function downloadDatabase() {
+  const res = await fetch("/api/admin/db/export", { credentials: "same-origin" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(data?.error || "Der Export ist fehlgeschlagen.", res.status);
+  }
+  return alsDateiSpeichern(res, "schichtplan.db");
+}
+
+/** Auskunft über ein Konto als Datei — alles, was zu der Person gespeichert ist. */
+export async function downloadPersonalData(accountId) {
+  const res = await fetch(`/api/accounts/${accountId}/data`, { credentials: "same-origin" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(data?.error || "Die Auskunft ist fehlgeschlagen.", res.status);
+  }
+  return alsDateiSpeichern(res, "auskunft.json");
 }
 
 /** Schickt eine Sicherungsdatei an den Server, der sie einspielt. */

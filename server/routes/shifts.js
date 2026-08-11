@@ -13,6 +13,10 @@ import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
 
 const REPEATS = new Set(["once", "daily", "weekly", "weekday", "weekend"]);
+const UMFAENGE = new Set(["einzeln", "ab-datum"]);
+
+const istDatum = (wert) => /^\d{4}-\d{2}-\d{2}$/.test(String(wert || ""));
+const istUhrzeit = (wert) => /^\d{2}:\d{2}$/.test(String(wert || ""));
 
 function ownShift(db, req, id) {
   const row = db.prepare("SELECT * FROM shifts WHERE id = ? AND company_id = ?").get(id, req.session.companyId);
@@ -60,6 +64,107 @@ export default function shiftRoutes(db) {
 
     recompute(db, req.session.companyId);
     res.json({ created: shifts.length });
+  });
+
+  /**
+   * Eine Schicht ändern.
+   *
+   * Jede Änderung trägt alle Ein- und Zugeteilten aus: Wer sich für eine
+   * Frühschicht mit Kassenschulung eingeschrieben hat, hat nicht der
+   * Nachtschicht mit Staplerschein zugestimmt. Die Schicht gilt danach als
+   * frisch ausgeschrieben.
+   *
+   * Bei einer Serie entscheidet `umfang`, wie weit die Änderung reicht:
+   *   "einzeln"  — nur dieser Termin. Er verlässt dabei die Serie, sonst
+   *                schleppte die Nachfüllung die Ausnahme in alle künftigen
+   *                Termine weiter.
+   *   "ab-datum" — dieser und jeder spätere Termin der Serie ab `abDatum`.
+   *
+   * Wiederholungsrhythmus und Enddatum bleiben unangetastet — die ändert man
+   * über Löschen der Serie und Neuanlegen.
+   */
+  router.patch("/:id", requireAdmin, (req, res) => {
+    const shift = ownShift(db, req, req.params.id);
+    if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+
+    const form = req.body || {};
+    const name = String(form.name || "").trim();
+    const seats = Number(form.seats);
+    const startTime = String(form.startTime || "");
+    const endTime = String(form.endTime || "");
+    const umfang = shift.repeat === "once" ? "einzeln" : String(form.umfang || "einzeln");
+
+    if (!name) return res.status(400).json({ error: "Ein Name ist nötig." });
+    if (!istUhrzeit(startTime) || !istUhrzeit(endTime)) {
+      return res.status(400).json({ error: "Start- und Endzeit müssen im Format HH:MM angegeben werden." });
+    }
+    if (!Number.isInteger(seats) || seats < 1) return res.status(400).json({ error: "Ungültige Platzzahl." });
+    if (!UMFAENGE.has(umfang)) return res.status(400).json({ error: "Unbekannter Umfang." });
+
+    const qual = db
+      .prepare("SELECT id FROM qualifications WHERE id = ? AND company_id = ?")
+      .get(String(form.qualificationId || ""), req.session.companyId);
+    if (!qual) return res.status(400).json({ error: "Qualifikation nicht gefunden." });
+
+    const heute = toISO(startOfToday());
+    let betroffen;
+    let neuesDatum = shift.date;
+
+    if (umfang === "einzeln") {
+      /* Nur beim einzelnen Termin lässt sich das Datum verschieben: Bei einer
+         Serie gibt der Rhythmus die Termine vor, ein gemeinsames Datum für
+         viele Schichten ergäbe keinen Sinn. */
+      neuesDatum = form.date === undefined ? shift.date : String(form.date);
+      if (!istDatum(neuesDatum)) return res.status(400).json({ error: "Ungültiges Datum." });
+      if (neuesDatum < heute) {
+        return res.status(400).json({ error: "Eine Schicht lässt sich nicht in die Vergangenheit verschieben." });
+      }
+      betroffen = [shift.id];
+    } else {
+      const abDatum = form.abDatum === undefined ? shift.date : String(form.abDatum);
+      if (!istDatum(abDatum)) return res.status(400).json({ error: "Ungültiges Datum." });
+      /* Vergangene Termine bleiben, wie sie waren. Sie auszutragen hiesse zu
+         löschen, wer die Schicht tatsächlich geleistet hat. */
+      if (abDatum < heute) {
+        return res.status(400).json({ error: "Änderungen lassen sich erst ab heute anwenden." });
+      }
+      betroffen = db
+        .prepare("SELECT id FROM shifts WHERE company_id = ? AND series_id = ? AND date >= ? ORDER BY date")
+        .all(req.session.companyId, shift.seriesId, abDatum)
+        .map((r) => r.id);
+      if (betroffen.length === 0) {
+        return res.status(400).json({ error: "Ab diesem Datum gibt es keine Schichten dieser Serie mehr." });
+      }
+    }
+
+    const platzhalter = betroffen.map(() => "?").join(", ");
+    const ausgetragen = db
+      .prepare(`SELECT COUNT(*) AS n FROM enrollments WHERE shift_id IN (${platzhalter})`)
+      .get(...betroffen).n;
+
+    db.transaction(() => {
+      db.prepare(
+        `UPDATE shifts
+            SET name = ?, start_time = ?, end_time = ?, seats = ?, qualification_id = ?,
+                assignment_attempted = 0, assigned_at = NULL
+          WHERE id IN (${platzhalter})`
+      ).run(name, startTime, endTime, seats, qual.id, ...betroffen);
+
+      if (umfang === "einzeln") {
+        db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(neuesDatum, shift.id);
+        // Der Termin verlässt die Serie, damit die Ausnahme nicht weiterwandert.
+        if (shift.repeat !== "once") {
+          db.prepare("UPDATE shifts SET series_id = ?, repeat = 'once', end_date = NULL WHERE id = ?")
+            .run(uid("serie"), shift.id);
+        }
+      }
+
+      db.prepare(`DELETE FROM enrollments WHERE shift_id IN (${platzhalter})`).run(...betroffen);
+      db.prepare(`DELETE FROM help_requests WHERE shift_id IN (${platzhalter})`).run(...betroffen);
+    })();
+
+    recompute(db, req.session.companyId);
+    res.json({ updated: betroffen.length, ausgetragen });
   });
 
   /** Sofortige Zuteilung durch die Administration ("Jetzt zuteilen"). */

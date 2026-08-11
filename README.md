@@ -40,6 +40,50 @@ es die Person danach selbst — unter *Konto* beziehungsweise *Einstellungen*.
 Admins setzen einander bewusst **nicht** zurück: sonst könnte einer die
 anderen aussperren und die Firma übernehmen.
 
+## Schichten ändern
+
+Aufgeklappt hat jede Schicht in der Admin-Ansicht einen Knopf *Bearbeiten*.
+Änderbar sind Name, Zeiten, Plätze und Qualifikation, bei einem einzelnen
+Termin auch das Datum. Wiederholungsrhythmus und Enddatum bleiben — die ändert
+man über *Serie ab hier löschen* und Neuanlegen.
+
+**Jede Änderung trägt alle Ein- und Zugeteilten aus.** Wer sich für eine
+Frühschicht mit Kassenschulung eingeschrieben hat, hat nicht der Nachtschicht
+mit Staplerschein zugestimmt. Die Schicht gilt danach als frisch
+ausgeschrieben.
+
+Bei einer Serie fragt das Formular nach dem Umfang:
+
+| Umfang | Wirkung |
+| ------ | ------- |
+| **Nur diese Schicht** | Ändert den einen Termin. Er löst sich dabei aus der Serie, sonst schleppte die Nachfüllung die Ausnahme in alle künftigen Termine weiter. |
+| **Diese und alle späteren** | Ändert jeden Termin der Serie ab dem gewählten Datum. Die Serie bleibt eine Serie, und was später nachgefüllt wird, übernimmt den neuen Stand. |
+
+Vergangene Termine lassen sich nicht ändern: Sie auszutragen hiesse zu löschen,
+wer die Schicht tatsächlich geleistet hat.
+
+## Datenschutz
+
+Die Datenschutzerklärung liegt unter **`/datenschutz`** und ist von der Fussleiste
+jedes Bildschirms aus erreichbar, auch ohne Anmeldung.
+
+> **Vor dem ersten Einsatz ausfüllen:** Ganz oben in
+> [src/features/legal/PrivacyScreen.jsx](src/features/legal/PrivacyScreen.jsx) steht
+> ein `BETREIBER`-Block mit fünf Platzhaltern — Name, Adresse, Kontaktadresse,
+> Serverstandort und Stand. Solange die dort stehen, ist die Seite nicht
+> veröffentlichungsreif.
+
+Der Text beschreibt, was das Programm tatsächlich speichert. Ändert sich die
+Datenhaltung, gehört er mit angepasst.
+
+**Auskunft** (DSG Art. 25, DSGVO Art. 15) gibt es ohne Umweg über die Datenbank:
+Angemeldet steht unter *Konto* beziehungsweise *Einstellungen* der Knopf
+*Auskunft herunterladen*; die Administration findet ihn zusätzlich bei jedem
+Mitarbeitendenkonto. Heraus kommt eine JSON-Datei mit Konto, Qualifikationen,
+Einschreibungen und Hilfegesuchen — zusammengetragen in
+[server/personalData.js](server/personalData.js). Wer dort ein Feld ergänzt,
+ergänzt es auch in der Auskunft.
+
 ## Auf einem Server
 
 Alles über SSH, ein Befehl:

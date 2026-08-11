@@ -8,6 +8,7 @@ import { startOfToday, toISO } from "#shared/dates.js";
 
 import { checkPassword, hashPassword, requireAdmin, requireCompany } from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
+import { dateiname, personalData } from "../personalData.js";
 import { uid } from "../ids.js";
 
 /** Konto aus *dieser* Firma holen — sonst 404, egal ob es anderswo existiert. */
@@ -150,6 +151,26 @@ export default function companyRoutes(db) {
 
     db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(hashPassword(password), target.id);
     res.json({ ok: true });
+  });
+
+  /**
+   * Auskunft über alles, was zu einem Konto gespeichert ist — DSG Art. 25,
+   * DSGVO Art. 15. Jede Person kommt an ihre eigenen Daten; die
+   * Administration zusätzlich an die der Firma, weil sie für die Auskunft
+   * gegenüber ihrer Belegschaft geradestehen muss.
+   */
+  router.get("/accounts/:id/data", requireCompany, (req, res) => {
+    const target = ownAccount(db, req, req.params.id);
+    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
+
+    const isSelf = target.id === req.session.accountId;
+    if (!isSelf && req.session.role !== "admin") return res.status(403).json({ error: "Nicht erlaubt." });
+
+    const daten = personalData(db, target.id);
+    // Der Name geht nur bereinigt in die Kopfzeile — sonst liessen sich weitere einschleusen.
+    res.setHeader("Content-Disposition", `attachment; filename="${dateiname(target.name)}"`);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.send(JSON.stringify(daten, null, 2));
   });
 
   router.delete("/accounts/:id", requireCompany, (req, res) => {

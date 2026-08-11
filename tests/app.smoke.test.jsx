@@ -22,6 +22,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   restoreFetch();
+  window.history.pushState({}, "", "/");
   await server.close();
 });
 
@@ -106,6 +107,42 @@ describe("Admin", () => {
   });
 });
 
+describe("Schicht bearbeiten", () => {
+  test("bearbeitet eine Schicht und trägt dabei die Eingeschriebenen aus", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+
+    await user.click(within(nav).getByRole("button", { name: "Schichten" }));
+    await user.click(screen.getByRole("button", { name: "Neue Schicht" }));
+
+    const heute = new Date().toISOString().slice(0, 10);
+    await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Frühdienst");
+    await user.type(document.querySelector('input[type="date"]'), heute);
+    await user.selectOptions(
+      screen.getByLabelText(/Erforderliche Qualifikation/),
+      screen.getByRole("option", { name: "Erste Hilfe" })
+    );
+    await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
+
+    const ticket = (await screen.findByText("Frühdienst")).closest(".sb-ticket");
+    await user.click(within(ticket).getByRole("button", { name: "Personen anzeigen" }));
+    await user.click(within(ticket).getByRole("button", { name: "Bearbeiten" }));
+
+    const nameFeld = within(ticket).getByLabelText("Name der Schicht");
+    await user.clear(nameFeld);
+    await user.type(nameFeld, "Spätdienst");
+    await user.click(within(ticket).getByRole("button", { name: "Änderungen speichern" }));
+
+    // Vor dem Speichern steht die Rückfrage — die Änderung ist nicht harmlos.
+    expect(await within(ticket).findByText(/Diese Schicht ändern\?/)).toBeInTheDocument();
+    await user.click(within(ticket).getByRole("button", { name: "Ja, ändern" }));
+
+    expect(await screen.findByText("Spätdienst")).toBeInTheDocument();
+    expect(screen.queryByText("Frühdienst")).not.toBeInTheDocument();
+  });
+});
+
 describe("Mitarbeitende", () => {
   test("erreichen alle vier Tabs, aber keinen Admin-Bereich", async () => {
     const user = await openApp();
@@ -183,5 +220,46 @@ describe("Super-Admin", () => {
     await user.click(screen.getByRole("button", { name: "Unternehmen anlegen" }));
 
     expect(await screen.findByText("Dieser Firmencode wird bereits verwendet.")).toBeInTheDocument();
+  });
+});
+
+describe("Datenschutz", () => {
+  test("die Fussleiste verlinkt die Erklärung", async () => {
+    await openApp();
+    const link = screen.getByRole("link", { name: "Datenschutzerklärung" });
+    expect(link).toHaveAttribute("href", "/datenschutz");
+  });
+
+  test("die Erklärung ist ohne Anmeldung lesbar", async () => {
+    window.history.pushState({}, "", "/datenschutz");
+    await openApp();
+
+    expect(screen.getByText("Datenschutzerklärung")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "2. Welche Daten gespeichert werden" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Zurück zum Schichtboard" })).toHaveAttribute("href", "/");
+    // Kein Anmeldeformular davor.
+    expect(screen.queryByRole("button", { name: "Anmelden" })).not.toBeInTheDocument();
+  });
+
+  test("Mitarbeitende finden die Auskunft unter Konto", async () => {
+    const user = await openApp();
+    await login(user, EMPLOYEE);
+
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Konto" }));
+
+    expect(screen.getByRole("heading", { name: "Meine Daten" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Auskunft herunterladen" })).toBeInTheDocument();
+  });
+
+  test("die Administration findet sie unter Einstellungen", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Einstellungen" }));
+
+    expect(screen.getByRole("heading", { name: "Meine Daten" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Auskunft herunterladen" })).toBeInTheDocument();
   });
 });

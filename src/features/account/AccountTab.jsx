@@ -1,6 +1,7 @@
 import Avatar from "../../components/Avatar.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import PasswordChangeForm from "../../components/PasswordChangeForm.jsx";
+import DataExportButton from "../../components/DataExportButton.jsx";
 
 export default function AccountTab({ currentUser, qualifications, verifySelf, onToggleQualification, onChangePassword }) {
   return (
@@ -29,6 +30,11 @@ export default function AccountTab({ currentUser, qualifications, verifySelf, on
       </div>
 
       <PasswordChangeForm verify={verifySelf} onChangePassword={onChangePassword} />
+
+      <div className="sb-card">
+        <h3 className="sb-subheading">Meine Daten</h3>
+        <DataExportButton accountId={currentUser.id} />
+      </div>
     </div>
   );
 }

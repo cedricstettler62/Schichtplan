@@ -7,7 +7,8 @@ import { HORIZON_DAYS } from "#shared/assignment.js";
 
 export default function AdminShiftsTab({
   shifts, qualifications, accounts, today,
-  onCreate, onAddQualification, onForceAssign, onRemoveEnrollment, onDeleteShift, onDeleteSeries,
+  onCreate, onAddQualification, onForceAssign, onRemoveEnrollment, onUpdateShift,
+  onDeleteShift, onDeleteSeries,
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [status, setStatus] = useState("all");
@@ -61,8 +62,12 @@ export default function AdminShiftsTab({
             shift={s}
             qualName={qualifications.find((q) => q.id === s.qualificationId)?.name}
             accounts={accounts}
+            qualifications={qualifications}
+            /* Nur kommende Termine: Vergangene lassen sich ohnehin nicht ändern. */
+            seriesShifts={visible.filter((x) => x.seriesId === s.seriesId)}
             onForceAssign={onForceAssign}
             onRemoveEnrollment={onRemoveEnrollment}
+            onUpdateShift={onUpdateShift}
             onDeleteShift={onDeleteShift}
             onDeleteSeries={onDeleteSeries}
           />

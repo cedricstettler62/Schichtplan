@@ -10,6 +10,8 @@ import EmployeesTab from "./features/employees/EmployeesTab.jsx";
 import AccountTab from "./features/account/AccountTab.jsx";
 import SettingsTab from "./features/settings/SettingsTab.jsx";
 import SuperAdminView from "./features/superadmin/SuperAdminView.jsx";
+import PrivacyScreen from "./features/legal/PrivacyScreen.jsx";
+import Footer from "./components/Footer.jsx";
 
 import { api, ApiError } from "./api.js";
 import { startOfToday } from "#shared/dates.js";
@@ -20,10 +22,16 @@ import { startOfToday } from "#shared/dates.js";
  * Jede Änderung geht an den Server und wird danach frisch geladen — so sehen
  * alle dasselbe, auch wenn zwei Personen gleichzeitig arbeiten.
  */
+/** Die App kommt ohne Router aus; die eine feste Adresse reicht als Weiche. */
+function istDatenschutzSeite() {
+  return typeof window !== "undefined" && window.location.pathname === "/datenschutz";
+}
+
 export default function App() {
   const [state, setState] = useState(null); // null = nicht angemeldet
   const [ready, setReady] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
+  const [datenschutzSeite] = useState(istDatenschutzSeite);
 
   const refresh = useCallback(async () => {
     try {
@@ -36,8 +44,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    // Auf der Datenschutzseite gibt es nichts zu laden — sie steht jedem offen.
+    if (!datenschutzSeite) refresh();
+  }, [refresh, datenschutzSeite]);
 
   // Wird bei jedem Rendern neu bestimmt — ein über Nacht offener Tab rechnet
   // damit mit heute, nicht mit gestern.
@@ -108,6 +117,19 @@ export default function App() {
   const handleRemoveEnrollment = act((shiftId, accountId) =>
     api.del(`/shifts/${shiftId}/enrollments/${accountId}`)
   );
+  /** Gibt die Fehlermeldung zurück — eine Änderung, die stumm scheitert, wäre fatal. */
+  const handleUpdateShift = async (shiftId, form) => {
+    try {
+      await api.patch(`/shifts/${shiftId}`, form);
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    } finally {
+      await refresh();
+    }
+    return null;
+  };
+
   const handleDeleteShift = act((shiftId) => api.del(`/shifts/${shiftId}`));
   const handleDeleteSeries = act((shiftId) => api.del(`/shifts/${shiftId}/series`));
   const handleAskForHelp = act((shiftId) => api.post(`/shifts/${shiftId}/help`));
@@ -183,12 +205,23 @@ export default function App() {
   const handleDeleteCompany = act((companyId) => api.del(`/companies/${companyId}`));
 
   /* --- Rendering --- */
+  /* Die Datenschutzerklärung steht vor allem anderen: Sie muss auch ohne
+     Anmeldung und ohne geladenen Zustand lesbar sein. */
+  if (datenschutzSeite) {
+    return (
+      <div className="sb-root">
+        <PrivacyScreen />
+      </div>
+    );
+  }
+
   if (!ready) return <div className="sb-root" />;
 
   if (!state) {
     return (
       <div className="sb-root">
         <LoginScreen onLogin={handleLogin} />
+        <Footer />
       </div>
     );
   }
@@ -207,6 +240,7 @@ export default function App() {
           onDataChanged={refresh}
           onLogout={handleLogout}
         />
+        <Footer />
       </div>
     );
   }
@@ -214,7 +248,7 @@ export default function App() {
   const { company, userId } = state;
   const currentUser = company.accounts.find((a) => a.id === userId);
   if (!currentUser) {
-    return <div className="sb-root"><LoginScreen onLogin={handleLogin} /></div>;
+    return <div className="sb-root"><LoginScreen onLogin={handleLogin} /><Footer /></div>;
   }
 
   const { qualifications, shifts, settings, accounts } = company;
@@ -243,6 +277,7 @@ export default function App() {
               shifts={shifts} qualifications={qualifications} accounts={accounts} today={today}
               onCreate={handleCreateShift} onAddQualification={handleAddQualification}
               onForceAssign={handleForceAssign} onRemoveEnrollment={handleRemoveEnrollment}
+              onUpdateShift={handleUpdateShift}
               onDeleteShift={handleDeleteShift} onDeleteSeries={handleDeleteSeries}
             />
           ) : (
@@ -263,7 +298,7 @@ export default function App() {
 
           {activeTab === "settings" && isAdmin && (
             <SettingsTab
-              settings={settings} verifySelf={verifySelf}
+              settings={settings} currentUser={currentUser} verifySelf={verifySelf}
               qualifications={qualifications}
               onAddQualification={handleAddQualification}
               onDeleteQualification={handleDeleteQualification}
@@ -290,6 +325,7 @@ export default function App() {
           )}
         </main>
       </div>
+      <Footer />
     </div>
   );
 }

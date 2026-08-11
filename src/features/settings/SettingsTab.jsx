@@ -1,10 +1,11 @@
 import { useState } from "react";
 import PasswordChangeForm from "../../components/PasswordChangeForm.jsx";
+import DataExportButton from "../../components/DataExportButton.jsx";
 import DeleteAccountButton from "../../components/DeleteAccountButton.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 
 export default function SettingsTab({
-  settings, canDeleteSelf, verifySelf,
+  settings, currentUser, canDeleteSelf, verifySelf,
   qualifications, onAddQualification, onDeleteQualification,
   onChangeAssignmentDay, onChangeOwnPassword, onDeleteOwnAccount,
 }) {
@@ -75,6 +76,11 @@ export default function SettingsTab({
       </div>
 
       <PasswordChangeForm verify={verifySelf} onChangePassword={onChangeOwnPassword} />
+
+      <div className="sb-card">
+        <h3 className="sb-subheading">Meine Daten</h3>
+        <DataExportButton accountId={currentUser.id} />
+      </div>
 
       <div className="sb-card">
         <h3 className="sb-subheading">Konto löschen</h3>

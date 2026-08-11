@@ -742,6 +742,257 @@ describe("Erstes Passwort", () => {
   });
 });
 
+describe("Schichten bearbeiten", () => {
+  /** Legt eine Schicht an und gibt Qualifikation und Schichtliste zurück. */
+  const anlegen = async (admin, form) => {
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", { startTime: "08:00", endTime: "16:00", seats: 1, qualificationId: qualId, ...form });
+    const shifts = (await admin.get("/api/state")).data.company.shifts;
+    return { qualId, shifts };
+  };
+
+  const alleSchichten = async (c) => (await c.get("/api/state")).data.company.shifts;
+
+  test("ändert Name, Zeiten und Plätze einer einzelnen Schicht", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Frühdienst", date: heute(), repeat: "once" });
+
+    const res = await admin.patch(`/api/shifts/${shifts[0].id}`, {
+      name: "Spätdienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      seats: 3, qualificationId: qualId, umfang: "einzeln",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.data).toMatchObject({ updated: 1 });
+    expect((await alleSchichten(admin))[0]).toMatchObject({
+      name: "Spätdienst", startTime: "14:00", endTime: "22:00", seats: 3,
+    });
+  });
+
+  test("trägt alle Ein- und Zugeteilten aus", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Frühdienst", date: heute(), repeat: "once" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shifts[0].id}/enroll`);
+    // Schicht im laufenden Monat: die Zuteilung greift sofort.
+    expect((await alleSchichten(lea))[0].assigned).toHaveLength(1);
+
+    const res = await admin.patch(`/api/shifts/${shifts[0].id}`, {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      seats: 1, qualificationId: qualId, umfang: "einzeln",
+    });
+
+    expect(res.data.ausgetragen).toBe(1);
+    const danach = (await alleSchichten(admin))[0];
+    expect(danach.enrolled).toEqual([]);
+    expect(danach.assigned).toEqual([]);
+  });
+
+  test("nur diese Schicht löst den Termin aus der Serie", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Tagdienst", date: heute(), repeat: "daily" });
+    expect(shifts.length).toBeGreaterThan(2);
+
+    await admin.patch(`/api/shifts/${shifts[0].id}`, {
+      name: "Einmalig anders", date: heute(), startTime: "09:00", endTime: "17:00",
+      seats: 2, qualificationId: qualId, umfang: "einzeln",
+    });
+
+    const danach = await alleSchichten(admin);
+    expect(danach[0]).toMatchObject({ name: "Einmalig anders", seats: 2, repeat: "once" });
+    // Die übrigen laufen unverändert weiter.
+    expect(danach[1]).toMatchObject({ name: "Tagdienst", seats: 1 });
+    // Und der Termin gehört nicht mehr zur Serie, damit die Ausnahme nicht weiterwandert.
+    expect(danach[0].seriesId).not.toBe(danach[1].seriesId);
+  });
+
+  test("ab einem Datum ändert es diese und alle späteren der Serie", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Tagdienst", date: heute(), repeat: "daily" });
+    const abDatum = shifts[2].date;
+
+    const res = await admin.patch(`/api/shifts/${shifts[2].id}`, {
+      name: "Ab jetzt anders", startTime: "10:00", endTime: "18:00",
+      seats: 4, qualificationId: qualId, umfang: "ab-datum", abDatum,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.data.updated).toBe(shifts.length - 2);
+
+    const danach = await alleSchichten(admin);
+    // Davor unverändert ...
+    expect(danach[0]).toMatchObject({ name: "Tagdienst", seats: 1 });
+    expect(danach[1]).toMatchObject({ name: "Tagdienst", seats: 1 });
+    // ... ab dem Datum geändert, und die Serie bleibt eine Serie.
+    for (const s of danach.slice(2)) {
+      expect(s).toMatchObject({ name: "Ab jetzt anders", startTime: "10:00", seats: 4, repeat: "daily" });
+      expect(s.seriesId).toBe(danach[1].seriesId);
+    }
+  });
+
+  test("die Nachfüllung übernimmt den geänderten Stand", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Tagdienst", date: heute(), repeat: "daily" });
+
+    await admin.patch(`/api/shifts/${shifts[1].id}`, {
+      name: "Ab jetzt anders", startTime: "10:00", endTime: "18:00",
+      seats: 4, qualificationId: qualId, umfang: "ab-datum", abDatum: shifts[1].date,
+    });
+
+    // Was die Serie später nachlegt, darf nicht auf den alten Stand zurückfallen.
+    extendSeries(server.db);
+    for (const s of (await alleSchichten(admin)).slice(1)) {
+      expect(s).toMatchObject({ name: "Ab jetzt anders", seats: 4 });
+    }
+  });
+
+  test("Vergangenes bleibt unangetastet", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Tagdienst", date: heute(), repeat: "daily" });
+    const gestern = toISO(addDays(startOfToday(), -1));
+
+    // Sonst liesse sich löschen, wer eine Schicht tatsächlich geleistet hat.
+    const res = await admin.patch(`/api/shifts/${shifts[0].id}`, {
+      name: "Rückwirkend", startTime: "08:00", endTime: "16:00",
+      seats: 1, qualificationId: qualId, umfang: "ab-datum", abDatum: gestern,
+    });
+    expect(res.status).toBe(400);
+
+    const einzeln = await admin.patch(`/api/shifts/${shifts[0].id}`, {
+      name: "Rückwirkend", date: gestern, startTime: "08:00", endTime: "16:00",
+      seats: 1, qualificationId: qualId, umfang: "einzeln",
+    });
+    expect(einzeln.status).toBe(400);
+    expect((await alleSchichten(admin))[0].name).toBe("Tagdienst");
+  });
+
+  test("weist unbrauchbare Angaben ab", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Frühdienst", date: heute(), repeat: "once" });
+    const gut = { name: "Neu", date: heute(), startTime: "08:00", endTime: "16:00", seats: 1, qualificationId: qualId };
+
+    expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, name: "  " })).status).toBe(400);
+    expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, seats: 0 })).status).toBe(400);
+    expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, startTime: "8 Uhr" })).status).toBe(400);
+    expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, qualificationId: "gibtsnicht" })).status).toBe(400);
+    expect((await alleSchichten(admin))[0].name).toBe("Frühdienst");
+  });
+
+  test("Mitarbeitende bearbeiten keine Schichten", async () => {
+    const admin = await asAdmin();
+    const { qualId, shifts } = await anlegen(admin, { name: "Frühdienst", date: heute(), repeat: "once" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const res = await lea.patch(`/api/shifts/${shifts[0].id}`, {
+      name: "Selbst gemacht", date: heute(), startTime: "08:00", endTime: "16:00",
+      seats: 9, qualificationId: qualId, umfang: "einzeln",
+    });
+
+    expect(res.status).toBe(403);
+    expect((await alleSchichten(admin))[0].name).toBe("Frühdienst");
+  });
+
+  test("fremde Schichten sind unsichtbar", async () => {
+    const fremdeId = createCompany(server.db, {
+      code: "222222", name: "Zweite Firma AG", adminName: "Andere Chefin", adminPassword: "12345",
+    });
+    server.db.prepare(
+      `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
+                           repeat, seats, qualification_id, assignment_attempted)
+       VALUES ('s_fremd', ?, 'serie_fremd', 'Fremddienst', ?, '08:00', '16:00', 'once', 1, NULL, 0)`
+    ).run(fremdeId, heute());
+
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const res = await admin.patch("/api/shifts/s_fremd", {
+      name: "Übernommen", date: heute(), startTime: "08:00", endTime: "16:00",
+      seats: 1, qualificationId: qualId, umfang: "einzeln",
+    });
+
+    expect(res.status).toBe(404);
+    expect(server.db.prepare("SELECT name FROM shifts WHERE id = 's_fremd'").get().name).toBe("Fremddienst");
+  });
+});
+
+describe("Auskunft", () => {
+  /* DSG Art. 25 / DSGVO Art. 15: Jede Person kommt an alles, was zu ihr
+     gespeichert ist — ohne den Umweg über einen Menschen mit Datenbankzugang. */
+  const leaId = () => server.db.prepare("SELECT id FROM accounts WHERE name = 'Lea Brunner'").get().id;
+
+  test("enthält Konto, Qualifikationen und Einschreibungen", async () => {
+    const admin = await asAdmin();
+    const { data: state } = await admin.get("/api/state");
+    const qualId = state.data?.company?.qualifications?.[0]?.id ?? state.company.qualifications[0].id;
+
+    // Eine Schicht, an der Lea eingeschrieben und zugeteilt ist.
+    await admin.post("/api/shifts", {
+      name: "Spätschicht", date: toISO(addDays(startOfToday(), 3)),
+      startTime: "16:00", endTime: "22:00", repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const schichtId = (await lea.get("/api/state")).data.company.shifts[0].id;
+    await lea.post(`/api/shifts/${schichtId}/enroll`);
+
+    const { status, data } = await lea.get(`/api/accounts/${leaId()}/data`);
+
+    expect(status).toBe(200);
+    expect(data.konto).toMatchObject({ name: "Lea Brunner", rolle: "Mitarbeitende", firmencode: "111111" });
+    expect(data.qualifikationen).toContain("Erste Hilfe");
+    expect(data.einschreibungen[0]).toMatchObject({ schicht: "Spätschicht", von: "16:00" });
+    expect(data.hinweise.length).toBeGreaterThan(0);
+  });
+
+  test("das Passwort steht nicht darin", async () => {
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const { data } = await lea.get(`/api/accounts/${leaId()}/data`);
+
+    // Weder Klartext noch Hash — beides hätte in einer Auskunft nichts zu suchen.
+    expect(JSON.stringify(data)).not.toContain("12345");
+    expect(JSON.stringify(data)).not.toContain("$2");
+  });
+
+  test("kommt als Datei mit brauchbarem Namen", async () => {
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const res = await lea.raw("GET", `/api/accounts/${leaId()}/data`);
+
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="auskunft_lea-brunner_' + heute() + '.json"');
+  });
+
+  test("die Administration holt die Auskunft für ihre Belegschaft", async () => {
+    const admin = await asAdmin();
+    expect((await admin.get(`/api/accounts/${leaId()}/data`)).status).toBe(200);
+  });
+
+  test("Mitarbeitende kommen nur an ihre eigene", async () => {
+    const admin = await asAdmin();
+    const maraId = (await admin.get("/api/state")).data.userId;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.get(`/api/accounts/${maraId}/data`)).status).toBe(403);
+  });
+
+  test("fremde Firmen bleiben aussen vor", async () => {
+    const fremdeId = createCompany(server.db, {
+      code: "222222", name: "Zweite Firma AG", adminName: "Andere Chefin", adminPassword: "12345",
+    });
+    const fremdesKonto = readCompany(server.db, fremdeId).accounts[0].id;
+
+    const admin = await asAdmin();
+    expect((await admin.get(`/api/accounts/${fremdesKonto}/data`)).status).toBe(404);
+  });
+
+  test("ohne Anmeldung gibt es nichts", async () => {
+    expect((await client().get(`/api/accounts/${leaId()}/data`)).status).toBe(401);
+  });
+});
+
 describe("Ausgesperrte Admins", () => {
   /* Unter Admins setzt niemand das Passwort eines anderen — sonst könnte einer
      die Firma übernehmen. Bleibt für ein ausgesperrtes Admin-Konto nur die

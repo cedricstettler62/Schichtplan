@@ -4,6 +4,7 @@ import Badge from "../../components/Badge.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import PasswordResetForm from "../../components/PasswordResetForm.jsx";
 import DeleteAccountButton from "../../components/DeleteAccountButton.jsx";
+import DataExportButton from "../../components/DataExportButton.jsx";
 
 export default function EmployeeManageRow({ account, qualifications, verifyAdmin, onResetPassword, onSetQualification, onDeleteAccount, onPromote }) {
   const [open, setOpen] = useState(false);
@@ -44,6 +45,11 @@ export default function EmployeeManageRow({ account, qualifications, verifyAdmin
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="sb-manage-section">
+            <span className="sb-detail-label">Auskunft über gespeicherte Daten</span>
+            <DataExportButton accountId={account.id} wessen={`${account.name.split(" ")[0]}`} />
           </div>
 
           <div className="sb-manage-actions">

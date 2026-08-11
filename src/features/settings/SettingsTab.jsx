@@ -1,13 +1,12 @@
 import { useState } from "react";
-import EmailChangeForm from "../../components/EmailChangeForm.jsx";
 import PasswordChangeForm from "../../components/PasswordChangeForm.jsx";
 import DeleteAccountButton from "../../components/DeleteAccountButton.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 
 export default function SettingsTab({
-  settings, currentUser, canDeleteSelf, verifySelf,
+  settings, canDeleteSelf, verifySelf,
   qualifications, onAddQualification, onDeleteQualification,
-  onChangeAssignmentDay, onUpdateOwnEmail, onChangeOwnPassword, onDeleteOwnAccount,
+  onChangeAssignmentDay, onChangeOwnPassword, onDeleteOwnAccount,
 }) {
   const [value, setValue] = useState(settings.assignmentDay);
   const [saved, setSaved] = useState(false);
@@ -73,12 +72,6 @@ export default function SettingsTab({
           <input value={newQual} onChange={(e) => setNewQual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addQual()} placeholder="z. B. Kassenschulung" />
           <button type="button" className="sb-btn sb-btn-ink" onClick={addQual}>Hinzufügen</button>
         </div>
-      </div>
-
-      <div className="sb-card">
-        <h3 className="sb-subheading">E-Mail ändern</h3>
-        <p className="sb-tab-intro">Deine eigene Adresse. Zum Ändern zuerst dein Passwort bestätigen.</p>
-        <EmailChangeForm verify={verifySelf} initialEmail={currentUser.email} onSave={onUpdateOwnEmail} />
       </div>
 
       <PasswordChangeForm verify={verifySelf} onChangePassword={onChangeOwnPassword} />

@@ -1,28 +1,20 @@
 import { useState } from "react";
 import Badge from "../../components/Badge.jsx";
-import EinladungsLink from "../../components/EinladungsLink.jsx";
 import CompanyRow from "./CompanyRow.jsx";
 import NewCompanyForm from "./NewCompanyForm.jsx";
 import SystemPanel from "./SystemPanel.jsx";
 
 /** `companies` sind hier Kurzfassungen: { id, code, name, adminCount, employeeCount }. */
-export default function SuperAdminView({ companies, superAdminName, onCreateCompany, onDeleteCompany, onUpdateCompanyName, onDataChanged, onLogout }) {
+export default function SuperAdminView({ companies, superAdminName, onCreateCompany, onDeleteCompany, onUpdateCompanyName, onLoadAdmins, onResetAdminPassword, onDataChanged, onLogout }) {
   const [formOpen, setFormOpen] = useState(false);
-  const [einladung, setEinladung] = useState(null);
+  const [angelegt, setAngelegt] = useState(null);
 
   const createCompany = async (data) => {
     const res = await onCreateCompany(data);
     if (res?.error) return res.error;
 
     setFormOpen(false);
-    /* Über diesem Admin-Konto steht niemand mehr: Kommt die E-Mail nicht an,
-       wäre das Unternehmen ohne den Link nicht mehr zu betreten. */
-    setEinladung({
-      link: res.link,
-      hinweis: res.benachrichtigt
-        ? `Unternehmen angelegt. Die Einladung ist an ${data.adminEmail} unterwegs. Notiere den Link zur Sicherheit:`
-        : "Unternehmen angelegt, aber es ging keine E-Mail raus. Gib diesen Link an das Admin-Konto weiter:",
-    });
+    setAngelegt({ name: data.name, code: data.code, adminName: data.adminName });
     return null;
   };
 
@@ -51,11 +43,14 @@ export default function SuperAdminView({ companies, superAdminName, onCreateComp
           </div>
           {formOpen && <NewCompanyForm onCreate={createCompany} />}
 
-          {einladung && (
+          {angelegt && (
             <div className="sb-card">
-              <EinladungsLink link={einladung.link} hinweis={einladung.hinweis} />
+              <p className="sb-saved-note">
+                „{angelegt.name}“ angelegt. {angelegt.adminName} meldet sich mit Firmencode{" "}
+                <span className="sb-mono">{angelegt.code}</span> und dem eben vergebenen Passwort an.
+              </p>
               <div className="sb-form-actions">
-                <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => setEinladung(null)}>
+                <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => setAngelegt(null)}>
                   Ausblenden
                 </button>
               </div>
@@ -65,7 +60,16 @@ export default function SuperAdminView({ companies, superAdminName, onCreateComp
           <div className="sb-card">
             <div className="sb-manage-list">
               {companies.length === 0 && <p className="sb-empty">Noch keine Unternehmen angelegt.</p>}
-              {companies.map((c) => <CompanyRow key={c.id} company={c} onDelete={onDeleteCompany} onUpdateName={onUpdateCompanyName} />)}
+              {companies.map((c) => (
+                <CompanyRow
+                  key={c.id}
+                  company={c}
+                  onDelete={onDeleteCompany}
+                  onUpdateName={onUpdateCompanyName}
+                  onLoadAdmins={onLoadAdmins}
+                  onResetAdminPassword={onResetAdminPassword}
+                />
+              ))}
             </div>
           </div>
 

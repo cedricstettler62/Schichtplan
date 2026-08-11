@@ -24,6 +24,22 @@ Beim ersten Start entsteht eine Demo-Firma:
 | Mitarbeitend | `111111`   | Lea Brunner | `12345`  |
 | Verwaltung   | `000000`   | Kira X      | `123456` |
 
+## Zugänge
+
+Das Programm verschickt nichts. Passwörter werden vergeben und persönlich
+weitergegeben — geschrieben blieben sie sonst irgendwo liegen.
+
+| Wer ist ausgesperrt?  | Wer hilft                                                          |
+| --------------------- | ------------------------------------------------------------------ |
+| Mitarbeitende         | die Administration der Firma, unter *Mitarbeitende*                |
+| Administration        | die Verwaltung, unter *Unternehmen* → Firma aufklappen             |
+| Verwaltung            | `SB_SUPER_PASSWORD` in der `.env`, danach Dienst neu starten       |
+
+Ein neues Konto bekommt sein erstes Passwort gleich beim Anlegen. Ändern kann
+es die Person danach selbst — unter *Konto* beziehungsweise *Einstellungen*.
+Admins setzen einander bewusst **nicht** zurück: sonst könnte einer die
+anderen aussperren und die Firma übernehmen.
+
 ## Auf einem Server
 
 Alles über SSH, ein Befehl:

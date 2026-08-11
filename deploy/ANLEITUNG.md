@@ -174,6 +174,12 @@ sudo grep SB_SUPER /opt/schichtplan/.env
 Ändern geht in derselben Datei — Zeile anpassen, dann
 `sudo systemctl restart schichtplan`.
 
+**Jemand kommt nicht mehr in sein Konto.** Dafür braucht es keinen SSH-Zugang:
+Mitarbeitende setzt die Administration der Firma zurück, ein ausgesperrtes
+Admin-Konto die Verwaltung unter *Unternehmen* → Firma aufklappen →
+*Admin-Passwort zurücksetzen*. Das Programm verschickt keine Links; das neue
+Passwort wird persönlich weitergegeben.
+
 ---
 
 ## Was wo liegt

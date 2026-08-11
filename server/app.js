@@ -11,7 +11,6 @@ import adminRoutes from "./routes/admin.js";
 import authRoutes from "./routes/auth.js";
 import companiesRoutes from "./routes/companies.js";
 import companyRoutes from "./routes/company.js";
-import passwordResetRoutes from "./routes/passwordReset.js";
 import shiftRoutes from "./routes/shifts.js";
 
 export function createApp(db, config) {
@@ -23,10 +22,8 @@ export function createApp(db, config) {
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
   app.use("/api", authRoutes(db, config));
-  // Ohne Anmeldung erreichbar — wer hier landet, ist ja gerade ausgesperrt.
-  app.use("/api/password-reset", passwordResetRoutes(db, config));
   app.use("/api/admin", adminRoutes(db, config));
-  app.use("/api", companyRoutes(db, config));
+  app.use("/api", companyRoutes(db));
   app.use("/api/shifts", shiftRoutes(db));
   app.use("/api/companies", companiesRoutes(db, config));
 

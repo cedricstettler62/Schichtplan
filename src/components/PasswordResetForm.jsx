@@ -71,7 +71,7 @@ export default function PasswordResetForm({ verify, onReset }) {
               <button type="button" className="sb-btn sb-btn-ink" onClick={submitReset}>Passwort setzen</button>
             </div>
           </div>
-          <p className="sb-status">Gib das neue Passwort persönlich weiter – per E-Mail ist es mitlesbar.</p>
+          <p className="sb-status">Gib das neue Passwort persönlich weiter – geschrieben bleibt es irgendwo liegen.</p>
         </div>
       )}
 

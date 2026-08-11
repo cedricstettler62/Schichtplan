@@ -16,20 +16,5 @@ export function loadConfig(env = process.env) {
     seedDemo: env.SB_SEED_DEMO === "1",
     // Hinter cloudflared läuft alles über HTTPS.
     secureCookie: env.SB_SECURE_COOKIE === "1",
-    // Adresse, unter der die App von aussen erreichbar ist — der Link in der
-    // Passwort-Mail muss beim Empfänger funktionieren, nicht nur auf dem Server.
-    publicUrl: (env.SB_PUBLIC_URL || "http://localhost:3000").replace(/\/+$/, ""),
-    /* Ohne SB_SMTP_HOST wird nicht verschickt; der Link landet dann im
-       Server-Protokoll. Fürs lokale Ausprobieren reicht das. */
-    smtp: env.SB_SMTP_HOST
-      ? {
-          host: env.SB_SMTP_HOST,
-          port: Number(env.SB_SMTP_PORT || 465),
-          secure: env.SB_SMTP_INSECURE !== "1",
-          user: env.SB_SMTP_USER || "",
-          pass: env.SB_SMTP_PASS || "",
-          from: env.SB_SMTP_FROM || env.SB_SMTP_USER || "",
-        }
-      : null,
   };
 }

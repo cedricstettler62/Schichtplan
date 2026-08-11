@@ -42,7 +42,6 @@ body { margin: 0; }
 .sb-avatar-admin { border-color: var(--sb-amber); color: var(--sb-amber); background: rgba(226,163,59,0.1); }
 .sb-avatar-employee { border-color: var(--sb-petrol); color: var(--sb-petrol); background: rgba(63,124,116,0.1); }
 .sb-account-name-lg { font-family: var(--sb-font-head); font-size: 20px; font-weight: 700; }
-.sb-account-email { font-size: 13px; color: var(--sb-ink-65); }
 
 /* Header / Nav */
 .sb-header { padding-top: 22px; border-bottom: 1px solid var(--sb-line); margin-bottom: 24px; }
@@ -130,16 +129,6 @@ body { margin: 0; }
 .sb-chip:hover { border-color: var(--sb-ink); }
 .sb-chip-active { background: var(--sb-petrol); border-color: var(--sb-petrol); color: #fff; }
 .sb-chip-active:hover { border-color: var(--sb-petrol); }
-.sb-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--sb-ink-75); cursor: pointer; }
-
-/* Einladungslink zum Weitergeben – muss vollständig lesbar und markierbar sein. */
-.sb-invite { display: flex; flex-direction: column; gap: 8px; }
-.sb-invite-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.sb-invite-link {
-  flex: 1 1 260px; min-width: 0; font-family: var(--sb-font-mono); font-size: 12.5px;
-  background: #fff; border: 1px solid var(--sb-line); border-radius: 5px; padding: 8px 10px;
-  overflow-wrap: anywhere; user-select: all;
-}
 
 /* Badges */
 .sb-badge { font-family: var(--sb-font-sans); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.3px; white-space: nowrap; }
@@ -227,7 +216,7 @@ body { margin: 0; }
 .sb-manage-row-head:hover { background: rgba(30,42,56,0.03); }
 .sb-manage-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Nur dieses Element schiebt sich nach rechts; alles davor bleibt am Namen. */
-.sb-manage-email { margin-left: auto; font-size: 12.5px; color: var(--sb-ink-65); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-manage-summary { margin-left: auto; font-size: 12.5px; color: var(--sb-ink-65); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-manage-meta { font-size: 12.5px; color: var(--sb-ink-65); white-space: nowrap; }
 .sb-manage-row-body { padding: 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px; }
 .sb-manage-section { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
@@ -244,7 +233,7 @@ body { margin: 0; }
   /* Der schmale Pfeil passt immer daneben — hier nichts umbrechen lassen. */
   .sb-ticket-expandable .sb-ticket-body { flex-basis: auto; }
   .sb-ticket-action { width: calc(100% - 28px); margin: 0 14px 12px; }
-  .sb-manage-email { margin-left: 0; flex-basis: 100%; }
+  .sb-manage-summary { margin-left: 0; flex-basis: 100%; }
   .sb-manage-row-head { flex-wrap: wrap; }
   .sb-tab-head .sb-btn { width: 100%; }
 }

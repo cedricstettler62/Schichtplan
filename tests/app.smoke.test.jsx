@@ -122,8 +122,9 @@ describe("Mitarbeitende", () => {
     expect(screen.getByText("Dir ist zurzeit keine Schicht zugeteilt.")).toBeInTheDocument();
 
     await user.click(within(nav).getByRole("button", { name: "Konto" }));
-    expect(screen.getByText("lea@firma.ch")).toBeInTheDocument();
+    expect(document.querySelector(".sb-account-name-lg")).toHaveTextContent("Lea Brunner");
     expect(screen.getByRole("heading", { name: "Meine Qualifikationen" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Passwort ändern" })).toBeInTheDocument();
   });
 });
 
@@ -148,6 +149,26 @@ describe("Super-Admin", () => {
     expect(screen.getByText("1 Unternehmen · 2 Konten · 0 Schichten")).toBeInTheDocument();
   });
 
+  test("befreit ein ausgesperrtes Admin-Konto", async () => {
+    const user = await openApp();
+    await login(user, SUPER);
+    await screen.findByRole("heading", { name: "Schichtboard – Verwaltung" });
+
+    await user.click(screen.getByRole("button", { name: /Erste Firma AG/ }));
+    expect(await screen.findByText("Admin-Passwort zurücksetzen")).toBeInTheDocument();
+
+    await user.selectOptions(
+      await screen.findByLabelText("Admin-Konto"),
+      screen.getByRole("option", { name: "Mara Vogt" })
+    );
+    await user.type(screen.getByLabelText("Neues Passwort"), "wiederDrin");
+    await user.type(screen.getByLabelText("Wiederholen"), "wiederDrin");
+    await user.type(screen.getByLabelText("Dein Verwaltungs-Passwort"), SUPER.password);
+    await user.click(screen.getByRole("button", { name: "Passwort setzen" }));
+
+    expect(await screen.findByText("Neues Passwort gesetzt.")).toBeInTheDocument();
+  });
+
   test("lehnt einen bereits vergebenen Firmencode ab", async () => {
     const user = await openApp();
     await login(user, SUPER);
@@ -157,7 +178,8 @@ describe("Super-Admin", () => {
     await user.type(screen.getByPlaceholderText("z. B. Muster GmbH"), "Zweite Firma AG");
     await user.type(screen.getByPlaceholderText("6 Ziffern"), "111111");
     await user.type(screen.getByLabelText("Name"), "Neue Chefin");
-    await user.type(screen.getByLabelText("E-Mail"), "chefin@zweite.ch");
+    await user.type(screen.getByLabelText("Erstes Passwort"), "chefinPw");
+    await user.type(screen.getByLabelText("Wiederholen"), "chefinPw");
     await user.click(screen.getByRole("button", { name: "Unternehmen anlegen" }));
 
     expect(await screen.findByText("Dieser Firmencode wird bereits verwendet.")).toBeInTheDocument();

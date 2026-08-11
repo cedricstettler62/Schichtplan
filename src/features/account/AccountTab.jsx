@@ -8,10 +8,7 @@ export default function AccountTab({ currentUser, qualifications, verifySelf, on
       <div className="sb-card">
         <div className="sb-account-head">
           <Avatar name={currentUser.name} role={currentUser.role} />
-          <div>
-            <div className="sb-account-name-lg">{currentUser.name}</div>
-            <div className="sb-account-email">{currentUser.email}</div>
-          </div>
+          <div className="sb-account-name-lg">{currentUser.name}</div>
         </div>
         <h3 className="sb-subheading">Meine Qualifikationen</h3>
         <p className="sb-tab-intro">Bestimmt, für welche Schichten du dich einschreiben kannst.</p>

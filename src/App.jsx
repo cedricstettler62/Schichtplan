@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import Header from "./features/layout/Header.jsx";
 import LoginScreen from "./features/login/LoginScreen.jsx";
-import ForgotPasswordScreen from "./features/login/ForgotPasswordScreen.jsx";
-import NewPasswordScreen from "./features/login/NewPasswordScreen.jsx";
 import OverviewTab from "./features/overview/OverviewTab.jsx";
 import AdminShiftsTab from "./features/shifts/AdminShiftsTab.jsx";
 import EmployeeShiftsTab from "./features/shifts/EmployeeShiftsTab.jsx";
@@ -22,19 +20,10 @@ import { startOfToday } from "#shared/dates.js";
  * Jede Änderung geht an den Server und wird danach frisch geladen — so sehen
  * alle dasselbe, auch wenn zwei Personen gleichzeitig arbeiten.
  */
-/** Token aus dem Link der Passwort-Mail — die App kommt ohne Router aus. */
-function resetTokenAusAdresse() {
-  if (typeof window === "undefined") return null;
-  if (window.location.pathname !== "/passwort-neu") return null;
-  return new URLSearchParams(window.location.search).get("token");
-}
-
 export default function App() {
   const [state, setState] = useState(null); // null = nicht angemeldet
   const [ready, setReady] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
-  const [resetToken, setResetToken] = useState(resetTokenAusAdresse);
-  const [passwortVergessen, setPasswortVergessen] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -133,8 +122,6 @@ export default function App() {
     api.patch(`/accounts/${accountId}/qualifications`, { qualificationId, value })
   );
 
-  const handleUpdateEmail = act((accountId, email) => api.patch(`/accounts/${accountId}/email`, { email }));
-
   /** Gibt die Fehlermeldung zurück – ein Reset, der stumm scheitert, wäre fatal. */
   const handleResetPassword = async (accountId, password, currentPassword) => {
     try {
@@ -166,8 +153,7 @@ export default function App() {
   };
 
   /* --- Super-Admin --- */
-  /** Liefert { error } oder { link, benachrichtigt } — der Link muss ankommen,
-      sonst stünde ein neues Unternehmen ohne erreichbares Admin-Konto da. */
+  /** Liefert { error } oder { id } — die Fehlermeldung gehört ins Formular. */
   const handleCreateCompany = async (data) => {
     let res;
     try {
@@ -179,34 +165,30 @@ export default function App() {
     return res;
   };
 
+  const handleLoadCompanyAdmins = (companyId) =>
+    api.get(`/companies/${companyId}/admins`).catch(() => []);
+
+  /** Gibt die Fehlermeldung zurück — ein Reset, der stumm scheitert, wäre fatal. */
+  const handleResetCompanyAdminPassword = async (companyId, accountId, password, currentPassword) => {
+    try {
+      await api.post(`/companies/${companyId}/admins/${accountId}/password`, { password, currentPassword });
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    }
+    return null;
+  };
+
   const handleUpdateCompanyName = act((companyId, name) => api.patch(`/companies/${companyId}`, { name }));
   const handleDeleteCompany = act((companyId) => api.del(`/companies/${companyId}`));
 
   /* --- Rendering --- */
-  /* Der Link aus der Mail geht allem voraus — wer ihn öffnet, ist ausgesperrt
-     und käme über den Anmeldebildschirm nicht weiter. */
-  if (resetToken) {
-    const zurueckZurAnmeldung = () => {
-      window.history.replaceState({}, "", "/");
-      setResetToken(null);
-    };
-    return (
-      <div className="sb-root">
-        <NewPasswordScreen token={resetToken} onDone={zurueckZurAnmeldung} />
-      </div>
-    );
-  }
-
   if (!ready) return <div className="sb-root" />;
 
   if (!state) {
     return (
       <div className="sb-root">
-        {passwortVergessen ? (
-          <ForgotPasswordScreen onBack={() => setPasswortVergessen(false)} />
-        ) : (
-          <LoginScreen onLogin={handleLogin} onForgotPassword={() => setPasswortVergessen(true)} />
-        )}
+        <LoginScreen onLogin={handleLogin} />
       </div>
     );
   }
@@ -220,6 +202,8 @@ export default function App() {
           onCreateCompany={handleCreateCompany}
           onDeleteCompany={handleDeleteCompany}
           onUpdateCompanyName={handleUpdateCompanyName}
+          onLoadAdmins={handleLoadCompanyAdmins}
+          onResetAdminPassword={handleResetCompanyAdminPassword}
           onDataChanged={refresh}
           onLogout={handleLogout}
         />
@@ -230,7 +214,7 @@ export default function App() {
   const { company, userId } = state;
   const currentUser = company.accounts.find((a) => a.id === userId);
   if (!currentUser) {
-    return <div className="sb-root"><LoginScreen onLogin={handleLogin} onForgotPassword={() => setPasswortVergessen(true)} /></div>;
+    return <div className="sb-root"><LoginScreen onLogin={handleLogin} /></div>;
   }
 
   const { qualifications, shifts, settings, accounts } = company;
@@ -238,7 +222,6 @@ export default function App() {
 
   const handleToggleOwnQualification = (qualId, value) =>
     handleSetAccountQualification(currentUser.id, qualId, value);
-  const handleUpdateOwnEmail = (email) => handleUpdateEmail(currentUser.id, email);
   const handleChangePassword = act((password, currentPassword) =>
     api.post(`/accounts/${currentUser.id}/password`, { password, currentPassword })
   );
@@ -272,8 +255,7 @@ export default function App() {
           {activeTab === "employees" && isAdmin && (
             <EmployeesTab
               accounts={accounts} qualifications={qualifications} verifyAdmin={verifySelf}
-              onAddEmployee={handleAddEmployee} onUpdateEmail={handleUpdateEmail}
-              onResetPassword={handleResetPassword}
+              onAddEmployee={handleAddEmployee} onResetPassword={handleResetPassword}
               onSetQualification={handleSetAccountQualification} onDeleteAccount={handleDeleteAccount}
               onPromote={handlePromoteToAdmin}
             />
@@ -281,13 +263,12 @@ export default function App() {
 
           {activeTab === "settings" && isAdmin && (
             <SettingsTab
-              settings={settings} currentUser={currentUser} verifySelf={verifySelf}
+              settings={settings} verifySelf={verifySelf}
               qualifications={qualifications}
               onAddQualification={handleAddQualification}
               onDeleteQualification={handleDeleteQualification}
               canDeleteSelf={accounts.filter((a) => a.role === "admin").length > 1}
               onChangeAssignmentDay={handleChangeAssignmentDay}
-              onUpdateOwnEmail={handleUpdateOwnEmail}
               onChangeOwnPassword={handleChangePassword}
               onDeleteOwnAccount={() => handleDeleteAccount(currentUser.id)}
             />

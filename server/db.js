@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS accounts (
   id            TEXT PRIMARY KEY,
   company_id    TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
-  email         TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('admin', 'employee'))
 );
@@ -64,16 +63,6 @@ CREATE TABLE IF NOT EXISTS enrollments (
   PRIMARY KEY (shift_id, account_id)
 );
 
-/* Passwort-Wiederherstellung. Gespeichert wird nur der Hash des Tokens: Wer
-   die Datenbank liest, kann damit kein Konto übernehmen. */
-CREATE TABLE IF NOT EXISTS password_resets (
-  token_hash TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  expires_at TEXT NOT NULL,
-  used       INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_resets_account ON password_resets(account_id);
-
 CREATE TABLE IF NOT EXISTS help_requests (
   shift_id   TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -90,6 +79,15 @@ function ensureColumn(db, table, column, definition) {
   }
 }
 
+/** Entfernt eine Spalte, die es nicht mehr geben soll — CREATE TABLE IF NOT
+ *  EXISTS lässt bestehende Tabellen unangetastet. */
+function dropColumn(db, table, column) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+  }
+}
+
 export function openDb(file) {
   if (file !== ":memory:") fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   const db = new Database(file);
@@ -97,6 +95,12 @@ export function openDb(file) {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
   ensureColumn(db, "shifts", "end_date", "TEXT");
+  /* Konten kamen früher mit E-Mail-Adresse und bekamen ihr erstes Passwort
+     über einen Link. Beides ist weg: Adressen werden nirgends mehr gebraucht,
+     und offene Token sollen nicht in einer Datenbank liegen bleiben, in der
+     sie niemand mehr einlösen kann. */
+  dropColumn(db, "accounts", "email");
+  db.exec("DROP TABLE IF EXISTS password_resets");
   return db;
 }
 
@@ -152,7 +156,7 @@ export function readCompany(db, companyId) {
     .all(companyId);
 
   const accounts = db
-    .prepare("SELECT id, name, email, role FROM accounts WHERE company_id = ? ORDER BY rowid")
+    .prepare("SELECT id, name, role FROM accounts WHERE company_id = ? ORDER BY rowid")
     .all(companyId)
     .map((a) => ({
       ...a,
@@ -242,14 +246,14 @@ export function companySummaries(db) {
 
 /* --- Schreiben --- */
 
-export function createCompany(db, { code, name, adminName, adminEmail, adminPassword }) {
+export function createCompany(db, { code, name, adminName, adminPassword }) {
   const companyId = uid("c");
   db.transaction(() => {
     db.prepare("INSERT INTO companies (id, code, name, assignment_day) VALUES (?, ?, ?, 7)")
       .run(companyId, code, name);
     db.prepare(
-      "INSERT INTO accounts (id, company_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?, 'admin')"
-    ).run(uid("a"), companyId, adminName, adminEmail || "", bcrypt.hashSync(adminPassword, 10));
+      "INSERT INTO accounts (id, company_id, name, password_hash, role) VALUES (?, ?, ?, ?, 'admin')"
+    ).run(uid("a"), companyId, adminName, bcrypt.hashSync(adminPassword, 10));
   })();
   return companyId;
 }
@@ -262,7 +266,6 @@ export function seedDemo(db) {
     code: "111111",
     name: "Erste Firma AG",
     adminName: "Mara Vogt",
-    adminEmail: "mara@firma.ch",
     adminPassword: "12345",
   });
 
@@ -275,8 +278,8 @@ export function seedDemo(db) {
   const adminId = db.prepare("SELECT id FROM accounts WHERE company_id = ?").get(companyId).id;
   const leaId = uid("a");
   db.prepare(
-    "INSERT INTO accounts (id, company_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?, 'employee')"
-  ).run(leaId, companyId, "Lea Brunner", "lea@firma.ch", bcrypt.hashSync("12345", 10));
+    "INSERT INTO accounts (id, company_id, name, password_hash, role) VALUES (?, ?, ?, ?, 'employee')"
+  ).run(leaId, companyId, "Lea Brunner", bcrypt.hashSync("12345", 10));
 
   for (const accountId of [adminId, leaId]) {
     for (const qualId of quals.slice(0, 2)) {

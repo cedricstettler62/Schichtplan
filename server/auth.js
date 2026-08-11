@@ -64,7 +64,7 @@ export function attachSession(db, config) {
 
     if (payload.t === "company" && payload.accountId) {
       const account = db
-        .prepare("SELECT id, company_id, name, email, role FROM accounts WHERE id = ?")
+        .prepare("SELECT id, company_id, name, role FROM accounts WHERE id = ?")
         .get(payload.accountId);
       if (account) {
         req.session = {

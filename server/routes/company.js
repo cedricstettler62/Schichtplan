@@ -8,21 +8,13 @@ import { startOfToday, toISO } from "#shared/dates.js";
 
 import { checkPassword, hashPassword, requireAdmin, requireCompany } from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
-import { sendeEinladung } from "../mail.js";
-import { GUELTIG_EINLADUNG, entwerteTokens, erstelleToken, linkZu, unbenutzbaresPasswort } from "../resetToken.js";
 import { uid } from "../ids.js";
 
 /** Konto aus *dieser* Firma holen — sonst 404, egal ob es anderswo existiert. */
 function ownAccount(db, req, id) {
   return db
-    .prepare("SELECT id, company_id, name, email, role FROM accounts WHERE id = ? AND company_id = ?")
+    .prepare("SELECT id, company_id, name, role FROM accounts WHERE id = ? AND company_id = ?")
     .get(id, req.session.companyId);
-}
-
-/* Bewusst grob: Zweck ist, Tippfehler und leere Felder abzufangen. Ob eine
-   Adresse wirklich existiert, weiss ohnehin erst der Zustellversuch. */
-function istEmail(wert) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(wert);
 }
 
 function adminCount(db, companyId) {
@@ -31,7 +23,7 @@ function adminCount(db, companyId) {
     .get(companyId).n;
 }
 
-export default function companyRoutes(db, config) {
+export default function companyRoutes(db) {
   // Bewusst pro Route abgesichert statt per router.use: dieser Router hängt
   // direkt unter /api und darf nachfolgende Router (etwa /api/companies für
   // die Verwaltung) nicht abfangen.
@@ -84,52 +76,22 @@ export default function companyRoutes(db, config) {
   /* --- Konten --- */
 
   /**
-   * Legt ein Konto ohne Passwort an. Die Person setzt es selbst über einen
-   * Einmal-Link — so steht es nie in einem Postfach.
-   *
-   * Der Link geht auch in die Antwort zurück: Scheitert der Versand, wäre das
-   * Konto sonst unerreichbar, und die Administration hätte nichts in der Hand.
+   * Legt ein Konto samt erstem Passwort an. Die Administration gibt es
+   * persönlich weiter und die Person ändert es danach selbst — schriftlich
+   * verschickt läge es dauerhaft irgendwo herum.
    */
-  router.post("/employees", requireAdmin, async (req, res) => {
+  router.post("/employees", requireAdmin, (req, res) => {
     const name = String(req.body?.name || "").trim();
-    const email = String(req.body?.email || "").trim();
+    const password = String(req.body?.password || "");
     if (!name) return res.status(400).json({ error: "Ein Name ist nötig." });
-    // Ohne Adresse gäbe es weder Einladung noch später einen Weg zurück ins Konto.
-    if (!istEmail(email)) return res.status(400).json({ error: "Eine gültige E-Mail-Adresse ist nötig." });
+    if (password.length < 4) return res.status(400).json({ error: "Das Passwort braucht mindestens 4 Zeichen." });
 
     const id = uid("a");
     db.prepare(
-      "INSERT INTO accounts (id, company_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?, 'employee')"
-    ).run(id, req.session.companyId, name, email, hashPassword(unbenutzbaresPasswort()));
+      "INSERT INTO accounts (id, company_id, name, password_hash, role) VALUES (?, ?, ?, ?, 'employee')"
+    ).run(id, req.session.companyId, name, hashPassword(password));
 
-    const token = erstelleToken(db, id, GUELTIG_EINLADUNG);
-    const link = linkZu(config, token);
-
-    // Ohne Firmencode kann sich niemand anmelden — er gehört in die Nachricht.
-    const firma = db.prepare("SELECT code, name FROM companies WHERE id = ?").get(req.session.companyId);
-    const benachrichtigt = req.body?.notify === false
-      ? false
-      : await sendeEinladung(config, {
-          an: email, name, firma: firma.name, code: firma.code,
-          link, gueltigTage: GUELTIG_EINLADUNG / (24 * 60),
-        });
-
-    res.json({ id, benachrichtigt, link });
-  });
-
-  router.patch("/accounts/:id/email", requireCompany, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-
-    const isSelf = target.id === req.session.accountId;
-    const mayEdit = isSelf || (req.session.role === "admin" && target.role !== "admin");
-    if (!mayEdit) return res.status(403).json({ error: "Nicht erlaubt." });
-
-    const email = String(req.body?.email || "").trim();
-    if (!istEmail(email)) return res.status(400).json({ error: "Eine gültige E-Mail-Adresse ist nötig." });
-
-    db.prepare("UPDATE accounts SET email = ? WHERE id = ?").run(email, target.id);
-    res.json({ ok: true });
+    res.json({ id });
   });
 
   router.patch("/accounts/:id/qualifications", requireCompany, (req, res) => {
@@ -186,12 +148,7 @@ export default function companyRoutes(db, config) {
       return res.status(403).json({ error: "Das aktuelle Passwort ist falsch." });
     }
 
-    db.transaction(() => {
-      db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(hashPassword(password), target.id);
-      // Ein noch offener Einladungs- oder Wiederherstellungslink würde das
-      // eben gesetzte Passwort sonst wieder aushebeln.
-      entwerteTokens(db, target.id);
-    })();
+    db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(hashPassword(password), target.id);
     res.json({ ok: true });
   });
 

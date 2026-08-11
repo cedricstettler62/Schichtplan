@@ -2,11 +2,10 @@ import { useState } from "react";
 import Avatar from "../../components/Avatar.jsx";
 import Badge from "../../components/Badge.jsx";
 import Toggle from "../../components/Toggle.jsx";
-import EmailChangeForm from "../../components/EmailChangeForm.jsx";
 import PasswordResetForm from "../../components/PasswordResetForm.jsx";
 import DeleteAccountButton from "../../components/DeleteAccountButton.jsx";
 
-export default function EmployeeManageRow({ account, qualifications, verifyAdmin, onUpdateEmail, onResetPassword, onSetQualification, onDeleteAccount, onPromote }) {
+export default function EmployeeManageRow({ account, qualifications, verifyAdmin, onResetPassword, onSetQualification, onDeleteAccount, onPromote }) {
   const [open, setOpen] = useState(false);
   const [confirmingPromote, setConfirmingPromote] = useState(false);
 
@@ -16,17 +15,10 @@ export default function EmployeeManageRow({ account, qualifications, verifyAdmin
         <Avatar name={account.name} role={account.role} small />
         <span className="sb-manage-name">{account.name}</span>
         <Badge tone="petrol">Mitarbeitende</Badge>
-        <span className="sb-manage-email">{account.email}</span>
         <span className="sb-bar-caret">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
         <div className="sb-manage-row-body">
-          <div className="sb-manage-section">
-            <span className="sb-detail-label">E-Mail-Adresse</span>
-            <p className="sb-status">Zum Ändern zuerst dein eigenes Admin-Passwort bestätigen.</p>
-            <EmailChangeForm verify={verifyAdmin} initialEmail={account.email} onSave={(email, pw) => onUpdateEmail(account.id, email, pw)} />
-          </div>
-
           <div className="sb-manage-section">
             <span className="sb-detail-label">Passwort zurücksetzen</span>
             <p className="sb-status">Für den Fall, dass {account.name.split(" ")[0]} nicht mehr hineinkommt.</p>

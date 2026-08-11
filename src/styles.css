@@ -130,6 +130,16 @@ body { margin: 0; }
 .sb-chip:hover { border-color: var(--sb-ink); }
 .sb-chip-active { background: var(--sb-petrol); border-color: var(--sb-petrol); color: #fff; }
 .sb-chip-active:hover { border-color: var(--sb-petrol); }
+.sb-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--sb-ink-75); cursor: pointer; }
+
+/* Einladungslink zum Weitergeben – muss vollständig lesbar und markierbar sein. */
+.sb-invite { display: flex; flex-direction: column; gap: 8px; }
+.sb-invite-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sb-invite-link {
+  flex: 1 1 260px; min-width: 0; font-family: var(--sb-font-mono); font-size: 12.5px;
+  background: #fff; border: 1px solid var(--sb-line); border-radius: 5px; padding: 8px 10px;
+  overflow-wrap: anywhere; user-select: all;
+}
 
 /* Badges */
 .sb-badge { font-family: var(--sb-font-sans); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.3px; white-space: nowrap; }

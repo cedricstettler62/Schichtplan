@@ -13,12 +13,12 @@ export const ADMIN = { code: "111111", name: "Mara Vogt", password: "12345" };
 export const EMPLOYEE = { code: "111111", name: "Lea Brunner", password: "12345" };
 export const SUPER = { code: "000000", name: "Kira X", password: "123456" };
 
-export async function startTestServer({ seed = true } = {}) {
+export async function startTestServer({ seed = true, env = {} } = {}) {
   // Echte Datei statt :memory: — nur so lassen sich Export und Import prüfen.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "schichtboard-test-"));
   const dbPath = path.join(dir, "data", "schichtplan.db");
 
-  const config = loadConfig({ SB_SESSION_SECRET: "test-schluessel", SB_DB: dbPath });
+  const config = loadConfig({ SB_SESSION_SECRET: "test-schluessel", SB_DB: dbPath, ...env });
   const db = new DbHandle(dbPath);
   if (seed) seedDemo(db);
 

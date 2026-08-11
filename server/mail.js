@@ -99,6 +99,51 @@ async function sendeUeberSmtp(smtp, { an, betreff, text }) {
  * Verschickt eine Nachricht. Wirft nur, wenn SMTP eingerichtet ist und der
  * Versand scheitert — ohne Konfiguration landet die Nachricht im Protokoll.
  */
+/**
+ * Einladung für ein frisch angelegtes Konto: Firmencode und Name, dazu ein
+ * Link zum Setzen des eigenen Passworts. Das Passwort selbst steht bewusst
+ * nirgends — im Postfach läge es dauerhaft und auf dem Weg dorthin ist es
+ * mitlesbar.
+ *
+ * Gibt zurück, ob wirklich verschickt wurde. Wer ein Konto anlegt, soll nicht
+ * glauben, die Person sei benachrichtigt, wenn gar kein Versand eingerichtet ist.
+ */
+export async function sendeEinladung(config, { an, name, firma, code, link, gueltigTage }) {
+  const text = [
+    `Hallo ${name}`,
+    "",
+    `für dich wurde ein Schichtboard-Konto bei ${firma} angelegt.`,
+    "",
+    `Über diesen Link legst du dein Passwort fest (gültig ${gueltigTage} Tage):`,
+    "",
+    link,
+    "",
+    "Danach meldest du dich so an:",
+    "",
+    `Adresse:    ${config.publicUrl}`,
+    `Firmencode: ${code}`,
+    `Name:       ${name}`,
+    "",
+    "Ist der Link abgelaufen, kannst du dir über „Passwort vergessen?“ einen neuen schicken lassen.",
+    "",
+    "Schichtboard",
+  ].join("\n");
+
+  try {
+    const { verschickt } = await sendeMail(config, {
+      an,
+      betreff: `Dein Zugang zum Schichtboard von ${firma}`,
+      text,
+    });
+    return verschickt;
+  } catch (err) {
+    // Ein gescheiterter Versand darf das Konto nicht verhindern — es ist ja
+    // schon angelegt. Die Rückmeldung sagt der Administration, was fehlt.
+    console.error("Einladung konnte nicht verschickt werden:", err);
+    return false;
+  }
+}
+
 export async function sendeMail(config, nachricht) {
   const smtp = config.smtp;
   if (!smtp?.host) {

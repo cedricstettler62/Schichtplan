@@ -166,14 +166,17 @@ export default function App() {
   };
 
   /* --- Super-Admin --- */
+  /** Liefert { error } oder { link, benachrichtigt } — der Link muss ankommen,
+      sonst stünde ein neues Unternehmen ohne erreichbares Admin-Konto da. */
   const handleCreateCompany = async (data) => {
+    let res;
     try {
-      await api.post("/companies", data);
+      res = await api.post("/companies", data);
     } catch (err) {
-      return err.message;
+      return { error: err.message };
     }
     await refresh();
-    return null;
+    return res;
   };
 
   const handleUpdateCompanyName = act((companyId, name) => api.patch(`/companies/${companyId}`, { name }));

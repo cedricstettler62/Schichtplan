@@ -158,7 +158,6 @@ describe("Super-Admin", () => {
     await user.type(screen.getByPlaceholderText("6 Ziffern"), "111111");
     await user.type(screen.getByLabelText("Name"), "Neue Chefin");
     await user.type(screen.getByLabelText("E-Mail"), "chefin@zweite.ch");
-    await user.type(screen.getByLabelText("Startpasswort"), "geheim");
     await user.click(screen.getByRole("button", { name: "Unternehmen anlegen" }));
 
     expect(await screen.findByText("Dieser Firmencode wird bereits verwendet.")).toBeInTheDocument();

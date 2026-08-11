@@ -5,14 +5,14 @@ export default function NewCompanyForm({ onCreate }) {
   const [code, setCode] = useState("");
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
+  const [ohneMail, setOhneMail] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async () => {
     const trimmedCode = code.trim();
     if (!companyName.trim()) { setError("Bitte einen Namen für das Unternehmen angeben."); return; }
     if (!/^\d{6}$/.test(trimmedCode)) { setError("Bitte einen 6-stelligen Firmencode eingeben."); return; }
-    if (!adminName.trim() || !adminEmail.trim() || !adminPassword.trim()) { setError("Bitte alle Admin-Zugangsdaten ausfüllen."); return; }
+    if (!adminName.trim() || !adminEmail.trim()) { setError("Bitte Name und E-Mail des Admin-Kontos ausfüllen."); return; }
     setError("");
 
     const message = await onCreate({
@@ -20,11 +20,11 @@ export default function NewCompanyForm({ onCreate }) {
       code: trimmedCode,
       adminName: adminName.trim(),
       adminEmail: adminEmail.trim(),
-      adminPassword: adminPassword.trim(),
+      notify: !ohneMail,
     });
     if (message) { setError(message); return; }
 
-    setCompanyName(""); setCode(""); setAdminName(""); setAdminEmail(""); setAdminPassword("");
+    setCompanyName(""); setCode(""); setAdminName(""); setAdminEmail(""); setOhneMail(false);
   };
 
   return (
@@ -48,14 +48,21 @@ export default function NewCompanyForm({ onCreate }) {
         <div className="sb-form-grid">
           <label className="sb-field"><span>Name</span><input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Vor- und Nachname" /></label>
           <label className="sb-field"><span>E-Mail</span><input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} /></label>
-          <label className="sb-field"><span>Startpasswort</span><input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} /></label>
         </div>
       </div>
 
       {error && <p className="sb-error">{error}</p>}
+      <label className="sb-checkbox-row">
+        <input type="checkbox" checked={ohneMail} onChange={(e) => setOhneMail(e.target.checked)} />
+        <span>Erstellen ohne Benachrichtigung</span>
+      </label>
       <div className="sb-form-actions">
         <button type="button" className="sb-btn sb-btn-ink" onClick={submit}>Unternehmen anlegen</button>
-        <span className="sb-status">Mit Firmencode, Name und Passwort meldet sich der Admin danach an.</span>
+        <span className="sb-status">
+          {ohneMail
+            ? "Du bekommst den Einladungslink danach angezeigt."
+            : "Das Admin-Konto erhält per E-Mail einen Link, über den es sein Passwort selbst setzt."}
+        </span>
       </div>
     </div>
   );

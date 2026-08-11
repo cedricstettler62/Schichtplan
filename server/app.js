@@ -26,7 +26,7 @@ export function createApp(db, config) {
   // Ohne Anmeldung erreichbar — wer hier landet, ist ja gerade ausgesperrt.
   app.use("/api/password-reset", passwordResetRoutes(db, config));
   app.use("/api/admin", adminRoutes(db, config));
-  app.use("/api", companyRoutes(db));
+  app.use("/api", companyRoutes(db, config));
   app.use("/api/shifts", shiftRoutes(db));
   app.use("/api/companies", companiesRoutes(db, config));
 

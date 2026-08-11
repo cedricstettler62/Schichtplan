@@ -5,15 +5,13 @@
      Belegschaft einer Firma abfragen.
    - In der Datenbank liegt nur der Hash des Tokens, nie das Token selbst. */
 
-import crypto from "node:crypto";
 import { Router } from "express";
 
 import { createLoginLimiter, hashPassword } from "../auth.js";
 import { sendeMail } from "../mail.js";
+import { GUELTIG_WIEDERHERSTELLUNG, erstelleToken, linkZu, tokenHash } from "../resetToken.js";
 
-const GUELTIG_MINUTEN = 60;
-
-const tokenHash = (token) => crypto.createHash("sha256").update(token).digest("hex");
+const GUELTIG_MINUTEN = GUELTIG_WIEDERHERSTELLUNG;
 
 function nachricht(config, name, link) {
   return [
@@ -64,16 +62,7 @@ export default function passwordResetRoutes(db, config) {
       .get(code, email);
 
     if (konto) {
-      const token = crypto.randomBytes(32).toString("base64url");
-      const ablauf = new Date(Date.now() + GUELTIG_MINUTEN * 60 * 1000).toISOString();
-      db.transaction(() => {
-        // Ältere Anforderungen entwerten: es soll immer nur ein Link gelten.
-        db.prepare("DELETE FROM password_resets WHERE account_id = ?").run(konto.id);
-        db.prepare("INSERT INTO password_resets (token_hash, account_id, expires_at) VALUES (?, ?, ?)")
-          .run(tokenHash(token), konto.id, ablauf);
-      })();
-
-      const link = `${config.publicUrl}/passwort-neu?token=${token}`;
+      const link = linkZu(config, erstelleToken(db, konto.id, GUELTIG_MINUTEN));
       try {
         await sendeMail(config, {
           an: konto.email,

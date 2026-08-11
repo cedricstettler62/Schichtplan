@@ -4,7 +4,7 @@ import { useState } from "react";
  * `onLogin(code, name, password)` liefert null bei Erfolg, sonst eine Fehlermeldung.
  * Ab Phase 2 prüft das der Server; die Firmenliste liegt dann nicht mehr im Browser.
  */
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, onForgotPassword }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -55,6 +55,9 @@ export default function LoginScreen({ onLogin }) {
         {error && <p className="sb-error">{error}</p>}
         <button type="button" className="sb-btn sb-btn-ink sb-login-btn" onClick={submit} disabled={busy}>
           {busy ? "Wird angemeldet …" : "Anmelden"}
+        </button>
+        <button type="button" className="sb-btn sb-btn-quiet sb-login-btn" onClick={onForgotPassword}>
+          Passwort vergessen?
         </button>
       </div>
     </div>

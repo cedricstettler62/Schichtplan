@@ -5,7 +5,14 @@ import { useState } from "react";
  * `variant="button"` für eigenständige Aktionen, `"icon"` für das kleine ×
  * an einem Chip, wo kein Platz für Text ist.
  */
-export default function ConfirmDelete({ onConfirm, label = "Löschen", question, variant = "icon" }) {
+export default function ConfirmDelete({
+  onConfirm,
+  label = "Löschen",
+  confirmLabel = "Ja, löschen",
+  question,
+  variant = "icon",
+  small = false,
+}) {
   const [asking, setAsking] = useState(false);
 
   if (asking) {
@@ -14,7 +21,7 @@ export default function ConfirmDelete({ onConfirm, label = "Löschen", question,
       <span className="sb-confirm">
         <span>{question || "Wirklich löschen?"}</span>
         <button type="button" className="sb-btn sb-btn-sm sb-btn-rust" onClick={() => { onConfirm(); setAsking(false); }}>
-          Ja, löschen
+          {confirmLabel}
         </button>
         <button type="button" className="sb-btn sb-btn-sm sb-btn-quiet" onClick={() => setAsking(false)}>
           Abbrechen
@@ -23,7 +30,11 @@ export default function ConfirmDelete({ onConfirm, label = "Löschen", question,
     );
   }
   if (variant === "button") {
-    return <button type="button" className="sb-btn sb-btn-rust" onClick={() => setAsking(true)}>{label}</button>;
+    return (
+      <button type="button" className={`sb-btn sb-btn-rust ${small ? "sb-btn-sm" : ""}`} onClick={() => setAsking(true)}>
+        {label}
+      </button>
+    );
   }
   return (
     <button type="button" className="sb-icon-btn" title={label} aria-label={label} onClick={() => setAsking(true)}>

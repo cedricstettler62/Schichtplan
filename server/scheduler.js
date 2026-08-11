@@ -4,13 +4,14 @@
    wiederkehrende Serien nach HORIZON_DAYS unbemerkt aus, wenn niemand sie
    von Hand verlängerte. */
 
-import { extendSeries, recomputeAll } from "./assignment.js";
+import { extendSeries, purgeOldShifts, recomputeAll } from "./assignment.js";
 
 const HOUR = 60 * 60 * 1000;
 
 export function startScheduler(db, { intervalMs = 6 * HOUR } = {}) {
   const run = () => {
     try {
+      purgeOldShifts(db);
       extendSeries(db);
       recomputeAll(db);
     } catch (err) {

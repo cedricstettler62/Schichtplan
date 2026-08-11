@@ -32,11 +32,28 @@ export function isAssignable(shiftDateISO, today, assignmentDay) {
   return false;
 }
 
+/**
+ * Wann für diese Schicht ausgelost wird: am Zuteilungstag des Vormonats.
+ * Kürzere Monate kappen den Tag, damit der 30. im Februar nicht in den März rutscht.
+ */
+export function assignmentDateOf(shiftDateISO, assignmentDay) {
+  const d = fromISO(shiftDateISO);
+  const vormonat = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const letzter = new Date(vormonat.getFullYear(), vormonat.getMonth() + 1, 0).getDate();
+  vormonat.setDate(Math.min(assignmentDay, letzter));
+  return toISO(vormonat);
+}
+
 export function attemptAssign(shift, accounts, today, assignmentDay, force = false, random = Math.random) {
+  // Die Auslosung findet genau einmal statt: am Zuteilungstermin der Schicht.
+  // Danach besetzt niemand mehr automatisch nach — freie Plätze bekommt, wer
+  // sich einschreibt oder übernimmt. Sonst würde die Zuteilung faktisch bei
+  // jedem Lauf des Zeitplans neu stattfinden.
+  if (shift.assignmentAttempted && !force) return shift;
   const assignableNow = force || isAssignable(shift.date, today, assignmentDay);
   if (!assignableNow) return shift;
   if (shift.assigned.length >= shift.seats) {
-    return shift.assignmentAttempted ? shift : { ...shift, assignmentAttempted: true };
+    return { ...shift, assignmentAttempted: true };
   }
   const eligible = shuffle(
     shift.enrolled.filter(
@@ -97,8 +114,13 @@ export function expandShiftDates(form, horizonDate) {
  * Weitere Termine einer bereits bestehenden Serie, ab dem letzten schon
  * erzeugten Datum bis zum neuen Horizont — damit Serien nicht nach
  * HORIZON_DAYS stillschweigend auslaufen, sondern laufend nachgefüllt werden.
+ *
+ * `notBefore` verhindert Termine in der Vergangenheit: Lag die Serie länger
+ * still (Server aus, alte Sicherung eingespielt), würde sonst die ganze
+ * Lücke nachträglich als Schichten angelegt. Der Takt bleibt trotzdem am
+ * ursprünglichen Termin ausgerichtet, weil weiterhin von dort gezählt wird.
  */
-export function extendSeriesDates(repeat, lastDateISO, endDateISO, horizonDate) {
+export function extendSeriesDates(repeat, lastDateISO, endDateISO, horizonDate, notBefore = null) {
   if (repeat === "once") return [];
   const limit = endDateISO ? fromISO(endDateISO) : horizonDate;
   const capped = limit < horizonDate ? limit : horizonDate;
@@ -107,7 +129,7 @@ export function extendSeriesDates(repeat, lastDateISO, endDateISO, horizonDate) 
   const out = [];
   let d = addDays(fromISO(lastDateISO), step);
   while (d <= capped) {
-    if (keepDate(repeat, d)) out.push(toISO(d));
+    if (keepDate(repeat, d) && (!notBefore || d >= notBefore)) out.push(toISO(d));
     d = addDays(d, step);
   }
   return out;

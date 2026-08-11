@@ -140,6 +140,7 @@ body { margin: 0; }
 
 /* Ticket / shift cards */
 .sb-shift-list { display: flex; flex-direction: column; gap: 10px; }
+.sb-tab-section { display: flex; flex-direction: column; gap: 10px; }
 .sb-ticket-error { padding: 0 4px; }
 .sb-ticket { display: flex; align-items: stretch; background: var(--sb-paper); border: 1px solid var(--sb-line); border-radius: 8px; overflow: hidden; }
 .sb-ticket-body { flex: 1; min-width: 0; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
@@ -150,9 +151,22 @@ body { margin: 0; }
 /* Aufklappbares Ticket: Kopfzeile sieht aus wie ein normales Ticket,
    die Details wachsen darunter aus derselben Karte heraus. */
 .sb-ticket-expandable { display: block; }
+/* Ganze Kopfzeile klickbar (Meine Schichten) … */
 .sb-ticket-main { width: 100%; display: flex; align-items: stretch; padding: 0; border: none; background: none; cursor: pointer; text-align: left; font-family: var(--sb-font-sans); color: var(--sb-ink); }
 .sb-ticket-main:hover { background: rgba(30,42,56,0.03); }
 .sb-ticket-main .sb-bar-caret { align-self: center; padding-right: 14px; }
+/* … oder nur ein Pfeil daneben, wo die Zeile schon einen eigenen Knopf trägt. */
+.sb-ticket-row { display: flex; align-items: stretch; }
+.sb-ticket-toggle { align-self: center; margin-right: 10px; padding: 6px; border: none; background: none; cursor: pointer; color: var(--sb-ink-65); font-size: 14px; line-height: 1; flex-shrink: 0; }
+.sb-ticket-toggle:hover { color: var(--sb-ink); }
+.sb-ticket-detail { padding: 12px 14px 16px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+
+/* Personenlisten in einer aufgeklappten Schicht. */
+.sb-person-list { width: 100%; display: flex; flex-direction: column; }
+.sb-person-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; padding: 7px 0; border-bottom: 1px solid var(--sb-line); }
+.sb-person-row:last-child { border-bottom: none; }
+.sb-person-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-person-action { margin-left: auto; flex-shrink: 0; }
 
 .sb-date-stub { width: 58px; flex-shrink: 0; background: var(--sb-ink); color: var(--sb-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--sb-font-mono); border-right: 1px dashed rgba(246,243,236,0.35); padding: 6px 0; }
 .sb-date-wd { font-size: 10px; text-transform: uppercase; opacity: 0.75; }
@@ -179,8 +193,6 @@ body { margin: 0; }
 .sb-ov-row-detail { padding: 10px 14px 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .sb-ov-help-line { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; flex-wrap: wrap; }
 
-/* My shifts – Kopfzeile ist ein Ticket, hier folgt nur noch der Detailteil. */
-.sb-myshift-detail { padding: 12px 14px 16px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .sb-detail-grid { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; font-size: 13.5px; }
 .sb-detail-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: rgba(30,42,56,0.55); margin-bottom: 2px; }
 

@@ -12,6 +12,7 @@ export default function SettingsTab({
   const [value, setValue] = useState(settings.assignmentDay);
   const [saved, setSaved] = useState(false);
   const [newQual, setNewQual] = useState("");
+  const [qualError, setQualError] = useState("");
 
   const save = async () => {
     const n = Math.min(28, Math.max(1, Number(value) || 1));
@@ -60,13 +61,14 @@ export default function SettingsTab({
             <span key={q.id} className="sb-qual-manage-chip">
               {q.name}
               <ConfirmDelete
-                onConfirm={() => onDeleteQualification(q.id)}
+                onConfirm={async () => setQualError((await onDeleteQualification(q.id)) || "")}
                 label={`Qualifikation „${q.name}“ löschen`}
                 question={`„${q.name}“ löschen?`}
               />
             </span>
           ))}
         </div>
+        {qualError && <p className="sb-error">{qualError}</p>}
         <div className="sb-inline-add">
           <input value={newQual} onChange={(e) => setNewQual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addQual()} placeholder="z. B. Kassenschulung" />
           <button type="button" className="sb-btn sb-btn-ink" onClick={addQual}>Hinzufügen</button>

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import Header from "./features/layout/Header.jsx";
 import LoginScreen from "./features/login/LoginScreen.jsx";
+import ForgotPasswordScreen from "./features/login/ForgotPasswordScreen.jsx";
+import NewPasswordScreen from "./features/login/NewPasswordScreen.jsx";
 import OverviewTab from "./features/overview/OverviewTab.jsx";
 import AdminShiftsTab from "./features/shifts/AdminShiftsTab.jsx";
 import EmployeeShiftsTab from "./features/shifts/EmployeeShiftsTab.jsx";
@@ -20,10 +22,19 @@ import { startOfToday } from "#shared/dates.js";
  * Jede Änderung geht an den Server und wird danach frisch geladen — so sehen
  * alle dasselbe, auch wenn zwei Personen gleichzeitig arbeiten.
  */
+/** Token aus dem Link der Passwort-Mail — die App kommt ohne Router aus. */
+function resetTokenAusAdresse() {
+  if (typeof window === "undefined") return null;
+  if (window.location.pathname !== "/passwort-neu") return null;
+  return new URLSearchParams(window.location.search).get("token");
+}
+
 export default function App() {
   const [state, setState] = useState(null); // null = nicht angemeldet
   const [ready, setReady] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
+  const [resetToken, setResetToken] = useState(resetTokenAusAdresse);
+  const [passwortVergessen, setPasswortVergessen] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -87,12 +98,29 @@ export default function App() {
     return res.id;
   });
 
-  const handleDeleteQualification = act((qualId) => api.del(`/qualifications/${qualId}`));
+  /* Gibt die Fehlermeldung zurück statt sie zu schlucken: Das Löschen kann am
+     Server scheitern, und ein Klick ohne jede Reaktion wäre nicht erklärbar. */
+  const handleDeleteQualification = async (qualId) => {
+    try {
+      await api.del(`/qualifications/${qualId}`);
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    } finally {
+      await refresh();
+    }
+    return null;
+  };
 
   /* --- Schichten --- */
   const handleCreateShift = act((form) => api.post("/shifts", form));
   const handleForceAssign = act((shiftId) => api.post(`/shifts/${shiftId}/assign`));
   const handleToggleEnroll = act((shiftId) => api.post(`/shifts/${shiftId}/enroll`));
+  const handleRemoveEnrollment = act((shiftId, accountId) =>
+    api.del(`/shifts/${shiftId}/enrollments/${accountId}`)
+  );
+  const handleDeleteShift = act((shiftId) => api.del(`/shifts/${shiftId}`));
+  const handleDeleteSeries = act((shiftId) => api.del(`/shifts/${shiftId}/series`));
   const handleAskForHelp = act((shiftId) => api.post(`/shifts/${shiftId}/help`));
   const handleTakeOver = act((shiftId, _helperId, replaceId) =>
     api.post(`/shifts/${shiftId}/takeover`, { replaceId: replaceId || null })
@@ -106,6 +134,20 @@ export default function App() {
   );
 
   const handleUpdateEmail = act((accountId, email) => api.patch(`/accounts/${accountId}/email`, { email }));
+
+  /** Gibt die Fehlermeldung zurück – ein Reset, der stumm scheitert, wäre fatal. */
+  const handleResetPassword = async (accountId, password, currentPassword) => {
+    try {
+      await api.post(`/accounts/${accountId}/password`, { password, currentPassword });
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    } finally {
+      await refresh();
+    }
+    return null;
+  };
+
   const handlePromoteToAdmin = act((accountId) => api.post(`/accounts/${accountId}/promote`));
   const handleChangeAssignmentDay = act((assignmentDay) => api.patch("/settings", { assignmentDay }));
 
@@ -138,10 +180,32 @@ export default function App() {
   const handleDeleteCompany = act((companyId) => api.del(`/companies/${companyId}`));
 
   /* --- Rendering --- */
+  /* Der Link aus der Mail geht allem voraus — wer ihn öffnet, ist ausgesperrt
+     und käme über den Anmeldebildschirm nicht weiter. */
+  if (resetToken) {
+    const zurueckZurAnmeldung = () => {
+      window.history.replaceState({}, "", "/");
+      setResetToken(null);
+    };
+    return (
+      <div className="sb-root">
+        <NewPasswordScreen token={resetToken} onDone={zurueckZurAnmeldung} />
+      </div>
+    );
+  }
+
   if (!ready) return <div className="sb-root" />;
 
   if (!state) {
-    return <div className="sb-root"><LoginScreen onLogin={handleLogin} /></div>;
+    return (
+      <div className="sb-root">
+        {passwortVergessen ? (
+          <ForgotPasswordScreen onBack={() => setPasswortVergessen(false)} />
+        ) : (
+          <LoginScreen onLogin={handleLogin} onForgotPassword={() => setPasswortVergessen(true)} />
+        )}
+      </div>
+    );
   }
 
   if (state.type === "super") {
@@ -162,7 +226,9 @@ export default function App() {
 
   const { company, userId } = state;
   const currentUser = company.accounts.find((a) => a.id === userId);
-  if (!currentUser) return <div className="sb-root"><LoginScreen onLogin={handleLogin} /></div>;
+  if (!currentUser) {
+    return <div className="sb-root"><LoginScreen onLogin={handleLogin} onForgotPassword={() => setPasswortVergessen(true)} /></div>;
+  }
 
   const { qualifications, shifts, settings, accounts } = company;
   const isAdmin = currentUser.role === "admin";
@@ -188,8 +254,10 @@ export default function App() {
 
           {activeTab === "shifts" && (isAdmin ? (
             <AdminShiftsTab
-              shifts={shifts} qualifications={qualifications} today={today}
-              onCreate={handleCreateShift} onAddQualification={handleAddQualification} onForceAssign={handleForceAssign}
+              shifts={shifts} qualifications={qualifications} accounts={accounts} today={today}
+              onCreate={handleCreateShift} onAddQualification={handleAddQualification}
+              onForceAssign={handleForceAssign} onRemoveEnrollment={handleRemoveEnrollment}
+              onDeleteShift={handleDeleteShift} onDeleteSeries={handleDeleteSeries}
             />
           ) : (
             <EmployeeShiftsTab
@@ -202,6 +270,7 @@ export default function App() {
             <EmployeesTab
               accounts={accounts} qualifications={qualifications} verifyAdmin={verifySelf}
               onAddEmployee={handleAddEmployee} onUpdateEmail={handleUpdateEmail}
+              onResetPassword={handleResetPassword}
               onSetQualification={handleSetAccountQualification} onDeleteAccount={handleDeleteAccount}
               onPromote={handlePromoteToAdmin}
             />
@@ -224,7 +293,8 @@ export default function App() {
           {activeTab === "myshifts" && !isAdmin && (
             <MyShiftsTab
               shifts={shifts} qualifications={qualifications}
-              currentUser={currentUser} today={today} onAskForHelp={handleAskForHelp}
+              currentUser={currentUser} today={today} assignmentDay={settings.assignmentDay}
+              onAskForHelp={handleAskForHelp} onWithdraw={handleToggleEnroll}
             />
           )}
 

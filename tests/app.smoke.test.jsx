@@ -102,7 +102,7 @@ describe("Admin", () => {
 
     const ticket = (await screen.findByText("Spätschicht Verkauf")).closest(".sb-ticket");
     expect(within(ticket).getByText("Freie Plätze")).toHaveClass("sb-badge");
-    expect(within(ticket).getByText("0 eingeschrieben")).toBeInTheDocument();
+    expect(within(ticket).getByText("0 von 1 Plätzen besetzt")).toBeInTheDocument();
   });
 });
 

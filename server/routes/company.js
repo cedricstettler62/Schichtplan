@@ -4,8 +4,10 @@
 
 import { Router } from "express";
 
+import { startOfToday, toISO } from "#shared/dates.js";
+
 import { checkPassword, hashPassword, requireAdmin, requireCompany } from "../auth.js";
-import { recompute } from "../assignment.js";
+import { recompute, releaseSeats } from "../assignment.js";
 import { uid } from "../ids.js";
 
 /** Konto aus *dieser* Firma holen — sonst 404, egal ob es anderswo existiert. */
@@ -13,6 +15,12 @@ function ownAccount(db, req, id) {
   return db
     .prepare("SELECT id, company_id, name, email, role FROM accounts WHERE id = ? AND company_id = ?")
     .get(id, req.session.companyId);
+}
+
+/* Bewusst grob: Zweck ist, Tippfehler und leere Felder abzufangen. Ob eine
+   Adresse wirklich existiert, weiss ohnehin erst der Zustellversuch. */
+function istEmail(wert) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(wert);
 }
 
 function adminCount(db, companyId) {
@@ -45,7 +53,26 @@ export default function companyRoutes(db) {
   });
 
   router.delete("/qualifications/:id", requireAdmin, (req, res) => {
-    // Verknüpfungen und Schicht-Anforderungen räumt das Schema selbst auf.
+    /* Das Schema setzt shifts.qualification_id beim Löschen auf NULL — und eine
+       Schicht ohne Qualifikation lässt sich weder einschreiben noch übernehmen.
+       Sie wäre also für immer unbesetzbar. Deshalb hier abfangen, solange noch
+       kommende Schichten die Qualifikation verlangen. */
+    const { n } = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM shifts WHERE company_id = ? AND qualification_id = ? AND date >= ?"
+      )
+      .get(req.session.companyId, req.params.id, toISO(startOfToday()));
+
+    if (n > 0) {
+      return res.status(409).json({
+        error:
+          n === 1
+            ? "Eine kommende Schicht verlangt diese Qualifikation. Löschen ist erst möglich, wenn sie vorbei ist."
+            : `${n} kommende Schichten verlangen diese Qualifikation. Löschen ist erst möglich, wenn sie vorbei sind.`,
+      });
+    }
+
+    // Verknüpfungen und vergangene Schichten räumt das Schema selbst auf.
     db.prepare("DELETE FROM qualifications WHERE id = ? AND company_id = ?")
       .run(req.params.id, req.session.companyId);
     recompute(db, req.session.companyId);
@@ -57,13 +84,17 @@ export default function companyRoutes(db) {
   router.post("/employees", requireAdmin, (req, res) => {
     const name = String(req.body?.name || "").trim();
     const password = String(req.body?.password || "");
+    const email = String(req.body?.email || "").trim();
     if (!name || password.length < 4) {
       return res.status(400).json({ error: "Name und ein Passwort mit mindestens 4 Zeichen sind nötig." });
     }
+    // Ohne Adresse gäbe es keinen Weg zurück ins Konto, wenn das Passwort weg ist.
+    if (!istEmail(email)) return res.status(400).json({ error: "Eine gültige E-Mail-Adresse ist nötig." });
+
     const id = uid("a");
     db.prepare(
       "INSERT INTO accounts (id, company_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?, 'employee')"
-    ).run(id, req.session.companyId, name, String(req.body?.email || "").trim(), hashPassword(password));
+    ).run(id, req.session.companyId, name, email, hashPassword(password));
     res.json({ id });
   });
 
@@ -75,7 +106,10 @@ export default function companyRoutes(db) {
     const mayEdit = isSelf || (req.session.role === "admin" && target.role !== "admin");
     if (!mayEdit) return res.status(403).json({ error: "Nicht erlaubt." });
 
-    db.prepare("UPDATE accounts SET email = ? WHERE id = ?").run(String(req.body?.email || "").trim(), target.id);
+    const email = String(req.body?.email || "").trim();
+    if (!istEmail(email)) return res.status(400).json({ error: "Eine gültige E-Mail-Adresse ist nötig." });
+
+    db.prepare("UPDATE accounts SET email = ? WHERE id = ?").run(email, target.id);
     res.json({ ok: true });
   });
 
@@ -110,17 +144,26 @@ export default function companyRoutes(db) {
     res.json({ ok: true });
   });
 
+  /**
+   * Eigenes Passwort ändern — oder als Admin das eines Mitarbeitendenkontos
+   * zurücksetzen, wenn dort jemand ausgesperrt ist. Bestätigt wird in beiden
+   * Fällen mit dem *eigenen* Passwort: Das fremde kennt der Admin ja nicht.
+   */
   router.post("/accounts/:id/password", requireCompany, (req, res) => {
     const target = ownAccount(db, req, req.params.id);
     if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-    // Das eigene Passwort ändert nur, wer das aktuelle kennt.
-    if (target.id !== req.session.accountId) return res.status(403).json({ error: "Nicht erlaubt." });
+
+    const isSelf = target.id === req.session.accountId;
+    // Unter Admins setzt niemand das Passwort eines anderen — sonst könnte ein
+    // Admin die Firma übernehmen, indem er die anderen aussperrt.
+    const mayReset = isSelf || (req.session.role === "admin" && target.role !== "admin");
+    if (!mayReset) return res.status(403).json({ error: "Nicht erlaubt." });
 
     const password = String(req.body?.password || "");
     if (password.length < 4) return res.status(400).json({ error: "Mindestens 4 Zeichen." });
 
-    const row = db.prepare("SELECT password_hash FROM accounts WHERE id = ?").get(target.id);
-    if (!checkPassword(String(req.body?.currentPassword || ""), row.password_hash)) {
+    const eigenes = db.prepare("SELECT password_hash FROM accounts WHERE id = ?").get(req.session.accountId);
+    if (!checkPassword(String(req.body?.currentPassword || ""), eigenes.password_hash)) {
       return res.status(403).json({ error: "Das aktuelle Passwort ist falsch." });
     }
 
@@ -138,7 +181,17 @@ export default function companyRoutes(db) {
       return res.status(409).json({ error: "Die letzte Administration lässt sich nicht löschen." });
     }
 
+    /* Schichten, die dieses Konto besetzt hat, dürfen nicht still an die
+       nächstbeste eingeschriebene Person weitergereicht werden — sie sollen
+       sichtbar unter "Noch offene Plätze" auftauchen. Die Zuordnung muss vor
+       dem Löschen gelesen werden, danach hat das Schema sie weggeräumt. */
+    const frei = db
+      .prepare("SELECT shift_id FROM enrollments WHERE account_id = ? AND assigned = 1")
+      .all(target.id)
+      .map((r) => r.shift_id);
+
     db.prepare("DELETE FROM accounts WHERE id = ?").run(target.id);
+    releaseSeats(db, frei);
     recompute(db, req.session.companyId);
     res.json({ ok: true, self: isSelf });
   });

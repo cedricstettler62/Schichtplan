@@ -64,6 +64,16 @@ CREATE TABLE IF NOT EXISTS enrollments (
   PRIMARY KEY (shift_id, account_id)
 );
 
+/* Passwort-Wiederherstellung. Gespeichert wird nur der Hash des Tokens: Wer
+   die Datenbank liest, kann damit kein Konto übernehmen. */
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  used       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_resets_account ON password_resets(account_id);
+
 CREATE TABLE IF NOT EXISTS help_requests (
   shift_id   TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

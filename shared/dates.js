@@ -8,6 +8,17 @@ export function fromISO(s) { const [y, m, d] = s.split("-").map(Number); return 
 
 export function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 
+/** Monate verschieben, ohne in den Folgemonat zu rutschen: 31.5. − 3 Monate = 28./29.2. */
+export function addMonths(d, n) {
+  const r = new Date(d);
+  const tag = r.getDate();
+  r.setDate(1);
+  r.setMonth(r.getMonth() + n);
+  const letzter = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+  r.setDate(Math.min(tag, letzter));
+  return r;
+}
+
 export function fmtDate(iso) {
   const d = fromISO(iso);
   const wd = d.toLocaleDateString("de-DE", { weekday: "short" });

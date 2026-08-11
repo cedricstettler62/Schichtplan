@@ -3,7 +3,7 @@ import EmployeeManageRow from "./EmployeeManageRow.jsx";
 
 export default function EmployeesTab({
   accounts, qualifications, verifyAdmin,
-  onAddEmployee, onUpdateEmail, onSetQualification, onDeleteAccount, onPromote,
+  onAddEmployee, onUpdateEmail, onResetPassword, onSetQualification, onDeleteAccount, onPromote,
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
@@ -59,6 +59,7 @@ export default function EmployeesTab({
               qualifications={qualifications}
               verifyAdmin={verifyAdmin}
               onUpdateEmail={onUpdateEmail}
+              onResetPassword={onResetPassword}
               onSetQualification={onSetQualification}
               onDeleteAccount={onDeleteAccount}
               onPromote={onPromote}

@@ -10,7 +10,7 @@ import {
   extendSeriesDates,
   isAssignable,
 } from "#shared/assignment.js";
-import { fromISO, toISO } from "#shared/dates.js";
+import { addMonths, fromISO, toISO } from "#shared/dates.js";
 
 const ACCOUNTS = [
   { id: "a1", qualifications: ["q1"] },
@@ -72,6 +72,35 @@ describe("Zuteilung", () => {
     const result = attemptAssign(shift({ date: "2026-06-01", enrolled: ["a1"] }), ACCOUNTS, today, 7, true);
     expect(result.assigned).toEqual(["a1"]);
   });
+
+  test("die Auslosung findet nur einmal statt", () => {
+    // Sonst würde jeder Lauf des Zeitplans faktisch neu zuteilen.
+    const gelaufen = shift({ enrolled: ["a1"], assignmentAttempted: true });
+    expect(attemptAssign(gelaufen, ACCOUNTS, today, 7)).toBe(gelaufen);
+  });
+
+  test("die Administration kann trotzdem nachträglich zuteilen", () => {
+    const gelaufen = shift({ enrolled: ["a1"], assignmentAttempted: true });
+    expect(attemptAssign(gelaufen, ACCOUNTS, today, 7, true).assigned).toEqual(["a1"]);
+  });
+
+  test("vor dem Zuteilungstag passiert nichts – auch nicht das Merken", () => {
+    const kuenftig = shift({ date: "2026-04-20", enrolled: ["a1"] });
+    const result = attemptAssign(kuenftig, ACCOUNTS, today, 15); // heute ist der 10.
+    expect(result).toBe(kuenftig);
+    expect(result.assignmentAttempted).toBe(false);
+  });
+});
+
+describe("Monate verschieben", () => {
+  test("kappt auf den letzten Tag des Zielmonats", () => {
+    expect(toISO(addMonths(fromISO("2026-05-31"), -3))).toBe("2026-02-28");
+    expect(toISO(addMonths(fromISO("2024-05-31"), -3))).toBe("2024-02-29"); // Schaltjahr
+  });
+
+  test("rechnet über den Jahreswechsel", () => {
+    expect(toISO(addMonths(fromISO("2026-02-15"), -3))).toBe("2025-11-15");
+  });
 });
 
 describe("Serien", () => {
@@ -119,6 +148,18 @@ describe("Serien nachfüllen", () => {
   test("Wochenend-Serien lassen weiterhin Werktage aus", () => {
     expect(extendSeriesDates("weekend", "2026-03-29", null, fromISO("2026-04-06")))
       .toEqual(["2026-04-04", "2026-04-05"]);
+  });
+
+  test("legt keine Termine in der Vergangenheit an", () => {
+    // Serie lag lange still — nachgeholt wird nur, was noch bevorsteht.
+    const dates = extendSeriesDates("weekly", "2026-03-03", null, horizon, fromISO("2026-04-10"));
+    expect(dates).toEqual(["2026-04-14", "2026-04-21", "2026-04-28"]);
+  });
+
+  test("der Takt bleibt am ursprünglichen Wochentag ausgerichtet", () => {
+    const dates = extendSeriesDates("weekly", "2026-03-03", null, horizon, fromISO("2026-04-10"));
+    const wochentage = new Set(dates.map((d) => fromISO(d).getDay()));
+    expect([...wochentage]).toEqual([fromISO("2026-03-03").getDay()]);
   });
 });
 

@@ -5,10 +5,10 @@
 import { Router } from "express";
 
 import { HORIZON_DAYS, buildShiftsFromForm, canTakeOver, hasQualification } from "#shared/assignment.js";
-import { addDays, startOfToday, toISO } from "#shared/dates.js";
+import { addDays, fromISO, startOfToday, toISO } from "#shared/dates.js";
 
 import { requireAdmin, requireCompany } from "../auth.js";
-import { recompute } from "../assignment.js";
+import { recompute, releaseSeats } from "../assignment.js";
 import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
 
@@ -75,16 +75,91 @@ export default function shiftRoutes(db) {
 
     const me = req.session.accountId;
     if (shift.enrolled.includes(me)) {
-      db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, me);
-    } else {
-      const accounts = readAccountsForLogic(db, req.session.companyId);
-      if (!hasQualification(accounts, me, shift.qualificationId)) {
-        return res.status(403).json({ error: "Dir fehlt die nötige Qualifikation." });
+      // Eine feste Zuteilung darf niemand still zurückgeben: sonst stünde die
+      // Schicht kurzfristig unbesetzt da, ohne dass es jemand merkt.
+      if (shift.assigned.includes(me)) {
+        return res.status(403).json({
+          error: "Diese Schicht ist dir fest zugeteilt. Nur ein Admin kann dich austragen – oder du stellst ein Hilfegesuch.",
+        });
       }
-      db.prepare("INSERT INTO enrollments (shift_id, account_id, assigned) VALUES (?, ?, 0)").run(shift.id, me);
+      db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, me);
+      recompute(db, req.session.companyId);
+      return res.json({ ok: true });
     }
 
+    const accounts = readAccountsForLogic(db, req.session.companyId);
+    if (!hasQualification(accounts, me, shift.qualificationId)) {
+      return res.status(403).json({ error: "Dir fehlt die nötige Qualifikation." });
+    }
+
+    /* Ist die Auslosung für diese Schicht schon gelaufen und trotzdem ein Platz
+       frei, bekommt ihn sofort, wer sich jetzt einschreibt. Ein zweiter
+       Zuteilungstermin kommt für diese Schicht nicht mehr — warten liesse den
+       Platz bis zum Schichtbeginn leer. */
+    const sofortZuteilen = shift.assignmentAttempted && shift.assigned.length < shift.seats;
+
+    db.transaction(() => {
+      db.prepare("INSERT INTO enrollments (shift_id, account_id, assigned) VALUES (?, ?, ?)")
+        .run(shift.id, me, sofortZuteilen ? 1 : 0);
+      if (sofortZuteilen && !shift.assignedAt) {
+        db.prepare("UPDATE shifts SET assigned_at = ? WHERE id = ?").run(toISO(startOfToday()), shift.id);
+      }
+    })();
+
     recompute(db, req.session.companyId);
+    res.json({ ok: true });
+  });
+
+  /**
+   * Diese Schicht und alle späteren derselben Serie löschen.
+   *
+   * Muss vor der Nachfüllung geschützt werden: `extendSeries` hängt an die
+   * jeweils letzte Schicht einer Serie weitere an, würde die gelöschten Termine
+   * also beim nächsten Lauf wieder anlegen. Ein Enddatum auf den verbleibenden
+   * (vergangenen) Schichten beendet die Serie sauber.
+   */
+  router.delete("/:id/series", requireAdmin, (req, res) => {
+    const shift = ownShift(db, req, req.params.id);
+    if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+
+    const enddatum = toISO(addDays(fromISO(shift.date), -1));
+    let geloescht = 0;
+
+    db.transaction(() => {
+      geloescht = db
+        .prepare("DELETE FROM shifts WHERE company_id = ? AND series_id = ? AND date >= ?")
+        .run(req.session.companyId, shift.seriesId, shift.date).changes;
+      db.prepare("UPDATE shifts SET end_date = ? WHERE company_id = ? AND series_id = ?")
+        .run(enddatum, req.session.companyId, shift.seriesId);
+    })();
+
+    res.json({ deleted: geloescht });
+  });
+
+  /** Eine einzelne Schicht löschen. Einschreibungen und Hilfegesuche gehen mit. */
+  router.delete("/:id", requireAdmin, (req, res) => {
+    const shift = ownShift(db, req, req.params.id);
+    if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+    db.prepare("DELETE FROM shifts WHERE id = ?").run(shift.id);
+    res.json({ deleted: 1 });
+  });
+
+  /** Austragen durch die Administration — der einzige Weg aus einer festen Zuteilung. */
+  router.delete("/:id/enrollments/:accountId", requireAdmin, (req, res) => {
+    const shift = ownShift(db, req, req.params.id);
+    if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+
+    const accountId = req.params.accountId;
+    if (!shift.enrolled.includes(accountId)) {
+      return res.status(404).json({ error: "Diese Person ist für die Schicht nicht eingetragen." });
+    }
+
+    db.transaction(() => {
+      db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, accountId);
+      db.prepare("DELETE FROM help_requests WHERE shift_id = ? AND account_id = ?").run(shift.id, accountId);
+    })();
+    releaseSeats(db, [shift.id]);
+
     res.json({ ok: true });
   });
 

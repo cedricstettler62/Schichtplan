@@ -62,6 +62,7 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
         {filtered.map((s) => {
           const qual = qualifications.find((q) => q.id === s.qualificationId);
           const enrolled = s.enrolled.includes(currentUser.id);
+          const assignedToMe = s.assigned.includes(currentUser.id);
           const qualified = hasQualification(accounts, currentUser.id, s.qualificationId);
           return (
             <div key={s.id}>
@@ -70,7 +71,8 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
                 <div className="sb-ticket-body">
                   <div className="sb-ticket-top">
                     <span className="sb-ticket-name">{s.name}</span>
-                    {enrolled && <Badge tone="petrol">Eingeschrieben</Badge>}
+                    {assignedToMe && <Badge tone="petrol">Zugeteilt</Badge>}
+                    {enrolled && !assignedToMe && <Badge tone="ink">Eingeschrieben</Badge>}
                     {!qualified && <Badge tone="rust">Qualifikation fehlt</Badge>}
                   </div>
                   <div className="sb-ticket-meta">
@@ -79,13 +81,18 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
                     <span>{s.seats - s.assigned.length} von {s.seats} Plätzen frei</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className={`sb-btn sb-ticket-action ${enrolled ? "sb-btn-quiet" : "sb-btn-petrol"}`}
-                  onClick={() => handleClick(s, qualified, enrolled, qual ? qual.name : null)}
-                >
-                  {enrolled ? "Austragen" : "Einschreiben"}
-                </button>
+                {assignedToMe ? (
+                  /* Kein Knopf, der ohnehin abgewiesen würde – lieber sagen, warum. */
+                  <span className="sb-ticket-action sb-status">Austragen nur über Admin</span>
+                ) : (
+                  <button
+                    type="button"
+                    className={`sb-btn sb-ticket-action ${enrolled ? "sb-btn-quiet" : "sb-btn-petrol"}`}
+                    onClick={() => handleClick(s, qualified, enrolled, qual ? qual.name : null)}
+                  >
+                    {enrolled ? "Austragen" : "Einschreiben"}
+                  </button>
+                )}
               </div>
               {enrollError && enrollError.shiftId === s.id && <p className="sb-error sb-ticket-error">{enrollError.message}</p>}
             </div>

@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { toISO, startOfToday } from "#shared/dates.js";
+import { addDays, addMonths, toISO, startOfToday } from "#shared/dates.js";
+import { extendSeries, purgeOldShifts } from "../server/assignment.js";
 import { createCompany, openDb, readCompany } from "../server/db.js";
 import { ADMIN, EMPLOYEE, SUPER, createClient, startTestServer } from "./helpers/server.js";
 
@@ -148,6 +149,425 @@ describe("Schichten", () => {
     expect((await admin.get("/api/state")).data.company.shifts[0].assigned).toHaveLength(1);
   });
 
+  test("aus einer festen Zuteilung trägt sich niemand selbst aus", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const zugeteilt = (await lea.get("/api/state")).data.company.shifts[0];
+    expect(zugeteilt.assigned).toHaveLength(1);
+
+    // Zweiter Aufruf wäre bisher ein stilles Austragen gewesen.
+    const res = await lea.post(`/api/shifts/${shiftId}/enroll`);
+    expect(res.status).toBe(403);
+    expect((await lea.get("/api/state")).data.company.shifts[0].assigned).toHaveLength(1);
+  });
+
+  test("die Administration trägt eine zugeteilte Person aus", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const leaId = (await lea.get("/api/state")).data.userId;
+    await lea.post(`/api/shifts/${shiftId}/help`);
+
+    const res = await admin.del(`/api/shifts/${shiftId}/enrollments/${leaId}`);
+    expect(res.status).toBe(200);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.assigned).toEqual([]);
+    expect(shift.enrolled).toEqual([]);
+    expect(shift.helpRequests).toEqual([]); // das Hilfegesuch darf nicht verwaisen
+    // Gilt als versuchte, offen gebliebene Zuteilung – sonst taucht die
+    // Schicht in der Übersicht nicht unter "Noch offene Plätze" auf.
+    expect(shift.assignmentAttempted).toBe(true);
+    // Ohne Zugeteilte darf kein Zuteilungsdatum stehen bleiben.
+    expect(shift.assignedAt).toBeNull();
+  });
+
+  test("ein frei gemachter Platz wird nicht automatisch nachbesetzt", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+    const { data: neu } = await admin.post("/api/employees", {
+      name: "Tom Klein", email: "tom@firma.ch", password: "12345",
+    });
+    await admin.patch(`/api/accounts/${neu.id}/qualifications`, { qualificationId: qualId, value: true });
+
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    // Beide schreiben sich ein, einer bekommt den einen Platz.
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.post(`/api/shifts/${shiftId}/enroll`);
+
+    const vorher = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(vorher.assigned).toHaveLength(1);
+    expect(vorher.enrolled).toHaveLength(2);
+
+    await admin.del(`/api/shifts/${shiftId}/enrollments/${vorher.assigned[0]}`);
+
+    const nachher = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(nachher.assigned).toEqual([]); // die wartende Person rückt nicht nach
+    expect(nachher.enrolled).toHaveLength(1);
+    expect(nachher.assignmentAttempted).toBe(true);
+
+    // Auch ein späterer Zuteilungslauf lässt den Platz frei.
+    await lea.post(`/api/shifts/${shiftId}/help`).catch(() => {});
+    expect((await admin.get("/api/state")).data.company.shifts[0].assigned).toEqual([]);
+  });
+
+  test("die Administration kann den frei gemachten Platz bewusst zuteilen", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+    const { data: neu } = await admin.post("/api/employees", {
+      name: "Tom Klein", email: "tom@firma.ch", password: "12345",
+    });
+    await admin.patch(`/api/accounts/${neu.id}/qualifications`, { qualificationId: qualId, value: true });
+
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.post(`/api/shifts/${shiftId}/enroll`);
+
+    const vorher = (await admin.get("/api/state")).data.company.shifts[0];
+    await admin.del(`/api/shifts/${shiftId}/enrollments/${vorher.assigned[0]}`);
+    await admin.post(`/api/shifts/${shiftId}/assign`);
+
+    expect((await admin.get("/api/state")).data.company.shifts[0].assigned).toHaveLength(1);
+  });
+
+  test("Mitarbeitende tragen niemanden aus", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const leaId = (await lea.get("/api/state")).data.userId;
+
+    expect((await lea.del(`/api/shifts/${shiftId}/enrollments/${leaId}`)).status).toBe(403);
+    expect((await admin.get("/api/state")).data.company.shifts[0].assigned).toHaveLength(1);
+  });
+
+  test("vor dem Zuteilungstag wird nur eingeschrieben, nicht zugeteilt", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    // Zuteilungstag auf morgen, damit er heute sicher noch nicht erreicht ist.
+    const morgen = Math.min(28, startOfToday().getDate() + 1);
+    await admin.patch("/api/settings", { assignmentDay: morgen });
+
+    // Schicht im nächsten Monat: der Zuteilungstermin liegt noch vor uns.
+    const naechsterMonat = new Date();
+    naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
+    await admin.post("/api/shifts", {
+      name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.enrolled).toHaveLength(1);
+    expect(shift.assigned).toEqual([]);
+    expect(shift.assignmentAttempted).toBe(false);
+  });
+
+  test("nach der Auslosung teilt das Einschreiben sofort zu", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    // Schicht von heute: der Zuteilungstermin ist längst vorbei, die Auslosung
+    // läuft beim Anlegen und findet niemanden.
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const offen = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(offen.assignmentAttempted).toBe(true);
+    expect(offen.assigned).toEqual([]);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${offen.id}/enroll`);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.assigned).toHaveLength(1);
+    expect(shift.assignedAt).toBe(heute());
+  });
+
+  test("ist die Schicht voll, schreibt sich die nächste Person nur ein", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const { data: neu } = await admin.post("/api/employees", {
+      name: "Tom Klein", email: "tom@firma.ch", password: "12345",
+    });
+    await admin.patch(`/api/accounts/${neu.id}/qualifications`, { qualificationId: qualId, value: true });
+
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.post(`/api/shifts/${shiftId}/enroll`);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.assigned).toHaveLength(1); // die Platzzahl bleibt gewahrt
+    expect(shift.enrolled).toHaveLength(2);
+  });
+
+  test("die Auslosung räumt die Warteliste ab", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const { data: neu } = await admin.post("/api/employees", {
+      name: "Tom Klein", email: "tom@firma.ch", password: "12345",
+    });
+    await admin.patch(`/api/accounts/${neu.id}/qualifications`, { qualificationId: qualId, value: true });
+
+    // Zuteilungstag auf morgen: die Auslosung läuft erst auf Anordnung.
+    const morgen = Math.min(28, startOfToday().getDate() + 1);
+    await admin.patch("/api/settings", { assignmentDay: morgen });
+    const naechsterMonat = new Date();
+    naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
+    await admin.post("/api/shifts", {
+      name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.post(`/api/shifts/${shiftId}/enroll`);
+
+    // Vor der Auslosung stehen beide auf der Liste.
+    expect((await admin.get("/api/state")).data.company.shifts[0].enrolled).toHaveLength(2);
+
+    await admin.post(`/api/shifts/${shiftId}/assign`);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.assigned).toHaveLength(1);
+    // Wer leer ausgeht, verschwindet aus der Schicht — und damit aus "Meine Schichten".
+    expect(shift.enrolled).toEqual(shift.assigned);
+  });
+
+  test("ohne Zusage verschwindet die Schicht aus der eigenen Liste", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const { data: neu } = await admin.post("/api/employees", {
+      name: "Tom Klein", email: "tom@firma.ch", password: "12345",
+    });
+    await admin.patch(`/api/accounts/${neu.id}/qualifications`, { qualificationId: qualId, value: true });
+
+    const morgen = Math.min(28, startOfToday().getDate() + 1);
+    await admin.patch("/api/settings", { assignmentDay: morgen });
+    const naechsterMonat = new Date();
+    naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
+    await admin.post("/api/shifts", {
+      name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const leaId = (await lea.get("/api/state")).data.userId;
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.post(`/api/shifts/${shiftId}/enroll`);
+
+    await admin.post(`/api/shifts/${shiftId}/assign`);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    const leerAusgegangen = shift.assigned.includes(leaId) ? neu.id : leaId;
+    expect(shift.enrolled).not.toContain(leerAusgegangen);
+  });
+
+  test("vor der Auslosung bleibt die Warteliste erhalten", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const morgen = Math.min(28, startOfToday().getDate() + 1);
+    await admin.patch("/api/settings", { assignmentDay: morgen });
+
+    const naechsterMonat = new Date();
+    naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
+    await admin.post("/api/shifts", {
+      name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+
+    // Eine fremde Aktion darf die Warteliste nicht vorzeitig abräumen.
+    await admin.patch("/api/settings", { assignmentDay: morgen });
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.enrolled).toHaveLength(1);
+    expect(shift.assigned).toEqual([]);
+  });
+
+  test("die Administration löscht eine einzelne Schicht", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+
+    expect((await admin.del(`/api/shifts/${shiftId}`)).status).toBe(200);
+    expect((await admin.get("/api/state")).data.company.shifts).toEqual([]);
+  });
+
+  test("Mitarbeitende löschen keine Schichten", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.del(`/api/shifts/${shiftId}`)).status).toBe(403);
+    expect((await admin.get("/api/state")).data.company.shifts).toHaveLength(1);
+  });
+
+  test("eine gelöschte Serie wird nicht wieder nachgefüllt", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Tagesdienst", date: heute(), startTime: "08:00", endTime: "16:00",
+      repeat: "daily", seats: 1, qualificationId: qualId,
+    });
+    const vorher = (await admin.get("/api/state")).data.company.shifts;
+    expect(vorher.length).toBeGreaterThan(50);
+
+    expect((await admin.del(`/api/shifts/${vorher[0].id}/series`)).status).toBe(200);
+    expect((await admin.get("/api/state")).data.company.shifts).toEqual([]);
+
+    // Der Nachfüll-Lauf darf die Serie nicht wiederbeleben.
+    extendSeries(server.db);
+    expect((await admin.get("/api/state")).data.company.shifts).toEqual([]);
+  });
+
+  test("das Löschen eines Kontos macht seine Schichten sichtbar offen", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+    const { data: neu } = await admin.post("/api/employees", {
+      name: "Tom Klein", email: "tom@firma.ch", password: "12345",
+    });
+    await admin.patch(`/api/accounts/${neu.id}/qualifications`, { qualificationId: qualId, value: true });
+
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    // Beide eingeschrieben, eine Person bekommt den Platz.
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.post(`/api/shifts/${shiftId}/enroll`);
+
+    const belegt = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(belegt.assigned).toHaveLength(1);
+
+    await admin.del(`/api/accounts/${belegt.assigned[0]}`);
+
+    const offen = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(offen.assigned).toEqual([]); // die andere Person rückt nicht still nach
+    expect(offen.assignmentAttempted).toBe(true); // erscheint unter "Noch offene Plätze"
+    expect(offen.assignedAt).toBeNull();
+  });
+
+  test("eine Qualifikation, die kommende Schichten verlangen, bleibt bestehen", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+
+    const res = await admin.del(`/api/qualifications/${qualId}`);
+    expect(res.status).toBe(409);
+
+    // Sonst stünde die Schicht ohne Qualifikation da und wäre unbesetzbar.
+    const state = (await admin.get("/api/state")).data.company;
+    expect(state.qualifications.some((q) => q.id === qualId)).toBe(true);
+    expect(state.shifts[0].qualificationId).toBe(qualId);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.post(`/api/shifts/${state.shifts[0].id}/enroll`)).status).toBe(200);
+  });
+
+  test("eine ungenutzte Qualifikation lässt sich löschen", async () => {
+    const admin = await asAdmin();
+    const { data: neu } = await admin.post("/api/qualifications", { name: "Gabelstapler" });
+
+    expect((await admin.del(`/api/qualifications/${neu.id}`)).status).toBe(200);
+    const quals = (await admin.get("/api/state")).data.company.qualifications;
+    expect(quals.some((q) => q.id === neu.id)).toBe(false);
+  });
+
   test("ohne passende Qualifikation kein Einschreiben", async () => {
     const admin = await asAdmin();
     const { data: state } = await admin.get("/api/state");
@@ -211,6 +631,130 @@ describe("Konten", () => {
 
     const nochmal = client();
     expect((await nochmal.login({ ...EMPLOYEE, password: "neuesGeheim" })).status).toBe(200);
+  });
+
+  test("die Administration setzt ein vergessenes Passwort neu", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+
+    // Bestätigt wird mit dem eigenen Admin-Passwort, nicht mit dem fremden.
+    expect((await admin.post(`/api/accounts/${leaId}/password`, {
+      password: "neuStart", currentPassword: "falsch",
+    })).status).toBe(403);
+
+    expect((await admin.post(`/api/accounts/${leaId}/password`, {
+      password: "neuStart", currentPassword: "12345",
+    })).status).toBe(200);
+
+    expect((await client().login({ ...EMPLOYEE, password: "neuStart" })).status).toBe(200);
+  });
+
+  test("Admins setzen einander das Passwort nicht", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    await admin.post(`/api/accounts/${leaId}/promote`);
+
+    // Sonst könnte ein Admin die anderen aussperren und die Firma übernehmen.
+    expect((await admin.post(`/api/accounts/${leaId}/password`, {
+      password: "uebernahme", currentPassword: "12345",
+    })).status).toBe(403);
+  });
+
+  test("Mitarbeitende setzen fremde Passwörter nicht", async () => {
+    const admin = await asAdmin();
+    const adminId = (await admin.get("/api/state")).data.userId;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.post(`/api/accounts/${adminId}/password`, {
+      password: "geklaut", currentPassword: "12345",
+    })).status).toBe(403);
+  });
+});
+
+describe("Passwort vergessen", () => {
+  /** Holt das Token direkt aus der Datenbank — die E-Mail selbst geht hier nirgends hin. */
+  const tokenFuer = (accountId) =>
+    server.db.prepare("SELECT token_hash FROM password_resets WHERE account_id = ?").get(accountId);
+
+  test("legt für ein bekanntes Konto ein Token an", async () => {
+    const admin = await asAdmin();
+    const lea = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner");
+
+    const res = await client().post("/api/password-reset/request", {
+      code: "111111", email: "LEA@firma.ch",  // Grossschreibung darf nichts ausmachen
+    });
+    expect(res.status).toBe(200);
+    expect(tokenFuer(lea.id)).toBeTruthy();
+  });
+
+  test("verrät nicht, ob es das Konto gibt", async () => {
+    const bekannt = await client().post("/api/password-reset/request", {
+      code: "111111", email: "lea@firma.ch",
+    });
+    const unbekannt = await client().post("/api/password-reset/request", {
+      code: "111111", email: "niemand@firma.ch",
+    });
+    // Gleicher Status, gleiche Antwort — sonst liesse sich die Belegschaft abfragen.
+    expect(unbekannt.status).toBe(bekannt.status);
+    expect(unbekannt.data).toEqual(bekannt.data);
+  });
+
+  test("das Token setzt das Passwort und gilt danach nicht mehr", async () => {
+    const admin = await asAdmin();
+    const lea = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner");
+
+    // Wie in der Mail: Klartext-Token erzeugen, Hash in die Datenbank.
+    const crypto = await import("node:crypto");
+    const token = crypto.randomBytes(32).toString("base64url");
+    const hash = crypto.createHash("sha256").update(token).digest("hex");
+    server.db.prepare("INSERT INTO password_resets (token_hash, account_id, expires_at) VALUES (?, ?, ?)")
+      .run(hash, lea.id, new Date(Date.now() + 3600e3).toISOString());
+
+    const c = client();
+    expect((await c.get(`/api/password-reset/${token}`)).data.valid).toBe(true);
+    expect((await c.post(`/api/password-reset/${token}`, { password: "ganzNeu" })).status).toBe(200);
+    expect((await client().login({ ...EMPLOYEE, password: "ganzNeu" })).status).toBe(200);
+
+    // Einmal und nicht wieder.
+    expect((await c.get(`/api/password-reset/${token}`)).data.valid).toBe(false);
+    expect((await c.post(`/api/password-reset/${token}`, { password: "nochmal" })).status).toBe(410);
+  });
+
+  test("ein abgelaufenes Token wird abgewiesen", async () => {
+    const admin = await asAdmin();
+    const lea = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner");
+
+    const crypto = await import("node:crypto");
+    const token = crypto.randomBytes(32).toString("base64url");
+    const hash = crypto.createHash("sha256").update(token).digest("hex");
+    server.db.prepare("INSERT INTO password_resets (token_hash, account_id, expires_at) VALUES (?, ?, ?)")
+      .run(hash, lea.id, new Date(Date.now() - 1000).toISOString());
+
+    expect((await client().post(`/api/password-reset/${token}`, { password: "zuSpaet" })).status).toBe(410);
+    expect((await client().login({ ...EMPLOYEE, password: "zuSpaet" })).status).toBe(401);
+  });
+
+  test("ein erfundenes Token führt zu nichts", async () => {
+    const c = client();
+    expect((await c.get("/api/password-reset/ausgedacht")).data.valid).toBe(false);
+    expect((await c.post("/api/password-reset/ausgedacht", { password: "egal12" })).status).toBe(410);
+  });
+
+  test("in der Datenbank steht kein verwendbares Token", async () => {
+    const admin = await asAdmin();
+    const lea = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner");
+    await client().post("/api/password-reset/request", { code: "111111", email: "lea@firma.ch" });
+
+    // Gespeichert ist der Hash; damit lässt sich der Link nicht nachbauen.
+    const { token_hash } = tokenFuer(lea.id);
+    expect((await client().post(`/api/password-reset/${token_hash}`, { password: "versuch" })).status).toBe(410);
   });
 });
 
@@ -310,6 +854,42 @@ describe("Wartung", () => {
     // Der Webdienst legt nur diese Marker-Datei an — den Rest macht systemd.
     expect(fs.existsSync(path.join(server.dir, "data", "update-requested"))).toBe(true);
     expect((await su.get("/api/admin/info")).data.update.state).toBe("angefordert");
+  });
+});
+
+describe("Aufräumen", () => {
+  test("Schichten verschwinden drei Monate nach ihrem Datum vollständig", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const companyId = (await admin.get("/api/state")).data.company.id;
+
+    const anlegen = (datum) => {
+      const id = `s_${datum}`;
+      server.db
+        .prepare(
+          `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
+                               repeat, seats, qualification_id, assignment_attempted, assigned_at)
+           VALUES (?, ?, 'serie_alt', 'Altdienst', ?, '08:00', '16:00', 'once', 1, ?, 1, NULL)`
+        )
+        .run(id, companyId, datum, qualId);
+      return id;
+    };
+
+    const uralt = anlegen(toISO(addMonths(startOfToday(), -4)));
+    const knappDrunter = anlegen(toISO(addDays(addMonths(startOfToday(), -3), 1)));
+
+    // Einschreibung an der alten Schicht, damit auch die Verknüpfung geprüft ist.
+    const leaId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Lea Brunner'").get().id;
+    server.db.prepare("INSERT INTO enrollments (shift_id, account_id, assigned) VALUES (?, ?, 1)")
+      .run(uralt, leaId);
+
+    expect(purgeOldShifts(server.db)).toBe(1);
+
+    const ids = server.db.prepare("SELECT id FROM shifts").all().map((r) => r.id);
+    expect(ids).toContain(knappDrunter);
+    expect(ids).not.toContain(uralt);
+    // Die Einschreibung darf nicht als Karteileiche zurückbleiben.
+    expect(server.db.prepare("SELECT COUNT(*) AS n FROM enrollments WHERE shift_id = ?").get(uralt).n).toBe(0);
   });
 });
 

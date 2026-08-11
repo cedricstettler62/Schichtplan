@@ -3,9 +3,10 @@ import Avatar from "../../components/Avatar.jsx";
 import Badge from "../../components/Badge.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import EmailChangeForm from "../../components/EmailChangeForm.jsx";
+import PasswordResetForm from "../../components/PasswordResetForm.jsx";
 import DeleteAccountButton from "../../components/DeleteAccountButton.jsx";
 
-export default function EmployeeManageRow({ account, qualifications, verifyAdmin, onUpdateEmail, onSetQualification, onDeleteAccount, onPromote }) {
+export default function EmployeeManageRow({ account, qualifications, verifyAdmin, onUpdateEmail, onResetPassword, onSetQualification, onDeleteAccount, onPromote }) {
   const [open, setOpen] = useState(false);
   const [confirmingPromote, setConfirmingPromote] = useState(false);
 
@@ -24,6 +25,15 @@ export default function EmployeeManageRow({ account, qualifications, verifyAdmin
             <span className="sb-detail-label">E-Mail-Adresse</span>
             <p className="sb-status">Zum Ändern zuerst dein eigenes Admin-Passwort bestätigen.</p>
             <EmailChangeForm verify={verifyAdmin} initialEmail={account.email} onSave={(email, pw) => onUpdateEmail(account.id, email, pw)} />
+          </div>
+
+          <div className="sb-manage-section">
+            <span className="sb-detail-label">Passwort zurücksetzen</span>
+            <p className="sb-status">Für den Fall, dass {account.name.split(" ")[0]} nicht mehr hineinkommt.</p>
+            <PasswordResetForm
+              verify={verifyAdmin}
+              onReset={(neu, adminPw) => onResetPassword(account.id, neu, adminPw)}
+            />
           </div>
 
           <div className="sb-manage-section">

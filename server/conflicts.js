@@ -32,6 +32,33 @@ export function vergissKombinierbar(db, companyId, seriesA, seriesB) {
   ).run(companyId, a, b);
 }
 
+/**
+ * Wirft Freigaben weg, deren Serien es nicht mehr gibt.
+ *
+ * Serien-IDs sind keine Fremdschlüssel — es gibt keine Tabelle der Serien, nur
+ * Schichten, die dieselbe ID tragen. Verschwindet die letzte Schicht einer
+ * Serie, bleibt ihre Freigabe deshalb als Karteileiche liegen. Sie richtet
+ * keinen Schaden an (IDs sind zufällig und werden nie wiederverwendet), aber
+ * die Tabelle wüchse mit jeder gelöschten Serie weiter.
+ *
+ * Gibt die Zahl der entfernten Zeilen zurück.
+ */
+export function raeumeFreigaben(db) {
+  return db
+    .prepare(
+      `DELETE FROM combinable_series
+        WHERE NOT EXISTS (
+                SELECT 1 FROM shifts
+                 WHERE shifts.company_id = combinable_series.company_id
+                   AND shifts.series_id = combinable_series.series_a)
+           OR NOT EXISTS (
+                SELECT 1 FROM shifts
+                 WHERE shifts.company_id = combinable_series.company_id
+                   AND shifts.series_id = combinable_series.series_b)`
+    )
+    .run().changes;
+}
+
 export function istKombinierbar(db, companyId, seriesA, seriesB) {
   const [a, b] = paar(seriesA, seriesB);
   return !!db

@@ -1317,6 +1317,99 @@ describe("Freigaben nachträglich ändern", () => {
   });
 });
 
+describe("Freigaben aufräumen", () => {
+  /* Serien-IDs sind keine Fremdschlüssel — verschwindet die letzte Schicht
+     einer Serie, muss ihre Freigabe von Hand mit weg. */
+  const freigaben = () => server.db.prepare("SELECT COUNT(*) AS n FROM combinable_series").get().n;
+
+  const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+  const schichtNamens = async (c, name) =>
+    (await c.get("/api/state")).data.company.shifts.find((s) => s.name === name);
+
+  /** Frühdienst und ein überschneidender Zweiter, für den eine Freigabe gilt. */
+  const mitFreigabe = async (admin, zweiter = {}) => {
+    const qualId = await qualVon(admin);
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await admin.post("/api/shifts", {
+      name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+      combinableWith: [frueh.seriesId], ...zweiter,
+    });
+    expect(freigaben()).toBe(1);
+    return { qualId, frueh, tag: await schichtNamens(admin, "Tagdienst") };
+  };
+
+  test("mit der letzten Schicht einer Serie geht ihre Freigabe", async () => {
+    const admin = await asAdmin();
+    const { tag } = await mitFreigabe(admin);
+
+    await admin.del(`/api/shifts/${tag.id}`);
+
+    expect(freigaben()).toBe(0);
+  });
+
+  test("solange die Serie noch Termine hat, bleibt die Freigabe", async () => {
+    const admin = await asAdmin();
+    const { tag } = await mitFreigabe(admin, { repeat: "daily" });
+
+    // Nur einen Termin von vielen löschen — die Serie besteht weiter.
+    await admin.del(`/api/shifts/${tag.id}`);
+
+    expect(freigaben()).toBe(1);
+  });
+
+  test("das Löschen einer ganzen Serie nimmt ihre Freigabe mit", async () => {
+    const admin = await asAdmin();
+    const { tag } = await mitFreigabe(admin, { repeat: "daily" });
+
+    // Diese und alle späteren; vergangene gibt es hier keine.
+    await admin.del(`/api/shifts/${tag.id}/series`);
+
+    expect(freigaben()).toBe(0);
+  });
+
+  test("das Wegräumen alter Schichten räumt die Freigaben mit", async () => {
+    const admin = await asAdmin();
+    const { frueh, tag } = await mitFreigabe(admin);
+
+    // Beide Schichten weit genug in die Vergangenheit schieben.
+    const uralt = toISO(addMonths(startOfToday(), -4));
+    for (const id of [frueh.id, tag.id]) {
+      server.db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(uralt, id);
+    }
+
+    expect(purgeOldShifts(server.db)).toBe(2);
+    expect(freigaben()).toBe(0);
+  });
+
+  test("ohne gelöschte Schichten wird nichts angefasst", async () => {
+    const admin = await asAdmin();
+    await mitFreigabe(admin);
+
+    // Läuft täglich mit — darf eine gültige Freigabe nicht wegwerfen.
+    expect(purgeOldShifts(server.db)).toBe(0);
+    expect(freigaben()).toBe(1);
+  });
+
+  test("Freigaben einer gelöschten Firma verschwinden mit ihr", async () => {
+    const admin = await asAdmin();
+    await mitFreigabe(admin);
+
+    const su = client();
+    await su.login(SUPER);
+    const firmaId = server.db.prepare("SELECT id FROM companies WHERE code = '111111'").get().id;
+    await su.del(`/api/companies/${firmaId}`);
+
+    // Das erledigt der Fremdschlüssel auf company_id von selbst.
+    expect(freigaben()).toBe(0);
+  });
+});
+
 describe("Auskunft", () => {
   /* DSG Art. 25 / DSGVO Art. 15: Jede Person kommt an alles, was zu ihr
      gespeichert ist — ohne den Umweg über einen Menschen mit Datenbankzugang. */

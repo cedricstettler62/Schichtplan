@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS shifts (
   assigned_at         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_shifts_company ON shifts(company_id, date);
+CREATE INDEX IF NOT EXISTS idx_shifts_series ON shifts(company_id, series_id);
 
 CREATE TABLE IF NOT EXISTS enrollments (
   shift_id   TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,

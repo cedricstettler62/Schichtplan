@@ -9,7 +9,9 @@ import { addDays, fromISO, startOfToday, toISO } from "#shared/dates.js";
 
 import { requireAdmin, requireCompany } from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
-import { findeKonflikt, konfliktMeldung, merkeKombinierbar, vergissKombinierbar } from "../conflicts.js";
+import {
+  findeKonflikt, konfliktMeldung, merkeKombinierbar, raeumeFreigaben, vergissKombinierbar,
+} from "../conflicts.js";
 import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
 
@@ -305,6 +307,8 @@ export default function shiftRoutes(db) {
         .run(enddatum, req.session.companyId, shift.seriesId);
     })();
 
+    // Bleibt von der Serie nichts übrig, hat auch ihre Freigabe keinen Bezug mehr.
+    raeumeFreigaben(db);
     res.json({ deleted: geloescht });
   });
 
@@ -313,6 +317,7 @@ export default function shiftRoutes(db) {
     const shift = ownShift(db, req, req.params.id);
     if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
     db.prepare("DELETE FROM shifts WHERE id = ?").run(shift.id);
+    raeumeFreigaben(db);
     res.json({ deleted: 1 });
   });
 

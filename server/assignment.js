@@ -4,6 +4,7 @@
 import { HORIZON_DAYS, extendSeriesDates, runAssignmentPass } from "#shared/assignment.js";
 import { addDays, addMonths, startOfToday, toISO } from "#shared/dates.js";
 import { shiftsOverlap } from "#shared/overlap.js";
+import { raeumeFreigaben } from "./conflicts.js";
 import { readAccountsForLogic, readShiftsForLogic } from "./db.js";
 import { uid } from "./ids.js";
 
@@ -99,10 +100,15 @@ export function releaseSeats(db, shiftIds) {
 /**
  * Entfernt Schichten, die länger als `monate` vorbei sind — samt
  * Einschreibungen und Hilfegesuchen, die das Schema mitlöscht.
+ *
+ * Verschwindet dabei die letzte Schicht einer Serie, geht ihre Freigabe mit:
+ * Für Serien-IDs gibt es keinen Fremdschlüssel, der das erledigen könnte.
  */
 export function purgeOldShifts(db, monate = 3) {
   const grenze = toISO(addMonths(startOfToday(), -monate));
-  return db.prepare("DELETE FROM shifts WHERE date < ?").run(grenze).changes;
+  const geloescht = db.prepare("DELETE FROM shifts WHERE date < ?").run(grenze).changes;
+  if (geloescht > 0) raeumeFreigaben(db);
+  return geloescht;
 }
 
 /**

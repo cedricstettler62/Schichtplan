@@ -63,6 +63,15 @@ CREATE TABLE IF NOT EXISTS enrollments (
   PRIMARY KEY (shift_id, account_id)
 );
 
+/* Sich überschneidende Schichten schliessen einander aus. Hier stehen nur die
+   Ausnahmen: Serienpaare, die sich trotzdem zusammen übernehmen lassen. */
+CREATE TABLE IF NOT EXISTS combinable_series (
+  company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  series_a   TEXT NOT NULL,
+  series_b   TEXT NOT NULL,
+  PRIMARY KEY (company_id, series_a, series_b)
+);
+
 CREATE TABLE IF NOT EXISTS help_requests (
   shift_id   TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -171,6 +180,14 @@ export function readCompany(db, companyId) {
     .all(companyId)
     .map((s) => toShift(db, s));
 
+  /* Damit das Bearbeiten-Formular zeigen kann, was bereits freigegeben ist —
+     sonst nähme jede Änderung einer Schicht eine alte Freigabe stillschweigend
+     zurück. */
+  const combinableSeries = db
+    .prepare("SELECT series_a, series_b FROM combinable_series WHERE company_id = ?")
+    .all(companyId)
+    .map((r) => [r.series_a, r.series_b]);
+
   return {
     id: row.id,
     code: row.code,
@@ -178,6 +195,7 @@ export function readCompany(db, companyId) {
     qualifications,
     accounts,
     shifts,
+    combinableSeries,
     settings: { assignmentDay: row.assignment_day },
   };
 }

@@ -3,8 +3,30 @@
 
 import { HORIZON_DAYS, extendSeriesDates, runAssignmentPass } from "#shared/assignment.js";
 import { addDays, addMonths, startOfToday, toISO } from "#shared/dates.js";
+import { shiftsOverlap } from "#shared/overlap.js";
 import { readAccountsForLogic, readShiftsForLogic } from "./db.js";
 import { uid } from "./ids.js";
+
+/**
+ * Wann sich zwei Schichten gegenseitig ausschliessen: wenn sie sich zeitlich
+ * überschneiden und ihre Serien nicht ausdrücklich als zusammen übernehmbar
+ * eingetragen sind.
+ *
+ * Dieselbe Regel gilt beim Einschreiben. Sie hier zu wiederholen ist trotzdem
+ * nötig: Eine Freigabe kann zurückgenommen werden, nachdem sich jemand für
+ * beide eingeschrieben hat — dann steht die Einschreibung schon da und nur die
+ * Auslosung kann noch verhindern, dass daraus zwei Zuteilungen werden.
+ */
+function ausschlussRegel(db, companyId) {
+  const freigegeben = new Set(
+    db.prepare("SELECT series_a, series_b FROM combinable_series WHERE company_id = ?")
+      .all(companyId)
+      .map((r) => `${r.series_a}|${r.series_b}`)
+  );
+  const schluessel = (a, b) => (a <= b ? `${a}|${b}` : `${b}|${a}`);
+
+  return (a, b) => shiftsOverlap(a, b) && !freigegeben.has(schluessel(a.seriesId, b.seriesId));
+}
 
 export function assignmentDayOf(db, companyId) {
   const row = db.prepare("SELECT assignment_day FROM companies WHERE id = ?").get(companyId);
@@ -20,7 +42,10 @@ export function recompute(db, companyId, forceIds = []) {
   const today = startOfToday();
   const before = readShiftsForLogic(db, companyId);
   const accounts = readAccountsForLogic(db, companyId);
-  const after = runAssignmentPass(before, accounts, today, assignmentDayOf(db, companyId), forceIds);
+  const after = runAssignmentPass(
+    before, accounts, today, assignmentDayOf(db, companyId), forceIds,
+    Math.random, ausschlussRegel(db, companyId)
+  );
 
   const setShift = db.prepare("UPDATE shifts SET assignment_attempted = ?, assigned_at = ? WHERE id = ?");
   const setAssigned = db.prepare("UPDATE enrollments SET assigned = 1 WHERE shift_id = ? AND account_id = ?");

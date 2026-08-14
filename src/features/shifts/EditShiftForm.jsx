@@ -1,16 +1,26 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { overlappingSeries } from "#shared/overlap.js";
+import { fmtDate } from "#shared/dates.js";
 
 /*
  * Eine bestehende Schicht ändern.
  *
- * Jede Änderung trägt alle Ein- und Zugeteilten aus — deshalb steht vor dem
- * Speichern eine Rückfrage, die beziffert, wen es trifft. Ein stiller Klick
- * mit demselben Ergebnis wäre nicht zu verantworten.
+ * Ändert sich an der Schicht selbst etwas, trägt das alle Ein- und Zugeteilten
+ * aus — deshalb steht vor dem Speichern eine Rückfrage, die beziffert, wen es
+ * trifft. Wer nur eine Freigabe nachträgt, ändert an der Schicht nichts und
+ * wirft entsprechend auch niemanden heraus.
  *
- * `seriesShifts` sind alle Termine derselben Serie. Sie dienen nur dazu,
- * die Rückfrage genau zu machen; gerechnet wird auf dem Server.
+ * `seriesShifts` sind alle Termine derselben Serie, `shifts` alle sichtbaren
+ * der Firma. Beide dienen nur dazu, Rückfrage und Überschneidungen genau zu
+ * machen; verbindlich gerechnet wird auf dem Server.
  */
-export default function EditShiftForm({ shift, seriesShifts = [], qualifications, onSave, onCancel }) {
+
+/** Reihenfolgeunabhängig, sonst fände der Vergleich ein Paar nur halb. */
+const paarSchluessel = (a, b) => (a <= b ? `${a}|${b}` : `${b}|${a}`);
+
+export default function EditShiftForm({
+  shift, seriesShifts = [], shifts = [], combinableSeries = [], qualifications, onSave, onCancel,
+}) {
   const [name, setName] = useState(shift.name);
   const [date, setDate] = useState(shift.date);
   const [startTime, setStartTime] = useState(shift.startTime);
@@ -19,6 +29,7 @@ export default function EditShiftForm({ shift, seriesShifts = [], qualifications
   const [qualificationId, setQualificationId] = useState(shift.qualificationId || "");
   const [umfang, setUmfang] = useState("einzeln");
   const [abDatum, setAbDatum] = useState(shift.date);
+  const [freigaben, setFreigaben] = useState({});
   const [error, setError] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,6 +39,45 @@ export default function EditShiftForm({ shift, seriesShifts = [], qualifications
 
   const betroffen = nurDiese ? [shift] : seriesShifts.filter((s) => s.date >= abDatum);
   const personen = betroffen.reduce((n, s) => n + s.enrolled.length, 0);
+
+  const geaendert =
+    betroffen.some(
+      (s) =>
+        s.name !== name.trim() ||
+        s.startTime !== startTime ||
+        s.endTime !== endTime ||
+        Number(s.seats) !== Number(seats) ||
+        (s.qualificationId || "") !== qualificationId
+    ) || (nurDiese && date !== shift.date);
+
+  /* Die Termine so, wie sie nach dem Speichern lägen — nur zum Vergleichen.
+     Ein paar Dutzend Schichten, das rechnet sich bei jedem Tastendruck neu. */
+  const geplant = nurDiese
+    ? [{ id: shift.id, date, startTime, endTime }]
+    : betroffen.map((s) => ({ id: s.id, date: s.date, startTime, endTime }));
+
+  /* Womit verglichen wird. Beim Herauslösen zählen auch die bisherigen
+     Geschwister mit: Der Termin ist danach eine eigene Serie und kann sich
+     mit ihnen sehr wohl überschneiden. */
+  const eigeneIds = new Set(geplant.map((g) => g.id));
+  const andere = shifts.filter(
+    (s) => !eigeneIds.has(s.id) && (nurDiese || s.seriesId !== shift.seriesId)
+  );
+
+  const ueberschneidungen = overlappingSeries(geplant, andere);
+
+  const bereitsErlaubt = useMemo(
+    () => new Set(combinableSeries.map(([a, b]) => paarSchluessel(a, b))),
+    [combinableSeries]
+  );
+
+  /* Ohne eigene Wahl gilt, was schon eingetragen ist — sonst nähme jede
+     Änderung eine früher erteilte Freigabe stillschweigend zurück. */
+  const istErlaubt = (seriesId) =>
+    freigaben[seriesId] ?? bereitsErlaubt.has(paarSchluessel(shift.seriesId, seriesId));
+
+  const neueFreigabe = (seriesId) =>
+    !bereitsErlaubt.has(paarSchluessel(shift.seriesId, seriesId));
 
   const pruefen = () => {
     if (!name.trim()) { setError("Bitte einen Namen angeben."); return; }
@@ -49,15 +99,26 @@ export default function EditShiftForm({ shift, seriesShifts = [], qualifications
       qualificationId,
       umfang: nurDiese ? "einzeln" : "ab-datum",
       ...(nurDiese ? { date } : { abDatum }),
+      // Vollständiger Stand für alles, was gerade dasteht — auch die Neins.
+      combinable: Object.fromEntries(ueberschneidungen.map((u) => [u.seriesId, istErlaubt(u.seriesId)])),
     });
     setBusy(false);
     if (meldung) { setError(meldung); setConfirming(false); return; }
     onCancel();
   };
 
-  const frage = nurDiese
-    ? `Diese Schicht ändern?${personen > 0 ? ` ${personen === 1 ? "Eine eingetragene Person wird" : `${personen} eingetragene Personen werden`} ausgetragen.` : ""}`
-    : `${betroffen.length === 1 ? "Eine Schicht" : `${betroffen.length} Schichten`} der Serie ab dem ${abDatum} ändern?${personen > 0 ? ` ${personen === 1 ? "Eine eingetragene Person wird" : `${personen} eingetragene Personen werden`} ausgetragen.` : ""}`;
+  const wenTrifftEs =
+    personen === 0
+      ? ""
+      : personen === 1
+        ? " Eine eingetragene Person wird ausgetragen."
+        : ` ${personen} eingetragene Personen werden ausgetragen.`;
+
+  const frage = !geaendert
+    ? "An der Schicht selbst ändert sich nichts – nur die Freigaben werden gespeichert. Niemand wird ausgetragen."
+    : nurDiese
+      ? `Diese Schicht ändern?${wenTrifftEs}`
+      : `${betroffen.length === 1 ? "Eine Schicht" : `${betroffen.length} Schichten`} der Serie ab dem ${abDatum} ändern?${wenTrifftEs}`;
 
   return (
     <div className="sb-edit-shift">
@@ -119,9 +180,50 @@ export default function EditShiftForm({ shift, seriesShifts = [], qualifications
         </p>
       )}
 
+      {/* Zeigt bestehende wie neue Überschneidungen. So lässt sich eine Freigabe
+          auch nachträglich erteilen, ohne die Schicht neu anlegen zu müssen. */}
+      {ueberschneidungen.length > 0 && (
+        <div className="sb-overlap">
+          <span className="sb-detail-label">Überschneidungen</span>
+          <p className="sb-status">
+            Ohne Freigabe kann niemand zwei davon gleichzeitig übernehmen.
+            Eine Änderung hier trägt für sich allein niemanden aus.
+          </p>
+          {ueberschneidungen.map((u) => (
+            <div key={u.seriesId} className="sb-overlap-row">
+              <div className="sb-overlap-info">
+                <span className="sb-overlap-name">
+                  {u.name}
+                  {neueFreigabe(u.seriesId) && geaendert && <span className="sb-overlap-neu">neu</span>}
+                </span>
+                <span className="sb-overlap-meta">
+                  <span className="sb-mono">{u.startTime}–{u.endTime}</span>
+                  {" · "}
+                  {u.termine === 1 ? fmtDate(u.erster) : `${u.termine} Termine ab ${fmtDate(u.erster)}`}
+                </span>
+              </div>
+              <label className="sb-field sb-field-compact">
+                <span>Zusammen übernehmbar?</span>
+                <select
+                  value={istErlaubt(u.seriesId) ? "ja" : "nein"}
+                  onChange={(e) => {
+                    setFreigaben((f) => ({ ...f, [u.seriesId]: e.target.value === "ja" }));
+                    setConfirming(false);
+                  }}
+                >
+                  <option value="nein">Nein – schliessen einander aus</option>
+                  <option value="ja">Ja – beides zusammen möglich</option>
+                </select>
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+
       <p className="sb-status">
-        Eine geänderte Schicht ist eine andere Schicht: Alle Ein- und Zugeteilten werden
-        ausgetragen und die Schicht gilt wieder als frisch ausgeschrieben.
+        Eine geänderte Schicht ist eine andere Schicht: Sobald sich Name, Zeit, Datum, Plätze oder
+        Qualifikation ändern, werden alle Ein- und Zugeteilten ausgetragen und die Schicht gilt
+        wieder als frisch ausgeschrieben.
       </p>
 
       {error && <p className="sb-error">{error}</p>}
@@ -131,7 +233,7 @@ export default function EditShiftForm({ shift, seriesShifts = [], qualifications
           <span className="sb-confirm">
             <span>{frage}</span>
             <button type="button" className="sb-btn sb-btn-amber sb-btn-sm" onClick={speichern} disabled={busy}>
-              {busy ? "Wird gespeichert …" : "Ja, ändern"}
+              {busy ? "Wird gespeichert …" : "Ja, speichern"}
             </button>
             <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => setConfirming(false)}>
               Abbrechen

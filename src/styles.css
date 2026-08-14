@@ -220,6 +220,17 @@ body { margin: 0; }
 .sb-manage-meta { font-size: 12.5px; color: var(--sb-ink-65); white-space: nowrap; }
 .sb-manage-row-body { padding: 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px; }
 .sb-manage-section { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+/* Überschneidungen beim Anlegen — abgesetzt, weil hier eine Entscheidung
+   verlangt wird und nicht bloss ein Feld ausgefüllt. */
+.sb-overlap { border: 1px solid var(--sb-line); border-radius: 8px; padding: 12px 14px; background: rgba(226,163,59,0.07); }
+.sb-overlap-row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding-top: 10px; }
+.sb-overlap-row + .sb-overlap-row { border-top: 1px dashed var(--sb-line); }
+.sb-overlap-info { display: flex; flex-direction: column; gap: 2px; min-width: 180px; flex: 1 1 180px; }
+.sb-overlap-name { font-weight: 600; font-size: 14px; }
+.sb-overlap-meta { font-size: 12.5px; color: var(--sb-ink-65); }
+/* Hebt hervor, was die Änderung neu aufwirft — Bestehendes stand schon vorher fest. */
+.sb-overlap-neu { margin-left: 7px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; color: #7a5410; background: rgba(226,163,59,0.25); border-radius: 20px; padding: 2px 7px; }
+
 /* Bearbeitungsformular innerhalb einer aufgeklappten Schicht — abgesetzt,
    damit klar ist, wo die Änderung endet und die Schicht wieder anfängt. */
 .sb-edit-shift {

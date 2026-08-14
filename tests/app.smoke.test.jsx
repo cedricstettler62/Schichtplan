@@ -136,7 +136,7 @@ describe("Schicht bearbeiten", () => {
 
     // Vor dem Speichern steht die Rückfrage — die Änderung ist nicht harmlos.
     expect(await within(ticket).findByText(/Diese Schicht ändern\?/)).toBeInTheDocument();
-    await user.click(within(ticket).getByRole("button", { name: "Ja, ändern" }));
+    await user.click(within(ticket).getByRole("button", { name: "Ja, speichern" }));
 
     expect(await screen.findByText("Spätdienst")).toBeInTheDocument();
     expect(screen.queryByText("Frühdienst")).not.toBeInTheDocument();
@@ -220,6 +220,125 @@ describe("Super-Admin", () => {
     await user.click(screen.getByRole("button", { name: "Unternehmen anlegen" }));
 
     expect(await screen.findByText("Dieser Firmencode wird bereits verwendet.")).toBeInTheDocument();
+  });
+});
+
+describe("Überschneidungen", () => {
+  /** Weit genug voraus, dass noch nichts zugeteilt wird und beide Schichten stehen bleiben. */
+  const spaeter = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 2, 15);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const formularFuellen = async (user, { name, von, bis }) => {
+    await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), name);
+    await user.type(screen.getByLabelText("Datum"), spaeter());
+    await user.clear(screen.getByLabelText("Startzeit"));
+    await user.type(screen.getByLabelText("Startzeit"), von);
+    await user.clear(screen.getByLabelText("Endzeit"));
+    await user.type(screen.getByLabelText("Endzeit"), bis);
+    await user.selectOptions(
+      screen.getByLabelText(/Erforderliche Qualifikation/),
+      screen.getByRole("option", { name: "Erste Hilfe" })
+    );
+  };
+
+  const schichtAnlegen = async (user, daten) => {
+    await user.click(screen.getByRole("button", { name: "Neue Schicht" }));
+    await formularFuellen(user, daten);
+    await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
+    await screen.findByText(daten.name);
+  };
+
+  test("das Formular meldet eine Überschneidung erst, wenn es eine gibt", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Schichten" }));
+
+    await schichtAnlegen(user, { name: "Frühdienst", von: "08:00", bis: "16:00" });
+
+    // Anschliessende Zeit: kein Konflikt, also auch keine Rückfrage.
+    await user.click(screen.getByRole("button", { name: "Neue Schicht" }));
+    await formularFuellen(user, { name: "Spätdienst", von: "16:00", bis: "22:00" });
+    expect(screen.queryByText("Überschneidungen")).not.toBeInTheDocument();
+
+    // Überlappende Zeit: jetzt muss entschieden werden.
+    await user.clear(screen.getByLabelText("Startzeit"));
+    await user.type(screen.getByLabelText("Startzeit"), "14:00");
+
+    expect(await screen.findByText("Überschneidungen")).toBeInTheDocument();
+    const block = screen.getByText("Überschneidungen").closest(".sb-overlap");
+    expect(within(block).getByText("Frühdienst")).toBeInTheDocument();
+    expect(within(block).getByLabelText("Zusammen übernehmbar?")).toHaveValue("nein");
+  });
+
+  test("ohne Freigabe nennt die Fehlermeldung beide Schichten", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Schichten" }));
+
+    await schichtAnlegen(user, { name: "Frühdienst", von: "08:00", bis: "16:00" });
+    await schichtAnlegen(user, { name: "Tagdienst", von: "14:00", bis: "22:00" });
+
+    await user.click(screen.getByRole("button", { name: "Abmelden" }));
+    await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
+    await login(user, EMPLOYEE);
+    const navLea = await screen.findByRole("navigation");
+    await user.click(within(navLea).getByRole("button", { name: "Schichten" }));
+
+    const frueh = (await screen.findByText("Frühdienst")).closest(".sb-ticket");
+    await user.click(within(frueh).getByRole("button", { name: "Einschreiben" }));
+
+    const tag = (await screen.findByText("Tagdienst")).closest(".sb-ticket");
+    await user.click(within(tag).getByRole("button", { name: "Einschreiben" }));
+
+    const meldung = await screen.findByText(/lassen sich nicht gleichzeitig übernehmen/);
+    expect(meldung).toHaveTextContent("Frühdienst");
+    expect(meldung).toHaveTextContent("Tagdienst");
+  });
+  test("beim Bearbeiten lässt sich eine Überschneidung nachträglich freigeben", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Schichten" }));
+
+    await schichtAnlegen(user, { name: "Frühdienst", von: "08:00", bis: "16:00" });
+    await schichtAnlegen(user, { name: "Tagdienst", von: "14:00", bis: "22:00" });
+
+    const ticket = (await screen.findByText("Tagdienst")).closest(".sb-ticket");
+    await user.click(within(ticket).getByRole("button", { name: "Personen anzeigen" }));
+    await user.click(within(ticket).getByRole("button", { name: "Bearbeiten" }));
+
+    // Die bestehende Überschneidung steht da, mit ihrem jetzigen Stand.
+    const block = within(ticket).getByText("Überschneidungen").closest(".sb-overlap");
+    expect(within(block).getByText("Frühdienst")).toBeInTheDocument();
+    const wahl = within(block).getByLabelText("Zusammen übernehmbar?");
+    expect(wahl).toHaveValue("nein");
+
+    await user.selectOptions(wahl, "ja");
+    await user.click(within(ticket).getByRole("button", { name: "Änderungen speichern" }));
+
+    // Ohne Änderung an der Schicht wird auch niemand ausgetragen.
+    expect(await within(ticket).findByText(/nur die Freigaben werden gespeichert/)).toBeInTheDocument();
+    await user.click(within(ticket).getByRole("button", { name: "Ja, speichern" }));
+
+    await user.click(screen.getByRole("button", { name: "Abmelden" }));
+    await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
+    await login(user, EMPLOYEE);
+    const navLea = await screen.findByRole("navigation");
+    await user.click(within(navLea).getByRole("button", { name: "Schichten" }));
+
+    const frueh = (await screen.findByText("Frühdienst")).closest(".sb-ticket");
+    await user.click(within(frueh).getByRole("button", { name: "Einschreiben" }));
+    const tag = (await screen.findByText("Tagdienst")).closest(".sb-ticket");
+    await user.click(within(tag).getByRole("button", { name: "Einschreiben" }));
+
+    // Freigegeben, also geht beides — und keine Fehlermeldung dazwischen.
+    expect(await within(tag).findByText("Austragen")).toBeInTheDocument();
+    expect(screen.queryByText(/lassen sich nicht gleichzeitig übernehmen/)).not.toBeInTheDocument();
   });
 });
 

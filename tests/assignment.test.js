@@ -9,6 +9,7 @@ import {
   expandShiftDates,
   extendSeriesDates,
   isAssignable,
+  runAssignmentPass,
 } from "#shared/assignment.js";
 import { addMonths, fromISO, toISO } from "#shared/dates.js";
 
@@ -179,5 +180,51 @@ describe("Übernahme", () => {
 
   test("nicht doppelt", () => {
     expect(canTakeOver(shift({ seats: 2, assigned: ["a1"] }), ACCOUNTS, "a1", null)).toBe(false);
+  });
+});
+
+describe("Ausschliessende Schichten in der Auslosung", () => {
+  const today = fromISO("2026-03-10");
+
+  /* Zwei Schichten, die sich ausschliessen. Beide sind derselben Person
+     zugesagt worden — möglich, wenn eine Freigabe nachträglich zurückgenommen
+     wurde und die Einschreibungen stehen blieben. */
+  const frueh = () => shift({ id: "s_frueh", seriesId: "serie_frueh", enrolled: ["a1", "a2"] });
+  const spaet = () => shift({ id: "s_spaet", seriesId: "serie_spaet", enrolled: ["a1"] });
+  const schliesstAus = (a, b) => a.id !== b.id;
+
+  test("niemand bekommt zwei Schichten, die sich ausschliessen", () => {
+    const [a, b] = runAssignmentPass([frueh(), spaet()], ACCOUNTS, today, 7, [], () => 0, schliesstAus);
+
+    // Die erste Schicht bekommt jemanden …
+    expect(a.assigned).toHaveLength(1);
+    // … und die zweite darf dieselbe Person nicht auch nehmen.
+    expect(b.assigned).not.toContain(a.assigned[0]);
+  });
+
+  test("wer als Einziger übrig bleibt, lässt den Platz offen", () => {
+    const nurA1 = shift({ id: "s_frueh", seriesId: "serie_frueh", enrolled: ["a1"] });
+    const [a, b] = runAssignmentPass([nurA1, spaet()], ACCOUNTS, today, 7, [], () => 0, schliesstAus);
+
+    expect(a.assigned).toEqual(["a1"]);
+    // Lieber ein offener Platz als eine Person an zwei Orten gleichzeitig.
+    expect(b.assigned).toEqual([]);
+    expect(b.assignmentAttempted).toBe(true);
+  });
+
+  test("ohne Ausschlussregel bleibt es beim alten Verhalten", () => {
+    const [a, b] = runAssignmentPass([frueh(), spaet()], ACCOUNTS, today, 7, [], () => 0);
+    expect(a.assigned).toHaveLength(1);
+    expect(b.assigned).toEqual(["a1"]);
+  });
+
+  test("eine bereits bestehende Zuteilung blockiert genauso", () => {
+    const belegt = shift({
+      id: "s_belegt", seriesId: "serie_belegt", enrolled: ["a1"], assigned: ["a1"],
+      assignmentAttempted: true,
+    });
+    const [, neu] = runAssignmentPass([belegt, spaet()], ACCOUNTS, today, 7, [], () => 0, schliesstAus);
+
+    expect(neu.assigned).toEqual([]);
   });
 });

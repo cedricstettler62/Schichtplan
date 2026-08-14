@@ -24,13 +24,15 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
 
   const toggleQual = (id) => setQualFilter((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
-  const handleClick = (s, qualified, enrolled, qualName) => {
+  const handleClick = async (s, qualified, enrolled, qualName) => {
     if (!qualified && !enrolled) {
       setEnrollError({ shiftId: s.id, message: `Dafür fehlt dir die Qualifikation „${qualName || "der Schicht"}“. Wende dich an einen Admin, wenn das nicht stimmt.` });
       return;
     }
     setEnrollError(null);
-    onToggleEnroll(s.id);
+    // Etwa eine Überschneidung mit einer Schicht, für die man schon eingetragen ist.
+    const meldung = await onToggleEnroll(s.id);
+    if (meldung) setEnrollError({ shiftId: s.id, message: meldung });
   };
 
   return (

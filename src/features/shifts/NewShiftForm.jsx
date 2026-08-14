@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { REPEAT_LABELS, REPEAT_KEYS } from "#shared/labels.js";
+import { HORIZON_DAYS, expandShiftDates } from "#shared/assignment.js";
+import { overlappingSeries } from "#shared/overlap.js";
+import { addDays, fmtDate, startOfToday } from "#shared/dates.js";
 
-export default function NewShiftForm({ qualifications, onCreate, onAddQualification }) {
+export default function NewShiftForm({ qualifications, shifts = [], onCreate, onAddQualification }) {
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("08:00");
@@ -12,7 +15,22 @@ export default function NewShiftForm({ qualifications, onCreate, onAddQualificat
   const [qualificationId, setQualificationId] = useState("");
   const [newQualOpen, setNewQualOpen] = useState(false);
   const [newQual, setNewQual] = useState("");
+  const [kombinierbar, setKombinierbar] = useState({});
   const [error, setError] = useState("");
+
+  /* Dieselben Termine, die der Server anlegen würde — nur zum Vergleichen,
+     nicht zum Speichern. Angelegt wird erst beim Absenden, und zwar dort. */
+  const geplant = useMemo(() => {
+    if (!date || !startTime || !endTime) return [];
+    const horizon = addDays(startOfToday(), HORIZON_DAYS);
+    return expandShiftDates({ date, repeat, endDate: endDate || null }, horizon)
+      .map((d) => ({ id: null, seriesId: null, date: d, startTime, endTime }));
+  }, [date, repeat, endDate, startTime, endTime]);
+
+  const ueberschneidungen = useMemo(
+    () => overlappingSeries(geplant, shifts),
+    [geplant, shifts]
+  );
 
   const addQualification = async () => {
     const trimmed = newQual.trim();
@@ -34,8 +52,14 @@ export default function NewShiftForm({ qualifications, onCreate, onAddQualificat
       return;
     }
     setError("");
-    await onCreate({ name: name.trim(), date, startTime, endTime, repeat, endDate: endDate || null, seats: Number(seats), qualificationId });
-    setName(""); setDate(""); setStartTime("08:00"); setEndTime("16:00"); setRepeat("once"); setEndDate(""); setSeats(1); setQualificationId("");
+    await onCreate({
+      name: name.trim(), date, startTime, endTime, repeat, endDate: endDate || null,
+      seats: Number(seats), qualificationId,
+      // Nur was jetzt auch wirklich als Überschneidung dasteht.
+      combinableWith: ueberschneidungen.filter((u) => kombinierbar[u.seriesId]).map((u) => u.seriesId),
+    });
+    setName(""); setDate(""); setStartTime("08:00"); setEndTime("16:00"); setRepeat("once");
+    setEndDate(""); setSeats(1); setQualificationId(""); setKombinierbar({});
   };
 
   return (
@@ -79,6 +103,44 @@ export default function NewShiftForm({ qualifications, onCreate, onAddQualificat
           )}
         </div>
       </div>
+
+      {/* Taucht nur auf, wenn es wirklich etwas zu entscheiden gibt. Wer keine
+          Überschneidung baut, soll auch nicht danach gefragt werden. */}
+      {ueberschneidungen.length > 0 && (
+        <div className="sb-form-section sb-overlap">
+          <span className="sb-detail-label">Überschneidungen</span>
+          <p className="sb-status">
+            {ueberschneidungen.length === 1
+              ? "Eine bestehende Schicht liegt in derselben Zeit."
+              : `${ueberschneidungen.length} bestehende Schichten liegen in derselben Zeit.`}{" "}
+            Ohne ausdrückliche Freigabe kann niemand beide übernehmen.
+          </p>
+          {ueberschneidungen.map((u) => (
+            <div key={u.seriesId} className="sb-overlap-row">
+              <div className="sb-overlap-info">
+                <span className="sb-overlap-name">{u.name}</span>
+                <span className="sb-overlap-meta">
+                  <span className="sb-mono">{u.startTime}–{u.endTime}</span>
+                  {" · "}
+                  {u.termine === 1 ? fmtDate(u.erster) : `${u.termine} Termine ab ${fmtDate(u.erster)}`}
+                </span>
+              </div>
+              <label className="sb-field sb-field-compact">
+                <span>Zusammen übernehmbar?</span>
+                <select
+                  value={kombinierbar[u.seriesId] ? "ja" : "nein"}
+                  onChange={(e) =>
+                    setKombinierbar((k) => ({ ...k, [u.seriesId]: e.target.value === "ja" }))
+                  }
+                >
+                  <option value="nein">Nein – schliessen einander aus</option>
+                  <option value="ja">Ja – beides zusammen möglich</option>
+                </select>
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="sb-form-section">
         <span className="sb-detail-label">Plätze &amp; Qualifikation</span>

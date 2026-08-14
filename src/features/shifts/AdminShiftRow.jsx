@@ -48,7 +48,7 @@ function PersonList({ title, people, emptyText, helpRequests, onRemove }) {
   );
 }
 export default function AdminShiftRow({
-  shift, qualName, accounts, qualifications, seriesShifts,
+  shift, qualName, accounts, qualifications, seriesShifts, shifts, combinableSeries,
   onForceAssign, onRemoveEnrollment, onUpdateShift, onDeleteShift, onDeleteSeries,
 }) {
   const [open, setOpen] = useState(false);
@@ -127,6 +127,8 @@ export default function AdminShiftRow({
             <EditShiftForm
               shift={shift}
               seriesShifts={seriesShifts}
+              shifts={shifts}
+              combinableSeries={combinableSeries}
               qualifications={qualifications}
               onSave={onUpdateShift}
               onCancel={() => setEditing(false)}

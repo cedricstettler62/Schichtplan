@@ -113,7 +113,20 @@ export default function App() {
   /* --- Schichten --- */
   const handleCreateShift = act((form) => api.post("/shifts", form));
   const handleForceAssign = act((shiftId) => api.post(`/shifts/${shiftId}/assign`));
-  const handleToggleEnroll = act((shiftId) => api.post(`/shifts/${shiftId}/enroll`));
+  /* Geben die Fehlermeldung zurück statt sie zu schlucken: Eine Überschneidung
+     mit einer anderen Schicht muss die Person erfahren, sonst passiert auf
+     Knopfdruck sichtbar nichts. */
+  const handleToggleEnroll = async (shiftId) => {
+    try {
+      await api.post(`/shifts/${shiftId}/enroll`);
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    } finally {
+      await refresh();
+    }
+    return null;
+  };
   const handleRemoveEnrollment = act((shiftId, accountId) =>
     api.del(`/shifts/${shiftId}/enrollments/${accountId}`)
   );
@@ -133,9 +146,17 @@ export default function App() {
   const handleDeleteShift = act((shiftId) => api.del(`/shifts/${shiftId}`));
   const handleDeleteSeries = act((shiftId) => api.del(`/shifts/${shiftId}/series`));
   const handleAskForHelp = act((shiftId) => api.post(`/shifts/${shiftId}/help`));
-  const handleTakeOver = act((shiftId, _helperId, replaceId) =>
-    api.post(`/shifts/${shiftId}/takeover`, { replaceId: replaceId || null })
-  );
+  const handleTakeOver = async (shiftId, _helperId, replaceId) => {
+    try {
+      await api.post(`/shifts/${shiftId}/takeover`, { replaceId: replaceId || null });
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    } finally {
+      await refresh();
+    }
+    return null;
+  };
 
   /* --- Konten --- */
   const handleAddEmployee = act((data) => api.post("/employees", data));
@@ -251,7 +272,7 @@ export default function App() {
     return <div className="sb-root"><LoginScreen onLogin={handleLogin} /><Footer /></div>;
   }
 
-  const { qualifications, shifts, settings, accounts } = company;
+  const { qualifications, shifts, settings, accounts, combinableSeries } = company;
   const isAdmin = currentUser.role === "admin";
 
   const handleToggleOwnQualification = (qualId, value) =>
@@ -275,6 +296,7 @@ export default function App() {
           {activeTab === "shifts" && (isAdmin ? (
             <AdminShiftsTab
               shifts={shifts} qualifications={qualifications} accounts={accounts} today={today}
+              combinableSeries={combinableSeries}
               onCreate={handleCreateShift} onAddQualification={handleAddQualification}
               onForceAssign={handleForceAssign} onRemoveEnrollment={handleRemoveEnrollment}
               onUpdateShift={handleUpdateShift}

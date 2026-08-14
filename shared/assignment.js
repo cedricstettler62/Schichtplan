@@ -44,7 +44,12 @@ export function assignmentDateOf(shiftDateISO, assignmentDay) {
   return toISO(vormonat);
 }
 
-export function attemptAssign(shift, accounts, today, assignmentDay, force = false, random = Math.random) {
+/**
+ * `blockiert(accountId)` sagt, wer für diese Schicht nicht in Frage kommt, weil
+ * er zur selben Zeit schon einer anderen zugeteilt ist. Ohne die Angabe wird
+ * nur nach Qualifikation ausgewählt — so verhielt sich die Auslosung früher.
+ */
+export function attemptAssign(shift, accounts, today, assignmentDay, force = false, random = Math.random, blockiert = null) {
   // Die Auslosung findet genau einmal statt: am Zuteilungstermin der Schicht.
   // Danach besetzt niemand mehr automatisch nach — freie Plätze bekommt, wer
   // sich einschreibt oder übernimmt. Sonst würde die Zuteilung faktisch bei
@@ -57,7 +62,10 @@ export function attemptAssign(shift, accounts, today, assignmentDay, force = fal
   }
   const eligible = shuffle(
     shift.enrolled.filter(
-      (id) => !shift.assigned.includes(id) && hasQualification(accounts, id, shift.qualificationId)
+      (id) =>
+        !shift.assigned.includes(id) &&
+        hasQualification(accounts, id, shift.qualificationId) &&
+        !(blockiert && blockiert(id))
     ),
     random
   );
@@ -74,8 +82,33 @@ export function attemptAssign(shift, accounts, today, assignmentDay, force = fal
   };
 }
 
-export function runAssignmentPass(shifts, accounts, today, assignmentDay, forceIds = [], random = Math.random) {
-  return shifts.map((s) => attemptAssign(s, accounts, today, assignmentDay, forceIds.includes(s.id), random));
+/**
+ * Ein Durchgang über alle Schichten.
+ *
+ * `schliesstAus(a, b)` sagt, ob sich zwei Schichten gegenseitig ausschliessen.
+ * Ist die Angabe da, läuft der Durchgang der Reihe nach statt nebeneinander:
+ * Wer eben einer Schicht zugeteilt wurde, darf für eine überschneidende in
+ * derselben Runde nicht mehr in Frage kommen. Ohne die Angabe bleibt es beim
+ * bisherigen Verhalten.
+ */
+export function runAssignmentPass(
+  shifts, accounts, today, assignmentDay, forceIds = [], random = Math.random, schliesstAus = null
+) {
+  if (!schliesstAus) {
+    return shifts.map((s) => attemptAssign(s, accounts, today, assignmentDay, forceIds.includes(s.id), random));
+  }
+
+  const stand = [...shifts];
+  for (let i = 0; i < stand.length; i++) {
+    const diese = stand[i];
+    /* Geprüft wird gegen den laufenden Stand: die schon bearbeiteten Schichten
+       mit ihren frischen Zuteilungen, die übrigen so, wie sie hereinkamen. */
+    const blockiert = (accountId) =>
+      stand.some((andere, j) => j !== i && andere.assigned.includes(accountId) && schliesstAus(diese, andere));
+
+    stand[i] = attemptAssign(diese, accounts, today, assignmentDay, forceIds.includes(diese.id), random, blockiert);
+  }
+  return stand;
 }
 
 function repeatStep(repeat) { return repeat === "weekly" ? 7 : 1; }

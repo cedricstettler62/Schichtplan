@@ -12,6 +12,11 @@ function blockedReason(currentUser, shift, qualified, qualName) {
 
 export default function OverviewShiftRow({ shift, qualifications, accounts, currentUser, onTakeOver, requesterIds }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+
+  const uebernehmen = async (replaceId) => {
+    setError((await onTakeOver(shift.id, currentUser.id, replaceId)) || "");
+  };
   const qual = qualifications.find((q) => q.id === shift.qualificationId);
   const qualName = qual ? qual.name : null;
   const qualified = hasQualification(accounts, currentUser.id, shift.qualificationId);
@@ -49,7 +54,7 @@ export default function OverviewShiftRow({ shift, qualifications, accounts, curr
                 <div key={rid} className="sb-ov-help-line">
                   <span><strong>{person ? person.name : "Unbekannt"}</strong> sucht Ersatz für diese Schicht.</span>
                   {canTake && (
-                    <button type="button" className="sb-btn sb-btn-petrol" onClick={() => onTakeOver(shift.id, currentUser.id, rid)}>
+                    <button type="button" className="sb-btn sb-btn-petrol" onClick={() => uebernehmen(rid)}>
                       {firstName ? `Für ${firstName} übernehmen` : "Übernehmen"}
                     </button>
                   )}
@@ -58,12 +63,13 @@ export default function OverviewShiftRow({ shift, qualifications, accounts, curr
             })
           ) : (
             canTake ? (
-              <button type="button" className="sb-btn sb-btn-petrol" onClick={() => onTakeOver(shift.id, currentUser.id, null)}>
+              <button type="button" className="sb-btn sb-btn-petrol" onClick={() => uebernehmen(null)}>
                 Schicht übernehmen
               </button>
             ) : null
           )}
           {!canTake && <p className="sb-empty">{blockedReason(currentUser, shift, qualified, qualName)}</p>}
+          {error && <p className="sb-error">{error}</p>}
         </div>
       )}
     </div>

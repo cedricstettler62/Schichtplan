@@ -742,6 +742,231 @@ describe("Erstes Passwort", () => {
   });
 });
 
+describe("Überschneidende Schichten", () => {
+  /* Wer eine Schicht übernimmt, kann in derselben Zeit keine zweite übernehmen.
+     Ausnahmen trägt die Administration beim Anlegen ausdrücklich ein. */
+  const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+  const anlegen = async (admin, qualId, form) =>
+    admin.post("/api/shifts", { repeat: "once", seats: 1, qualificationId: qualId, ...form });
+
+  const schichtNamens = async (c, name) =>
+    (await c.get("/api/state")).data.company.shifts.find((s) => s.name === name);
+
+  test("zwei Schichten zur selben Zeit schliessen einander aus", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    await anlegen(admin, qualId, { name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const frueh = await schichtNamens(lea, "Frühdienst");
+    const tag = await schichtNamens(lea, "Tagdienst");
+
+    expect((await lea.post(`/api/shifts/${frueh.id}/enroll`)).status).toBe(200);
+
+    const res = await lea.post(`/api/shifts/${tag.id}/enroll`);
+    expect(res.status).toBe(409);
+    // Die Meldung muss beide Schichten benennen — sonst rätselt man, welche gemeint ist.
+    expect(res.data.error).toContain("Frühdienst");
+    expect(res.data.error).toContain("Tagdienst");
+
+    expect((await schichtNamens(lea, "Tagdienst")).enrolled).toEqual([]);
+  });
+
+  test("als zusammen übernehmbar eingetragen, geht beides", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+
+    await anlegen(admin, qualId, {
+      name: "Telefondienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      combinableWith: [frueh.seriesId],
+    });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const telefon = await schichtNamens(lea, "Telefondienst");
+
+    expect((await lea.post(`/api/shifts/${frueh.id}/enroll`)).status).toBe(200);
+    expect((await lea.post(`/api/shifts/${telefon.id}/enroll`)).status).toBe(200);
+    expect((await schichtNamens(lea, "Telefondienst")).enrolled).toHaveLength(1);
+  });
+
+  test("die Freigabe gilt in beide Richtungen", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await anlegen(admin, qualId, {
+      name: "Telefondienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      combinableWith: [frueh.seriesId],
+    });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const telefon = await schichtNamens(lea, "Telefondienst");
+
+    // Erst die neuere, dann die ältere — die Reihenfolge darf nichts ausmachen.
+    expect((await lea.post(`/api/shifts/${telefon.id}/enroll`)).status).toBe(200);
+    expect((await lea.post(`/api/shifts/${frueh.id}/enroll`)).status).toBe(200);
+  });
+
+  test("Schichten, die sich nur berühren, gehen beide", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    await anlegen(admin, qualId, { name: "Spätdienst", date: heute(), startTime: "16:00", endTime: "22:00" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const frueh = await schichtNamens(lea, "Frühdienst");
+    const spaet = await schichtNamens(lea, "Spätdienst");
+
+    expect((await lea.post(`/api/shifts/${frueh.id}/enroll`)).status).toBe(200);
+    expect((await lea.post(`/api/shifts/${spaet.id}/enroll`)).status).toBe(200);
+  });
+
+  test("eine Nachtschicht blockiert den Folgetag", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    const morgen = toISO(addDays(startOfToday(), 1));
+    await anlegen(admin, qualId, { name: "Nachtdienst", date: heute(), startTime: "22:00", endTime: "06:00" });
+    await anlegen(admin, qualId, { name: "Morgendienst", date: morgen, startTime: "05:00", endTime: "13:00" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const nacht = await schichtNamens(lea, "Nachtdienst");
+    const morgens = await schichtNamens(lea, "Morgendienst");
+
+    expect((await lea.post(`/api/shifts/${nacht.id}/enroll`)).status).toBe(200);
+    expect((await lea.post(`/api/shifts/${morgens.id}/enroll`)).status).toBe(409);
+  });
+
+  test("auch das Übernehmen führt nicht daran vorbei", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    await anlegen(admin, qualId, { name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const frueh = await schichtNamens(lea, "Frühdienst");
+    const tag = await schichtNamens(lea, "Tagdienst");
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+
+    const res = await lea.post(`/api/shifts/${tag.id}/takeover`, { replaceId: null });
+    expect(res.status).toBe(409);
+    expect(res.data.error).toContain("Frühdienst");
+  });
+
+  test("eine Freigabe für eine fremde Serie zählt nicht", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+
+    // Erfundene Serie: darf die Überschneidung mit dem Frühdienst nicht freigeben.
+    await anlegen(admin, qualId, {
+      name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      combinableWith: ["serie_gibtsnicht"],
+    });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const frueh = await schichtNamens(lea, "Frühdienst");
+    const tag = await schichtNamens(lea, "Tagdienst");
+
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    expect((await lea.post(`/api/shifts/${tag.id}/enroll`)).status).toBe(409);
+  });
+
+  test("das Austragen bleibt möglich", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    /* Zwei Monate voraus: Der Zuteilungstermin ist noch nicht erreicht, die
+       Person bleibt auf der Warteliste und kann sich selbst wieder austragen. */
+    const spaeter = toISO(addMonths(startOfToday(), 2));
+    await anlegen(admin, qualId, { name: "Frühdienst", date: spaeter, startTime: "08:00", endTime: "16:00" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const frueh = await schichtNamens(lea, "Frühdienst");
+
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    // Derselbe Aufruf trägt wieder aus — die Prüfung darf sich nicht selbst im Weg stehen.
+    expect((await lea.post(`/api/shifts/${frueh.id}/enroll`)).status).toBe(200);
+    expect((await schichtNamens(lea, "Frühdienst")).enrolled).toEqual([]);
+  });
+  test("die Auslosung teilt keine zwei ausschliessenden Schichten zu", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    /* Zwei Monate voraus: Die Auslosung läuft noch nicht von selbst, sie lässt
+       sich also gezielt auslösen. */
+    const spaeter = toISO(addMonths(startOfToday(), 2));
+
+    await anlegen(admin, qualId, { name: "Frühdienst", date: spaeter, startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await anlegen(admin, qualId, {
+      name: "Tagdienst", date: spaeter, startTime: "14:00", endTime: "22:00",
+      combinableWith: [frueh.seriesId],
+    });
+    const tag = await schichtNamens(admin, "Tagdienst");
+
+    // Solange die Freigabe gilt, geht beides.
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.post(`/api/shifts/${frueh.id}/enroll`)).status).toBe(200);
+    expect((await lea.post(`/api/shifts/${tag.id}/enroll`)).status).toBe(200);
+
+    // Freigabe zurücknehmen — die beiden Einschreibungen bleiben stehen.
+    await admin.patch(`/api/shifts/${tag.id}`, {
+      name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
+      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      combinable: { [frueh.seriesId]: false },
+    });
+    expect((await schichtNamens(admin, "Tagdienst")).enrolled).toHaveLength(1);
+
+    // Jetzt zuteilen: Die Auslosung muss verhindern, dass beides an Lea geht.
+    await admin.post(`/api/shifts/${frueh.id}/assign`);
+    await admin.post(`/api/shifts/${tag.id}/assign`);
+
+    const danach = (await admin.get("/api/state")).data.company.shifts;
+    const leaId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Lea Brunner'").get().id;
+    const zugeteilt = danach.filter((s) => s.assigned.includes(leaId));
+
+    expect(zugeteilt).toHaveLength(1);
+    expect(zugeteilt[0].name).toBe("Frühdienst");
+  });
+
+  test("die Freigabe lässt die Auslosung beides zuteilen", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    const spaeter = toISO(addMonths(startOfToday(), 2));
+
+    await anlegen(admin, qualId, { name: "Frühdienst", date: spaeter, startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await anlegen(admin, qualId, {
+      name: "Telefondienst", date: spaeter, startTime: "14:00", endTime: "22:00",
+      combinableWith: [frueh.seriesId],
+    });
+    const telefon = await schichtNamens(admin, "Telefondienst");
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    await lea.post(`/api/shifts/${telefon.id}/enroll`);
+
+    await admin.post(`/api/shifts/${frueh.id}/assign`);
+    await admin.post(`/api/shifts/${telefon.id}/assign`);
+
+    const leaId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Lea Brunner'").get().id;
+    const danach = (await admin.get("/api/state")).data.company.shifts;
+    expect(danach.filter((s) => s.assigned.includes(leaId))).toHaveLength(2);
+  });
+});
+
 describe("Schichten bearbeiten", () => {
   /** Legt eine Schicht an und gibt Qualifikation und Schichtliste zurück. */
   const anlegen = async (admin, form) => {
@@ -914,6 +1139,181 @@ describe("Schichten bearbeiten", () => {
 
     expect(res.status).toBe(404);
     expect(server.db.prepare("SELECT name FROM shifts WHERE id = 's_fremd'").get().name).toBe("Fremddienst");
+  });
+});
+
+describe("Freigaben nachträglich ändern", () => {
+  /* Beim Bearbeiten lässt sich eine Überschneidung freigeben, die es beim
+     Anlegen noch gar nicht gab — und eine erteilte Freigabe zurücknehmen. */
+  const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+  const anlegen = async (admin, qualId, form) =>
+    admin.post("/api/shifts", { repeat: "once", seats: 1, qualificationId: qualId, ...form });
+
+  const schichtNamens = async (c, name) =>
+    (await c.get("/api/state")).data.company.shifts.find((s) => s.name === name);
+
+  /** Zwei Schichten, die sich überschneiden und einander ausschliessen. */
+  const zweiUeberschneidende = async (admin) => {
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    await anlegen(admin, qualId, { name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00" });
+    return {
+      qualId,
+      frueh: await schichtNamens(admin, "Frühdienst"),
+      tag: await schichtNamens(admin, "Tagdienst"),
+    };
+  };
+
+  test("eine bestehende Überschneidung lässt sich nachträglich freigeben", async () => {
+    const admin = await asAdmin();
+    const { qualId, frueh, tag } = await zweiUeberschneidende(admin);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    expect((await lea.post(`/api/shifts/${tag.id}/enroll`)).status).toBe(409);
+
+    // Nichts an der Schicht ändern, nur die Freigabe nachtragen.
+    const res = await admin.patch(`/api/shifts/${tag.id}`, {
+      name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
+      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      combinable: { [frueh.seriesId]: true },
+    });
+    expect(res.status).toBe(200);
+
+    expect((await lea.post(`/api/shifts/${tag.id}/enroll`)).status).toBe(200);
+  });
+
+  test("eine reine Freigabe trägt niemanden aus", async () => {
+    const admin = await asAdmin();
+    const { qualId, frueh, tag } = await zweiUeberschneidende(admin);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${tag.id}/enroll`);
+    expect((await schichtNamens(lea, "Tagdienst")).enrolled).toHaveLength(1);
+
+    const res = await admin.patch(`/api/shifts/${tag.id}`, {
+      name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
+      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      combinable: { [frueh.seriesId]: true },
+    });
+
+    expect(res.data).toMatchObject({ ausgetragen: 0, geaendert: false });
+    // Wer nur eine Freigabe nachträgt, soll dafür niemanden aus der Schicht werfen.
+    expect((await schichtNamens(admin, "Tagdienst")).enrolled).toHaveLength(1);
+  });
+
+  test("eine erteilte Freigabe lässt sich zurücknehmen", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await anlegen(admin, qualId, {
+      name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      combinableWith: [frueh.seriesId],
+    });
+    const tag = await schichtNamens(admin, "Tagdienst");
+
+    await admin.patch(`/api/shifts/${tag.id}`, {
+      name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
+      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      combinable: { [frueh.seriesId]: false },
+    });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    expect((await lea.post(`/api/shifts/${tag.id}/enroll`)).status).toBe(409);
+  });
+
+  test("eine Änderung ohne Angabe lässt bestehende Freigaben stehen", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await anlegen(admin, qualId, {
+      name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      combinableWith: [frueh.seriesId],
+    });
+    const tag = await schichtNamens(admin, "Tagdienst");
+
+    // Nur die Platzzahl ändern, kein Wort zu den Freigaben.
+    await admin.patch(`/api/shifts/${tag.id}`, {
+      name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
+      seats: 5, qualificationId: qualId, umfang: "einzeln",
+    });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    expect((await lea.post(`/api/shifts/${tag.id}/enroll`)).status).toBe(200);
+  });
+
+  test("eine neu entstandene Überschneidung lässt sich gleich mit freigeben", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "12:00" });
+    await anlegen(admin, qualId, { name: "Abenddienst", date: heute(), startTime: "18:00", endTime: "22:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    const abend = await schichtNamens(admin, "Abenddienst");
+
+    // Der Abenddienst rückt vor und überschneidet sich ab jetzt mit dem Frühdienst.
+    await admin.patch(`/api/shifts/${abend.id}`, {
+      name: abend.name, date: abend.date, startTime: "10:00", endTime: "18:00",
+      seats: abend.seats, qualificationId: qualId, umfang: "einzeln",
+      combinable: { [frueh.seriesId]: true },
+    });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    expect((await lea.post(`/api/shifts/${abend.id}/enroll`)).status).toBe(200);
+  });
+
+  test("beim Herauslösen aus der Serie gilt die Freigabe für den neuen Termin", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await anlegen(admin, qualId, {
+      name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00", repeat: "daily",
+    });
+    const tag = await schichtNamens(admin, "Tagdienst");
+
+    /* Der Termin verlässt die Serie und wird zu einer eigenen — die Freigabe
+       muss auf die neue Serie geschrieben werden, sonst ginge sie verloren. */
+    await admin.patch(`/api/shifts/${tag.id}`, {
+      name: "Tagdienst einmalig", date: tag.date, startTime: "14:00", endTime: "22:00",
+      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      combinable: { [frueh.seriesId]: true },
+    });
+
+    const heraus = await schichtNamens(admin, "Tagdienst einmalig");
+    expect(heraus.seriesId).not.toBe(tag.seriesId);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${frueh.id}/enroll`);
+    expect((await lea.post(`/api/shifts/${heraus.id}/enroll`)).status).toBe(200);
+  });
+
+  test("der Zustand der Freigaben steht im Firmenstand", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await anlegen(admin, qualId, { name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00" });
+    const frueh = await schichtNamens(admin, "Frühdienst");
+    await anlegen(admin, qualId, {
+      name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00",
+      combinableWith: [frueh.seriesId],
+    });
+    const tag = await schichtNamens(admin, "Tagdienst");
+
+    // Das Formular muss zeigen können, was bereits freigegeben ist.
+    const { combinableSeries } = (await admin.get("/api/state")).data.company;
+    expect(combinableSeries).toHaveLength(1);
+    expect(combinableSeries[0].slice().sort()).toEqual([frueh.seriesId, tag.seriesId].sort());
   });
 });
 

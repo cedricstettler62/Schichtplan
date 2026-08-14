@@ -6,7 +6,7 @@ import { addDays, fromISO, isFutureOrToday, monthDiff } from "#shared/dates.js";
 import { HORIZON_DAYS } from "#shared/assignment.js";
 
 export default function AdminShiftsTab({
-  shifts, qualifications, accounts, today,
+  shifts, qualifications, accounts, combinableSeries, today,
   onCreate, onAddQualification, onForceAssign, onRemoveEnrollment, onUpdateShift,
   onDeleteShift, onDeleteSeries,
 }) {
@@ -38,7 +38,14 @@ export default function AdminShiftsTab({
           {formOpen ? "Abbrechen" : "Neue Schicht"}
         </button>
       </div>
-      {formOpen && <NewShiftForm qualifications={qualifications} onCreate={async (f) => { await onCreate(f); setFormOpen(false); }} onAddQualification={onAddQualification} />}
+      {formOpen && (
+        <NewShiftForm
+          qualifications={qualifications}
+          shifts={visible}
+          onCreate={async (f) => { await onCreate(f); setFormOpen(false); }}
+          onAddQualification={onAddQualification}
+        />
+      )}
 
       <div className="sb-filter-row">
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="sb-select-inline" aria-label="Nach Status filtern">
@@ -65,6 +72,8 @@ export default function AdminShiftsTab({
             qualifications={qualifications}
             /* Nur kommende Termine: Vergangene lassen sich ohnehin nicht ändern. */
             seriesShifts={visible.filter((x) => x.seriesId === s.seriesId)}
+            shifts={visible}
+            combinableSeries={combinableSeries}
             onForceAssign={onForceAssign}
             onRemoveEnrollment={onRemoveEnrollment}
             onUpdateShift={onUpdateShift}

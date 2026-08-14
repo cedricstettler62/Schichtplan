@@ -40,6 +40,50 @@ es die Person danach selbst — unter *Konto* beziehungsweise *Einstellungen*.
 Admins setzen einander bewusst **nicht** zurück: sonst könnte einer die
 anderen aussperren und die Firma übernehmen.
 
+## Überschneidende Schichten
+
+Grundregel: **Wer eine Schicht übernimmt, kann in derselben Zeit keine zweite
+übernehmen.** Gespeichert werden nur die Ausnahmen davon.
+
+Legt die Administration eine Schicht an, die sich zeitlich mit einer
+bestehenden überschneidet, erscheint im Formular ein Block *Überschneidungen* —
+eine Zeile je betroffener Serie, nicht je Termin. Dort wird einmal entschieden:
+
+| Wahl | Wirkung |
+| ---- | ------- |
+| **Nein – schliessen einander aus** (Vorgabe) | Wer sich für die eine einschreibt, wird bei der anderen abgewiesen |
+| **Ja – beides zusammen möglich** | Beide Schichten lassen sich nebeneinander übernehmen |
+
+Die Regel greift an drei Stellen: beim **Einschreiben**, beim **Übernehmen**
+und bei der **Auslosung**. Die ersten beiden weisen mit einer Meldung ab, die
+beide Schichten mit Namen und Zeit nennt. Die Auslosung überspringt still, wer
+zur selben Zeit schon einer anderen Schicht zugeteilt ist — nötig, weil eine
+Freigabe zurückgenommen werden kann, nachdem sich jemand für beide
+eingeschrieben hat. Lieber ein offener Platz als eine Person an zwei Orten.
+
+Die Freigabe gilt in beide Richtungen und für alle Termine der beiden Serien,
+auch für die, die später nachgefüllt werden.
+
+Eine Schicht, die um 16:00 endet, überschneidet sich **nicht** mit einer, die um
+16:00 beginnt. Nachtschichten (Ende früher als Anfang) reichen in den Folgetag
+und werden dort korrekt geprüft — die Rechnung steht in
+[shared/overlap.js](shared/overlap.js) und wird von Formular und Server
+gemeinsam benutzt.
+
+Dasselbe steht beim **Bearbeiten** einer Schicht: Der Block zeigt dort jede
+Überschneidung — die schon bestehenden mit ihrem jetzigen Stand, die durch die
+Änderung neu entstehenden mit der Marke *neu*. So lässt sich eine Freigabe
+nachträglich erteilen oder zurücknehmen, ohne die Schicht neu anzulegen.
+
+Wird an der Schicht selbst nichts geändert und nur eine Freigabe umgestellt,
+**wird niemand ausgetragen** — die Rückfrage sagt das auch so. Ausgetragen wird
+erst, wenn sich Name, Zeit, Datum, Plätze oder Qualifikation ändern.
+
+> **Für bestehende Installationen:** Schichten, die sich schon vor dieser
+> Änderung überschnitten haben, gelten zunächst als sich ausschliessend — für
+> sie wurde nie eine Freigabe eingetragen. Über *Bearbeiten* lässt sich das
+> für jede betroffene Schicht nachholen.
+
 ## Schichten ändern
 
 Aufgeklappt hat jede Schicht in der Admin-Ansicht einen Knopf *Bearbeiten*.
@@ -69,9 +113,10 @@ jedes Bildschirms aus erreichbar, auch ohne Anmeldung.
 
 > **Vor dem ersten Einsatz ausfüllen:** Ganz oben in
 > [src/features/legal/PrivacyScreen.jsx](src/features/legal/PrivacyScreen.jsx) steht
-> ein `BETREIBER`-Block mit fünf Platzhaltern — Name, Adresse, Kontaktadresse,
-> Serverstandort und Stand. Solange die dort stehen, ist die Seite nicht
-> veröffentlichungsreif.
+> ein `BETREIBER`-Block. Nötig sind `name`, `kontakt`, `serverstandort` und
+> `stand`; solange dort Platzhalter stehen, ist die Seite nicht
+> veröffentlichungsreif. Die Postanschrift (`adresse`) ist **freiwillig** —
+> bleibt sie leer, fällt die Zeile weg.
 
 Der Text beschreibt, was das Programm tatsächlich speichert. Ändert sich die
 Datenhaltung, gehört er mit angepasst.

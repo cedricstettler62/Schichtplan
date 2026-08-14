@@ -5,10 +5,14 @@
  * Die Angaben zum Betreiber stehen bewusst an einer Stelle beisammen: Sie sind
  * für jede Installation andere und müssen vor dem ersten Einsatz ausgefüllt
  * werden.
+ *
+ * Nötig sind `name` und `kontakt` — verlangt ist eine erkennbare Identität und
+ * ein Weg, den Betreiber tatsächlich zu erreichen. Die Postanschrift ist
+ * freiwillig: Bleibt `adresse` leer, fällt die Zeile weg.
  */
 const BETREIBER = {
   name: "[Name des Betreibers]",
-  adresse: "[Strasse, PLZ Ort]",
+  adresse: "", // optional — leer lassen, wenn keine Postanschrift stehen soll
   kontakt: "[Kontaktadresse für Datenschutzanliegen]",
   serverstandort: "[Standort des Servers, z. B. Schweiz]",
   stand: "[Monat Jahr]",
@@ -37,9 +41,11 @@ export default function PrivacyScreen() {
           technisch betreut wird Schichtboard von:
         </p>
         <p className="sb-legal-adresse">
-          {BETREIBER.name}<br />
-          {BETREIBER.adresse}<br />
-          {BETREIBER.kontakt}
+          {[BETREIBER.name, BETREIBER.adresse, BETREIBER.kontakt]
+            .filter((zeile) => zeile && zeile.trim())
+            .map((zeile, i) => (
+              <span key={zeile}>{i > 0 && <br />}{zeile}</span>
+            ))}
         </p>
         <p>
           Der Betreiber bearbeitet die Daten ausschliesslich im Auftrag der Unternehmen

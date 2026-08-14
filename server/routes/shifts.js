@@ -9,6 +9,7 @@ import { addDays, fromISO, startOfToday, toISO } from "#shared/dates.js";
 
 import { requireAdmin, requireCompany } from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
+import { findeKonflikt, konfliktMeldung, merkeKombinierbar, vergissKombinierbar } from "../conflicts.js";
 import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
 
@@ -55,10 +56,24 @@ export default function shiftRoutes(db) {
                            repeat, seats, qualification_id, end_date, assignment_attempted, assigned_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`
     );
+    /* Serien, mit denen sich die neue Schicht laut Administration trotz
+       Überschneidung zusammen übernehmen lässt. Alles andere schliesst sich
+       aus — dafür braucht es keinen Eintrag. */
+    const kombinierbar = Array.isArray(form.combinableWith) ? form.combinableWith.map(String) : [];
+    const bekannteSerien = new Set(
+      db.prepare("SELECT DISTINCT series_id FROM shifts WHERE company_id = ?")
+        .all(req.session.companyId)
+        .map((r) => r.series_id)
+    );
+
+    const seriesId = shifts[0]?.seriesId;
     db.transaction(() => {
       for (const s of shifts) {
         insert.run(s.id, req.session.companyId, s.seriesId, s.name, s.date,
           s.startTime, s.endTime, s.repeat, s.seats, s.qualificationId, s.endDate);
+      }
+      for (const andere of kombinierbar) {
+        if (bekannteSerien.has(andere)) merkeKombinierbar(db, req.session.companyId, seriesId, andere);
       }
     })();
 
@@ -138,33 +153,80 @@ export default function shiftRoutes(db) {
     }
 
     const platzhalter = betroffen.map(() => "?").join(", ");
-    const ausgetragen = db
-      .prepare(`SELECT COUNT(*) AS n FROM enrollments WHERE shift_id IN (${platzhalter})`)
-      .get(...betroffen).n;
+
+    /* Löst sich der Termin aus der Serie, gilt er ab jetzt als eigene Serie —
+       auch für die Freigaben, die gleich geschrieben werden. */
+    const loestSichHeraus = umfang === "einzeln" && shift.repeat !== "once";
+    const eigeneSerie = loestSichHeraus ? uid("serie") : shift.seriesId;
+
+    /* Wer nur eine Freigabe nachträgt, soll dafür nicht die halbe Belegschaft
+       aus der Schicht werfen. Ausgetragen wird deshalb nur, wenn sich an der
+       Schicht selbst etwas ändert. */
+    const abweichend = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM shifts
+          WHERE id IN (${platzhalter})
+            AND NOT (name = ? AND start_time = ? AND end_time = ? AND seats = ? AND qualification_id IS ?)`
+      )
+      .get(...betroffen, name, startTime, endTime, seats, qual.id).n;
+    const geaendert = abweichend > 0 || neuesDatum !== shift.date;
+
+    const ausgetragen = geaendert
+      ? db.prepare(`SELECT COUNT(*) AS n FROM enrollments WHERE shift_id IN (${platzhalter})`)
+          .get(...betroffen).n
+      : 0;
+
+    /* Freigaben, die mit dieser Änderung gelten sollen: { serienId: true|false }.
+       Anders als beim Anlegen muss sich hier auch ein "nein" ausdrücken lassen —
+       eine bestehende Freigabe soll zurücknehmbar sein. */
+    const freigaben = Object.entries(
+      form.combinable && typeof form.combinable === "object" ? form.combinable : {}
+    ).filter(([andere]) => andere && andere !== eigeneSerie);
+
+    const bekannteSerien = new Set(
+      db.prepare("SELECT DISTINCT series_id FROM shifts WHERE company_id = ?")
+        .all(req.session.companyId)
+        .map((r) => r.series_id)
+    );
 
     db.transaction(() => {
       db.prepare(
         `UPDATE shifts
-            SET name = ?, start_time = ?, end_time = ?, seats = ?, qualification_id = ?,
-                assignment_attempted = 0, assigned_at = NULL
+            SET name = ?, start_time = ?, end_time = ?, seats = ?, qualification_id = ?
           WHERE id IN (${platzhalter})`
       ).run(name, startTime, endTime, seats, qual.id, ...betroffen);
 
       if (umfang === "einzeln") {
         db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(neuesDatum, shift.id);
         // Der Termin verlässt die Serie, damit die Ausnahme nicht weiterwandert.
-        if (shift.repeat !== "once") {
+        if (loestSichHeraus) {
           db.prepare("UPDATE shifts SET series_id = ?, repeat = 'once', end_date = NULL WHERE id = ?")
-            .run(uid("serie"), shift.id);
+            .run(eigeneSerie, shift.id);
         }
       }
 
-      db.prepare(`DELETE FROM enrollments WHERE shift_id IN (${platzhalter})`).run(...betroffen);
-      db.prepare(`DELETE FROM help_requests WHERE shift_id IN (${platzhalter})`).run(...betroffen);
+      if (geaendert) {
+        // Die Schicht gilt als frisch ausgeschrieben, die Auslosung steht wieder aus.
+        db.prepare(
+          `UPDATE shifts SET assignment_attempted = 0, assigned_at = NULL WHERE id IN (${platzhalter})`
+        ).run(...betroffen);
+        db.prepare(`DELETE FROM enrollments WHERE shift_id IN (${platzhalter})`).run(...betroffen);
+        db.prepare(`DELETE FROM help_requests WHERE shift_id IN (${platzhalter})`).run(...betroffen);
+      }
+
+      for (const [andere, erlaubt] of freigaben) {
+        if (!bekannteSerien.has(andere)) continue;
+        if (erlaubt) merkeKombinierbar(db, req.session.companyId, eigeneSerie, andere);
+        else vergissKombinierbar(db, req.session.companyId, eigeneSerie, andere);
+      }
+
+      /* Beim Herauslösen erbt der Termin die Freigaben seiner bisherigen Serie
+         nicht: Er ist ab jetzt eine eigene. Was gelten soll, stand im Formular
+         und ist oben schon geschrieben. */
     })();
 
     recompute(db, req.session.companyId);
-    res.json({ updated: betroffen.length, ausgetragen });
+    res.json({ updated: betroffen.length, ausgetragen, geaendert });
   });
 
   /** Sofortige Zuteilung durch die Administration ("Jetzt zuteilen"). */
@@ -196,6 +258,11 @@ export default function shiftRoutes(db) {
     if (!hasQualification(accounts, me, shift.qualificationId)) {
       return res.status(403).json({ error: "Dir fehlt die nötige Qualifikation." });
     }
+
+    /* Zwei Schichten zur selben Zeit gehen nur, wenn die Administration sie
+       ausdrücklich als zusammen übernehmbar eingetragen hat. */
+    const konflikt = findeKonflikt(db, req.session.companyId, me, shift);
+    if (konflikt) return res.status(409).json({ error: konfliktMeldung(shift, konflikt) });
 
     /* Ist die Auslosung für diese Schicht schon gelaufen und trotzdem ein Platz
        frei, bekommt ihn sofort, wer sich jetzt einschreibt. Ein zweiter
@@ -297,6 +364,9 @@ export default function shiftRoutes(db) {
     if (!canTakeOver(shift, accounts, me, replaceId)) {
       return res.status(409).json({ error: "Diese Schicht kannst du nicht übernehmen." });
     }
+
+    const konflikt = findeKonflikt(db, req.session.companyId, me, shift);
+    if (konflikt) return res.status(409).json({ error: konfliktMeldung(shift, konflikt) });
 
     db.transaction(() => {
       if (replaceId) {

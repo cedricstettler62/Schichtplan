@@ -2,6 +2,8 @@
    Jede Route prüft Rolle *und* Firmenzugehörigkeit — im Browser schützte
    bisher nur das Ausblenden von Tabs. */
 
+import crypto from "node:crypto";
+
 import { Router } from "express";
 
 import { startOfToday, toISO } from "#shared/dates.js";
@@ -39,6 +41,12 @@ function ownAccount(db, req, id) {
 function darfEingreifen(req, target) {
   if (target.id === req.session.accountId) return true;
   return req.session.role === "admin" && target.role !== "admin";
+}
+
+/** Die vollständige, einfügbare Adresse — ein Kalenderprogramm liegt ausserhalb
+ *  des Browsers und kommt mit einem relativen Pfad nicht zurecht. */
+function kalenderUrl(req, token) {
+  return `${req.protocol}://${req.get("host")}/api/kalender/${token}.ics`;
 }
 
 function adminCount(db, companyId) {
@@ -249,6 +257,36 @@ export default function companyRoutes(db, config) {
     res.setHeader("Content-Disposition", `attachment; filename="${dateiname(target.name)}"`);
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.send(JSON.stringify(daten, null, 2));
+  });
+
+  /**
+   * Kalenderabo (iCal): aktueller Stand — aus, oder die Adresse zum Kopieren.
+   * Rein persönlich, deshalb ohne die sonstige Admin-Ausnahme: Ein fremdes
+   * Zeichen zu erzeugen, hülfe niemandem, es steht ja nur der Person selbst
+   * zur Verfügung, die es in ihren eigenen Kalender einträgt.
+   */
+  router.get("/accounts/:id/calendar-token", requireCompany, (req, res) => {
+    const target = ownAccount(db, req, req.params.id);
+    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
+    if (target.id !== req.session.accountId) return res.status(403).json({ error: "Nicht erlaubt." });
+
+    const row = db.prepare("SELECT calendar_token FROM accounts WHERE id = ?").get(target.id);
+    res.json({ url: row.calendar_token ? kalenderUrl(req, row.calendar_token) : null });
+  });
+
+  /**
+   * Schaltet das eigene Kalenderabo ein oder erzeugt eine neue Adresse — die
+   * alte wird dabei ungültig, weil sie durch den Unique-Index nicht zweimal
+   * vergeben sein kann und hier überschrieben wird.
+   */
+  router.post("/accounts/:id/calendar-token", requireCompany, (req, res) => {
+    const target = ownAccount(db, req, req.params.id);
+    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
+    if (target.id !== req.session.accountId) return res.status(403).json({ error: "Nicht erlaubt." });
+
+    const token = crypto.randomBytes(32).toString("base64url");
+    db.prepare("UPDATE accounts SET calendar_token = ? WHERE id = ?").run(token, target.id);
+    res.json({ url: kalenderUrl(req, token) });
   });
 
   router.delete("/accounts/:id", requireCompany, (req, res) => {

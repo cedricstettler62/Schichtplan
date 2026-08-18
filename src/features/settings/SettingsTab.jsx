@@ -2,6 +2,7 @@ import { useState } from "react";
 import PasswordForm from "../../components/PasswordForm.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
+import CalendarSubscriptionCard from "../../components/CalendarSubscriptionCard.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import AppInstallCard from "../../components/AppInstallCard.jsx";
 import SessionCard from "../../components/SessionCard.jsx";
@@ -165,6 +166,7 @@ export default function SettingsTab({
         )}
       </div>
 
+      <CalendarSubscriptionCard accountId={currentUser.id} />
       <AppInstallCard />
       <SessionCard onLogout={onLogout} />
     </div>

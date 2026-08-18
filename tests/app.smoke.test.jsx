@@ -94,6 +94,19 @@ describe("App einrichten und abmelden", () => {
     await user.click(screen.getByRole("button", { name: "Auf diesem Gerät abmelden" }));
     await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
   });
+
+  test("die Kalenderabo-Karte steht bei Administration und Mitarbeitenden", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    await einstellungenOeffnen(user, "Einstellungen");
+    expect(await screen.findByRole("heading", { name: "Kalenderabo" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Auf diesem Gerät abmelden" }));
+    await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
+    await login(user, EMPLOYEE);
+    await einstellungenOeffnen(user, "Konto");
+    expect(await screen.findByRole("heading", { name: "Kalenderabo" })).toBeInTheDocument();
+  });
 });
 
 describe("Admin", () => {

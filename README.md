@@ -219,6 +219,28 @@ soll:
 node scripts/icons.js
 ```
 
+## Kalenderabo
+
+Wer unten in *Einstellungen* beziehungsweise *Konto* den Kalender einschaltet,
+bekommt eine Adresse, die sich in Google, Apple oder Outlook als Kalenderabo
+einträgt. Der Kalender holt sie sich von selbst regelmässig ab und zeigt die
+eigenen **zugeteilten** Schichten als Termine — eine Einschreibung ist ein
+Wunsch, eine Zuteilung eine Verpflichtung, und nur Verpflichtungen gehören in
+einen Kalender.
+
+Die Adresse trägt ein zufälliges Zeichen und *ist* damit der Zugang: Ein
+Kalenderprogramm kann sich nicht anmelden, deshalb prüft
+`GET /api/kalender/:token.ics` kein Cookie. Wer die Adresse hat, sieht die
+Schichten — der Knopf *Neue Adresse erzeugen* macht eine weitergegebene
+Adresse deshalb ungültig, ohne den Kalender ganz abzuschalten.
+
+Die Zeiten stehen als schwebende Ortszeit im Feed, ohne Zeitzonenangabe: Der
+Betrieb findet an einem Standort statt, und ein Kalenderprogramm zeigt eine
+schwebende Zeit ohnehin in seiner eigenen Zone an — für diesen Fall genügt
+das und bleibt ohne `VTIMEZONE`-Block einfacher. Die Erzeugung des Feeds
+steht in [server/ical.js](server/ical.js), bewusst von Hand geschrieben statt
+mit einem zusätzlichen Paket.
+
 ## Datenschutz
 
 Die Datenschutzerklärung liegt unter **`/datenschutz`** und ist von der Fussleiste

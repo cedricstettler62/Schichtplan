@@ -62,6 +62,16 @@ export async function downloadDatabase() {
   return alsDateiSpeichern(res, "schichtplan.db");
 }
 
+/** Kalenderabo (iCal): aktueller Stand — aus, oder die Adresse zum Kopieren. */
+export function calendarStatus(accountId) {
+  return api.get(`/accounts/${accountId}/calendar-token`);
+}
+
+/** Schaltet das eigene Kalenderabo ein oder erzeugt eine neue Adresse. */
+export function renewCalendarToken(accountId) {
+  return api.post(`/accounts/${accountId}/calendar-token`);
+}
+
 /** Auskunft über ein Konto als Datei — alles, was zu der Person gespeichert ist. */
 export async function downloadPersonalData(accountId) {
   const res = await fetch(`/api/accounts/${accountId}/data`, { credentials: "same-origin" });

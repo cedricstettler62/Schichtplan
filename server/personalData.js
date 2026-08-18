@@ -23,7 +23,7 @@ export function dateiname(name, datum = new Date()) {
 export function personalData(db, accountId) {
   const konto = db
     .prepare(
-      `SELECT a.id, a.name, a.role, c.name AS firma, c.code AS firmencode
+      `SELECT a.id, a.name, a.role, a.calendar_token, c.name AS firma, c.code AS firmencode
          FROM accounts a JOIN companies c ON c.id = a.company_id
         WHERE a.id = ?`
     )
@@ -70,12 +70,14 @@ export function personalData(db, accountId) {
       rolle: konto.role === "admin" ? "Administration" : "Mitarbeitende",
       unternehmen: konto.firma,
       firmencode: konto.firmencode,
+      kalenderabo: konto.calendar_token ? "eingeschaltet" : "aus",
     },
     qualifikationen,
     einschreibungen,
     hilfegesuche,
     hinweise: [
       "Das Passwort ist nur als bcrypt-Hash gespeichert und lässt sich daraus nicht zurückrechnen. Es steht deshalb nicht in dieser Auskunft.",
+      "Die Adresse eines eingeschalteten Kalenderabos ist ein Zugangsschlüssel wie ein Passwort und steht deshalb ebenfalls nicht in dieser Auskunft. Sie lässt sich unter Einstellungen bzw. Konto jederzeit neu erzeugen, wodurch die alte ungültig wird.",
       "Eine E-Mail-Adresse wird nicht gespeichert; das Programm verschickt keine Nachrichten.",
       "IP-Adressen von Anmeldeversuchen liegen nur flüchtig im Arbeitsspeicher und werden nicht in die Datenbank geschrieben.",
       "Schichten und die daran hängenden Einschreibungen werden drei Monate nach ihrem Datum vollständig gelöscht. Ältere Einträge stehen deshalb nicht mehr hier.",

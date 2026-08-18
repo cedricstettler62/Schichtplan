@@ -27,7 +27,11 @@ CREATE TABLE IF NOT EXISTS accounts (
      trägt den Stand mit, der beim Anmelden galt — passt er nicht mehr, ist
      die Sitzung vorbei. So endet mit dem alten Passwort auch alles, was mit
      ihm angemeldet wurde. */
-  session_epoch INTEGER NOT NULL DEFAULT 0
+  session_epoch INTEGER NOT NULL DEFAULT 0,
+  /* Der Zugang zum eigenen Kalenderabo (iCal). NULL, solange niemand den
+     Kalender eingeschaltet hat — entsteht erst auf Wunsch, nicht beim Anlegen
+     des Kontos. Die Eindeutigkeit erzwingt ein eigener Index weiter unten. */
+  calendar_token TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id);
 
@@ -111,6 +115,12 @@ export function openDb(file) {
   db.exec(SCHEMA);
   ensureColumn(db, "shifts", "end_date", "TEXT");
   ensureColumn(db, "accounts", "session_epoch", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "accounts", "calendar_token", "TEXT");
+  /* SQLite lässt eine per ALTER TABLE nachgerüstete Spalte keine UNIQUE-
+     Bedingung tragen (Einschränkung von ALTER TABLE ADD COLUMN) — ein eigener
+     Index leistet dasselbe: Jedes Zeichen bleibt genau einem Konto zugeordnet,
+     mehrere NULL (Kalender aus) sind dabei ausdrücklich erlaubt. */
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_calendar_token ON accounts(calendar_token)");
   /* Konten kamen früher mit E-Mail-Adresse und bekamen ihr erstes Passwort
      über einen Link. Beides ist weg: Adressen werden nirgends mehr gebraucht,
      und offene Token sollen nicht in einer Datenbank liegen bleiben, in der

@@ -1,6 +1,7 @@
 import Avatar from "../../components/Avatar.jsx";
 import PasswordForm from "../../components/PasswordForm.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
+import CalendarSubscriptionCard from "../../components/CalendarSubscriptionCard.jsx";
 import AppInstallCard from "../../components/AppInstallCard.jsx";
 import SessionCard from "../../components/SessionCard.jsx";
 
@@ -37,6 +38,7 @@ export default function AccountTab({ currentUser, qualifications, verifySelf, on
         <DataExportButton accountId={currentUser.id} />
       </div>
 
+      <CalendarSubscriptionCard accountId={currentUser.id} />
       <AppInstallCard />
       <SessionCard onLogout={onLogout} />
     </div>

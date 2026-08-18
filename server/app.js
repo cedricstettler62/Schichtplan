@@ -10,6 +10,7 @@ import { attachSession } from "./auth.js";
 import { readVersion } from "./version.js";
 import adminRoutes from "./routes/admin.js";
 import authRoutes from "./routes/auth.js";
+import calendarRoutes from "./routes/calendar.js";
 import companiesRoutes from "./routes/companies.js";
 import companyRoutes from "./routes/company.js";
 import shiftRoutes from "./routes/shifts.js";
@@ -45,6 +46,8 @@ export function createApp(db, config) {
   app.use("/api", companyRoutes(db, config));
   app.use("/api/shifts", shiftRoutes(db));
   app.use("/api/companies", companiesRoutes(db, config));
+  // Ohne Anmeldung erreichbar: das Zeichen in der Adresse ist hier der Zugang.
+  app.use("/api", calendarRoutes(db));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Unbekannter Endpunkt." }));
 

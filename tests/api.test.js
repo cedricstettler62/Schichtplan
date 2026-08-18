@@ -2072,3 +2072,160 @@ describe("Neustart", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("Kalenderabo", () => {
+  /* Nur zugeteilte Schichten gehören in den Kalender — eine Einschreibung ist
+     ein Wunsch, eine Zuteilung eine Verpflichtung. Das Zeichen in der Adresse
+     ist ohne Anmeldung der einzige Zugang, deshalb prüfen die Tests hier
+     ausschliesslich über `client().raw(...)`, ganz ohne Cookie. */
+  const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
+  const tokenAus = (url) => url.split("/").pop().replace(".ics", "");
+  const feedVon = async (token) => (await client().raw("GET", `/api/kalender/${token}.ics`)).text();
+
+  test("ohne eingeschaltetes Abo ist der Stand aus", async () => {
+    const admin = await asAdmin();
+    const meineId = (await admin.get("/api/state")).data.userId;
+    const { status, data } = await admin.get(`/api/accounts/${meineId}/calendar-token`);
+    expect(status).toBe(200);
+    expect(data.url).toBeNull();
+  });
+
+  test("ein unbekanntes Zeichen liefert 404, nicht 403", async () => {
+    const res = await client().raw("GET", "/api/kalender/unbekanntesZeichen.ics");
+    expect(res.status).toBe(404);
+  });
+
+  test("ein gültiges Zeichen liefert 200 und text/calendar", async () => {
+    const admin = await asAdmin();
+    const meineId = (await admin.get("/api/state")).data.userId;
+    const { data } = await admin.post(`/api/accounts/${meineId}/calendar-token`);
+    expect(data.url).toMatch(/^https?:\/\/.+\/api\/kalender\/.+\.ics$/);
+
+    const res = await client().raw("GET", `/api/kalender/${tokenAus(data.url)}.ics`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/calendar/);
+  });
+
+  test("nur die eigenen zugeteilten Schichten stehen im Feed, blosse Einschreibungen nicht", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    const tomId = await legeMitarbeitendeAn(admin, { name: "Tom Klein", password: "12345" });
+    await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
+
+    await admin.post("/api/shifts", {
+      name: "Zugeteilt", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    await admin.post("/api/shifts", {
+      name: "Nur eingeschrieben", date: heute(), startTime: "14:00", endTime: "18:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shifts = (await admin.get("/api/state")).data.company.shifts;
+    const zugeteiltId = shifts.find((s) => s.name === "Zugeteilt").id;
+    const wartelisteId = shifts.find((s) => s.name === "Nur eingeschrieben").id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${zugeteiltId}/enroll`); // bekommt den einzigen Platz
+
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.post(`/api/shifts/${wartelisteId}/enroll`); // besetzt den einzigen Platz zuerst
+    await lea.post(`/api/shifts/${wartelisteId}/enroll`); // Lea bleibt auf der Warteliste
+
+    const leaId = (await lea.get("/api/state")).data.userId;
+    const { data } = await lea.post(`/api/accounts/${leaId}/calendar-token`);
+    const text = await feedVon(tokenAus(data.url));
+
+    expect(text).toContain("Zugeteilt");
+    expect(text).not.toContain("Nur eingeschrieben");
+  });
+
+  test("keine Schicht einer fremden Firma taucht auf", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await admin.post("/api/shifts", {
+      name: "Eigene Schicht", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    await admin.post(`/api/shifts/${shiftId}/enroll`);
+    const meineId = (await admin.get("/api/state")).data.userId;
+    const { data } = await admin.post(`/api/accounts/${meineId}/calendar-token`);
+
+    // Fremde Firma mit eigener zugeteilter Schicht, direkt in der Datenbank.
+    const fremdeId = createCompany(server.db, {
+      code: "222222", name: "Zweite Firma AG", adminName: "Andere Chefin", adminPassword: "12345",
+    });
+    const fremdesKonto = readCompany(server.db, fremdeId).accounts[0].id;
+    server.db.prepare(
+      `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
+                           repeat, seats, qualification_id, assignment_attempted, assigned_at)
+       VALUES ('s_fremd', ?, 'serie_fremd', 'Fremde Schicht', ?, '06:00', '12:00', 'once', 1, NULL, 1, ?)`
+    ).run(fremdeId, heute(), heute());
+    server.db.prepare("INSERT INTO enrollments (shift_id, account_id, assigned) VALUES ('s_fremd', ?, 1)")
+      .run(fremdesKonto);
+
+    const text = await feedVon(tokenAus(data.url));
+    expect(text).toContain("Eigene Schicht");
+    expect(text).not.toContain("Fremde Schicht");
+  });
+
+  test("Neue Adresse erzeugen macht die alte ungültig", async () => {
+    const admin = await asAdmin();
+    const meineId = (await admin.get("/api/state")).data.userId;
+    const erste = (await admin.post(`/api/accounts/${meineId}/calendar-token`)).data.url;
+    const zweite = (await admin.post(`/api/accounts/${meineId}/calendar-token`)).data.url;
+    expect(zweite).not.toBe(erste);
+
+    expect((await client().raw("GET", `/api/kalender/${tokenAus(erste)}.ics`)).status).toBe(404);
+    expect((await client().raw("GET", `/api/kalender/${tokenAus(zweite)}.ics`)).status).toBe(200);
+  });
+
+  test("nur das eigene Konto kann sein Abo einschalten", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    expect((await admin.post(`/api/accounts/${leaId}/calendar-token`)).status).toBe(403);
+    expect((await admin.get(`/api/accounts/${leaId}/calendar-token`)).status).toBe(403);
+  });
+
+  test("eine Nachtschicht endet im Feed am Folgetag", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await admin.post("/api/shifts", {
+      name: "Nachtdienst", date: heute(), startTime: "22:00", endTime: "06:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    await admin.post(`/api/shifts/${shiftId}/enroll`);
+
+    const meineId = (await admin.get("/api/state")).data.userId;
+    const { data } = await admin.post(`/api/accounts/${meineId}/calendar-token`);
+    const text = await feedVon(tokenAus(data.url));
+
+    const morgenKompakt = toISO(addDays(startOfToday(), 1)).replaceAll("-", "");
+    expect(text).toMatch(new RegExp(`DTEND:${morgenKompakt}T060000`));
+  });
+
+  test("die Form: BEGIN/END-Paare, CRLF-Zeilenenden, ein VEVENT je zugeteilter Schicht", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationId: qualId,
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    await admin.post(`/api/shifts/${shiftId}/enroll`);
+
+    const meineId = (await admin.get("/api/state")).data.userId;
+    const { data } = await admin.post(`/api/accounts/${meineId}/calendar-token`);
+    const text = await feedVon(tokenAus(data.url));
+
+    expect(text.startsWith("BEGIN:VCALENDAR\r\n")).toBe(true);
+    expect(text.trimEnd().endsWith("END:VCALENDAR")).toBe(true);
+    expect(text).not.toMatch(/[^\r]\n/); // jedes LF hat ein CR davor — keine nackten Zeilenenden
+    expect((text.match(/BEGIN:VEVENT/g) || []).length).toBe(1);
+    expect((text.match(/END:VEVENT/g) || []).length).toBe(1);
+  });
+});

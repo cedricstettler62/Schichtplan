@@ -59,6 +59,11 @@ export default function PrivacyScreen() {
           <li><strong>Qualifikationen</strong>, die einem Konto zugeordnet sind.</li>
           <li><strong>Schichten</strong> des Unternehmens sowie <strong>Einschreibungen</strong> und <strong>Zuteilungen</strong> einzelner Konten.</li>
           <li><strong>Hilfegesuche</strong> zu einzelnen Schichten.</li>
+          <li>
+            <strong>Kalenderabo:</strong> ein zufälliges Zugangszeichen, sobald jemand seinen
+            Kalender abonniert — vergleichbar einem Passwort, nicht aus echten Daten der Person
+            gebildet.
+          </li>
         </ul>
         <p>
           Eine E-Mail-Adresse wird <strong>nicht</strong> erhoben. Das Programm verschickt keine
@@ -107,7 +112,19 @@ export default function PrivacyScreen() {
           verschlüsselt.
         </p>
 
-        <h2 className="sb-legal-h">7. Cookies</h2>
+        <h2 className="sb-legal-h">7. Kalenderabo</h2>
+        <p>
+          Wer seinen Kalender abonniert (unter <em>Konto</em> beziehungsweise <em>Einstellungen</em>),
+          erzeugt sich dafür eine persönliche Adresse. Ruft ein Kalenderprogramm — etwa von Google,
+          Apple oder Microsoft — diese Adresse ab, werden ihm die eigenen zugeteilten Schichten
+          übertragen, damit sie dort als Termine erscheinen. Diese Übertragung findet ausserhalb
+          von Schichtboard statt und unterliegt den Datenschutzbestimmungen des jeweiligen Anbieters.
+          Die Adresse lässt sich jederzeit zurückziehen: Eine neu erzeugte Adresse macht die
+          bisherige ungültig, ein Kalenderprogramm, das sie noch abruft, bekommt danach nichts mehr
+          geliefert.
+        </p>
+
+        <h2 className="sb-legal-h">8. Cookies</h2>
         <p>
           Schichtboard setzt genau ein Cookie: <code>sb_session</code>. Es hält die Anmeldung
           aufrecht, ist signiert, für JavaScript im Browser nicht lesbar und läuft nach 30 Tagen ab.
@@ -116,14 +133,14 @@ export default function PrivacyScreen() {
           Werbung, keine eingebetteten Dienste Dritter und keine Weitergabe von Nutzungsdaten.
         </p>
 
-        <h2 className="sb-legal-h">8. Sicherheit</h2>
+        <h2 className="sb-legal-h">9. Sicherheit</h2>
         <p>
           Passwörter werden mit bcrypt gehasht, das Sitzungs-Cookie ist signiert und nur über HTTPS
           gültig, wiederholte Fehlanmeldungen werden gebremst, und jede Anfrage prüft auf dem Server
           Rolle und Firmenzugehörigkeit — nicht bloss im Browser.
         </p>
 
-        <h2 className="sb-legal-h">9. Rechte</h2>
+        <h2 className="sb-legal-h">10. Rechte</h2>
         <p>Jede betroffene Person hat das Recht auf</p>
         <ul className="sb-legal-list">
           <li><strong>Auskunft</strong> über die zu ihr gespeicherten Daten,</li>
@@ -144,7 +161,7 @@ export default function PrivacyScreen() {
           Aufsichtsbehörde.
         </p>
 
-        <h2 className="sb-legal-h">10. Änderungen</h2>
+        <h2 className="sb-legal-h">11. Änderungen</h2>
         <p>
           Ändert sich, was das Programm speichert, wird diese Erklärung mit angepasst.
           Stand: {BETREIBER.stand}.

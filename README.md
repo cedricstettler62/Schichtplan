@@ -35,10 +35,68 @@ weitergegeben — geschrieben blieben sie sonst irgendwo liegen.
 | Administration        | die Verwaltung, unter *Unternehmen* → Firma aufklappen             |
 | Verwaltung            | `SB_SUPER_PASSWORD` in der `.env`, danach Dienst neu starten       |
 
+### Ein Admin greift nicht in ein fremdes Admin-Konto ein
+
+Dieselbe Grenze gilt für alles, was Rechte oder Zugang berührt — Passwort
+setzen, Qualifikationen ändern, Rolle ändern, Konto löschen. Ein Admin kann das
+für die Belegschaft und für sich selbst, nie für ein anderes Admin-Konto: Sonst
+könnte einer die anderen entmachten und die Firma übernehmen. Die mildere
+Handlung schwächer zu schützen als die härtere wäre die falsche Reihenfolge.
+
+Daraus folgt:
+
+* **Adminrechte abgeben** kann jede Person nur selbst, unter *Einstellungen*.
+  Wer versehentlich befördert wurde, gibt sie dort zurück. Die letzte
+  Administration kann es nicht — sonst stünde die Firma ohne da.
+* **Ein Admin-Konto löschen** kann nur die Verwaltung, unter *Unternehmen* →
+  Firma aufklappen, bestätigt mit dem Verwaltungs-Passwort. Ist es das letzte,
+  muss dabei eine Nachfolge aus der Belegschaft bestimmt werden; dieses Konto
+  wird im selben Zug zum Admin-Konto. Zuteilungen des gelöschten Kontos werden
+  frei und erscheinen unter *Noch offene Plätze*.
+
 Ein neues Konto bekommt sein erstes Passwort gleich beim Anlegen. Ändern kann
 es die Person danach selbst — unter *Konto* beziehungsweise *Einstellungen*.
-Admins setzen einander bewusst **nicht** zurück: sonst könnte einer die
-anderen aussperren und die Firma übernehmen.
+Admins setzen einander bewusst **nicht** zurück (siehe oben).
+
+Namen dürfen sich wiederholen — zwei Menschen heissen manchmal gleich.
+Unterschieden werden sie am Passwort, und deshalb weist das Programm ein
+Passwort ab, mit dem ein Konto hinter einem gleichnamigen verschwände: Die
+Anmeldung landete sonst immer beim ersten der beiden, und das zweite käme
+nirgends mehr hinein.
+
+**Qualifikationen vergibt die Administration**, unter *Mitarbeitende*. Im
+eigenen *Konto* stehen sie nur zum Nachlesen. Anders wäre „Erste Hilfe“ eine
+Selbstauskunft — und die automatische Zuteilung verspricht mehr als das. Ihre
+eigenen setzt die Administration unter *Einstellungen*: Sie steht in der
+Mitarbeitendenliste nicht drin, käme sonst an keine und könnte damit auch keine
+Schicht übernehmen.
+
+## Angemeldet bleiben
+
+Angemeldet wird einmal. Danach bleibt das Gerät angemeldet — über das Schliessen
+des Fensters und den Neustart des Rechners hinweg. Enden kann eine Anmeldung
+genau auf zwei Wegen:
+
+| Weg | Wirkung |
+| --- | ------- |
+| **Abmelden** unter *Einstellungen* bzw. *Konto* | nur dieses eine Gerät |
+| **Das Passwort wird geändert** | jedes Gerät, auf dem das Konto angemeldet war |
+
+Der zweite Weg ist der wichtigere: Ein neues Passwort wäre nur eine halbe
+Sperre, wenn das verlorene Telefon weiterliefe. Das gilt für jede Stelle, an der
+ein Passwort gesetzt wird — selbst gewählt, von der Administration
+zurückgesetzt, von der Verwaltung für ein ausgesperrtes Admin-Konto.
+
+Eine Ausnahme gibt es: Das Gerät, an dem gerade jemand sitzt und das Passwort
+ändert, bleibt angemeldet. Wer es eintippt, ist in diesem Moment nachweislich
+er selbst und soll nicht mitten in der Arbeit hinausfliegen. Abgemeldet werden
+alle anderen.
+
+Technisch trägt jedes Konto einen Zähler (`accounts.session_epoch`), den jede
+Passwortänderung um eins erhöht. Das Sitzungs-Cookie führt den Stand mit, der
+beim Anmelden galt; passt er nicht mehr, gilt das Cookie nicht mehr. Es braucht
+dafür keine Tabelle offener Sitzungen und kein Aufräumen — die Rechnung steht
+in [server/auth.js](server/auth.js).
 
 ## Überschneidende Schichten
 
@@ -106,6 +164,61 @@ Bei einer Serie fragt das Formular nach dem Umfang:
 Vergangene Termine lassen sich nicht ändern: Sie auszutragen hiesse zu löschen,
 wer die Schicht tatsächlich geleistet hat.
 
+## Als Programm einrichten
+
+Die Seite lässt sich als eigenständiges Programm ablegen und verhält sich danach
+wie eine App: eigenes Symbol, kein Browser drumherum, und der zuletzt gesehene
+Plan bleibt lesbar, wenn das Netz fehlt.
+
+Angemeldet steht der Knopf dafür unten unter *Einstellungen* beziehungsweise
+*Konto* — dort, wo der Browser ihn hergibt. Von Hand geht es überall:
+
+| Gerät             | Weg                                                   |
+| ----------------- | ----------------------------------------------------- |
+| Windows, Chrome/Edge | Installationssymbol rechts in der Adresszeile      |
+| macOS, Safari     | Teilen → *Zum Dock hinzufügen*                        |
+| Android           | Menü des Browsers → *App installieren*                |
+| iPhone            | Teilen-Symbol → *Zum Home-Bildschirm*                 |
+
+Ein Store ist nicht im Spiel, und heruntergeladen wird nichts: Es bleibt
+dieselbe Adresse und derselbe Code. Ein Update kommt damit von selbst mit —
+eine heruntergeladene Datei wäre ab dem nächsten Update veraltet.
+
+**Ein Fenster, das offen bleibt, erfährt vom Update.** Wer die App schliesst und
+wieder öffnet, bekommt ohnehin den neuen Stand; ein Fenster, das wochenlang
+offen steht, ruft aber nie eine Seite neu auf. Deshalb meldet `/api/health` den
+eingespielten Stand, und die Oberfläche vergleicht ihn stündlich sowie beim
+Zurückkehren ins Fenster mit dem, der beim Laden galt. Weicht er ab, erscheint
+oben ein Streifen mit *Jetzt neu laden* — ein Hinweis, keine Unterbrechung.
+
+**Der Zwischenspeicher räumt sich selbst auf.** Die gebauten Dateien tragen
+ihren Inhalt im Namen, eine neue Fassung legt sich also neben die alte. Was die
+gespeicherte `index.html` nicht mehr lädt, wird beim nächsten Seitenaufruf aus
+dem Cache geworfen — sonst sammelte sich dort mit der Zeit jedes Bundle, das je
+ausgeliefert wurde.
+
+**Offline gilt nur fürs Lesen.** Einschreiben, Übernehmen und jede Änderung
+gehen an den Server und brauchen eine Verbindung. Der Service Worker in
+[public/sw.js](public/sw.js) speichert deshalb nichts, was unter `/api` liegt:
+Ein Plan aus dem Zwischenspeicher sähe aus wie der aktuelle Stand, wäre es aber
+nicht, und jemand erschiene zur falschen Schicht.
+
+Seitenaufrufe fragen immer zuerst das Netz. Nach einem Update sieht damit jeder
+sofort die neue Fassung, statt bis zum Ablauf eines Zwischenspeichers am alten
+zu hängen.
+
+**Beim Entwickeln ändert sich nichts.** Der Service Worker wird nur im gebauten
+Stand registriert ([src/main.jsx](src/main.jsx)); `npm run dev` läuft wie
+bisher, und ein früher registrierter wird dort wieder entfernt.
+
+Die Symbole entstehen aus [scripts/icons.js](scripts/icons.js) — dunkler Grund,
+drei versetzte Balken. Das Skript muss nur laufen, wenn sich das Aussehen ändern
+soll:
+
+```bash
+node scripts/icons.js
+```
+
 ## Datenschutz
 
 Die Datenschutzerklärung liegt unter **`/datenschutz`** und ist von der Fussleiste
@@ -130,6 +243,11 @@ Einschreibungen und Hilfegesuchen — zusammengetragen in
 ergänzt es auch in der Auskunft.
 
 ## Auf einem Server
+
+> **Zugang auf Anfrage.** Diese Software ist proprietär ([LICENSE](LICENSE)):
+> Der Quelltext ist einsehbar, betreiben darf sie nur, wer dafür eine
+> schriftliche Erlaubnis hat. Die folgende Anleitung richtet sich an
+> Lizenznehmer. Anfragen: cedricstettler62@gmail.com
 
 Alles über SSH, ein Befehl:
 
@@ -193,6 +311,7 @@ schreibt das Skript nach `data/update-status.json`, die Oberfläche fragt ihn ab
 ## Aufbau
 
 ```
+public/         Symbole, Manifest, Service Worker — unverändert in den Build
 src/            Oberfläche (React)
   features/       ein Ordner je Bereich: login, overview, shifts, employees, …
   components/     kleine wiederverwendete Bausteine
@@ -231,8 +350,10 @@ zufälligen Werten.
 npm test
 ```
 
-Drei Ebenen: die Zuteilungsregeln einzeln, die API über echte HTTP-Aufrufe, und
-die Oberfläche einmal komplett durchgeklickt gegen einen laufenden Server.
+Vier Ebenen: die Zuteilungsregeln einzeln, die API über echte HTTP-Aufrufe, die
+Oberfläche einmal komplett durchgeklickt gegen einen laufenden Server, und
+Manifest samt Symbolen — ein vertippter Dateiname fiele sonst erst auf, wenn
+jemand die Installation probiert.
 
 ## Technik
 

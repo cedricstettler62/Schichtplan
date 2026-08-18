@@ -51,13 +51,22 @@ export default function NewShiftForm({ qualifications, shifts = [], onCreate, on
       setError("Bitte Name, Datum, Qualifikation und eine gültige Platzzahl angeben.");
       return;
     }
+    /* Ein Zeitfeld lässt sich leeren. Ohne Zeiten wird aus der Schicht eine über
+       volle 24 Stunden, die sich mit allem an dem Tag überschneidet. */
+    if (!startTime || !endTime) {
+      setError("Bitte Start- und Endzeit angeben.");
+      return;
+    }
     setError("");
-    await onCreate({
+    const meldung = await onCreate({
       name: name.trim(), date, startTime, endTime, repeat, endDate: endDate || null,
       seats: Number(seats), qualificationId,
       // Nur was jetzt auch wirklich als Überschneidung dasteht.
       combinableWith: ueberschneidungen.filter((u) => kombinierbar[u.seriesId]).map((u) => u.seriesId),
     });
+    /* Erst leeren, wenn die Schicht wirklich angelegt wurde — sonst verschwindet
+       das ausgefüllte Formular und es gibt nichts, worauf man aufsetzen könnte. */
+    if (meldung) { setError(meldung); return; }
     setName(""); setDate(""); setStartTime("08:00"); setEndTime("16:00"); setRepeat("once");
     setEndDate(""); setSeats(1); setQualificationId(""); setKombinierbar({});
   };

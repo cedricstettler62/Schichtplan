@@ -7,6 +7,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { addDays, addMonths, toISO, startOfToday } from "#shared/dates.js";
+import { REPEAT_KEYS } from "#shared/labels.js";
 import { extendSeries, purgeOldShifts } from "../server/assignment.js";
 import { createCompany, openDb, readCompany } from "../server/db.js";
 import { ADMIN, EMPLOYEE, SUPER, createClient, startTestServer } from "./helpers/server.js";
@@ -70,6 +71,121 @@ describe("Anmeldung", () => {
     const c = await asAdmin();
     await c.post("/api/logout");
     expect((await c.get("/api/state")).status).toBe(401);
+  });
+});
+
+describe("Eingespielter Stand", () => {
+  test("/api/health nennt die Fassung — daran erkennt ein offenes Fenster ein Update", async () => {
+    const { status, data } = await client().get("/api/health");
+
+    expect(status).toBe(200);
+    expect(data.ok).toBe(true);
+    expect(typeof data.version).toBe("string");
+    expect(data.version.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Angemeldet bleiben", () => {
+  /* Einmal anmelden, danach nie wieder — bis das Passwort wechselt oder sich
+     jemand abmeldet. Beides muss jede Anmeldung treffen, die mit dem alten
+     Passwort zustande kam, sonst liefe ein verlorenes Telefon weiter. */
+
+  /** Dieselbe Person auf einem zweiten Gerät. */
+  const zweitesGeraet = async (who) => {
+    const c = client();
+    await c.login(who);
+    return c;
+  };
+
+  const eigeneId = async (c) => (await c.get("/api/state")).data.userId;
+
+  test("das Cookie gilt weit über ein Jahr", async () => {
+    const c = client();
+    const res = await c.raw("POST", "/api/login", {
+      body: JSON.stringify(ADMIN),
+      contentType: "application/json",
+    });
+
+    const cookie = (res.headers.getSetCookie?.() ?? []).find((z) => z.startsWith("sb_session="));
+    const maxAge = Number(/Max-Age=(\d+)/.exec(cookie)[1]);
+    expect(maxAge).toBeGreaterThan(365 * 24 * 60 * 60);
+  });
+
+  test("jeder Abruf des Zustands verlängert die Anmeldung", async () => {
+    const c = await asAdmin();
+    const res = await c.raw("GET", "/api/state");
+
+    expect((res.headers.getSetCookie?.() ?? []).some((z) => z.startsWith("sb_session="))).toBe(true);
+  });
+
+  test("eine Passwortänderung meldet die anderen Geräte ab", async () => {
+    const hier = await zweitesGeraet(EMPLOYEE);
+    const dort = await zweitesGeraet(EMPLOYEE);
+    const id = await eigeneId(hier);
+
+    const res = await hier.post(`/api/accounts/${id}/password`, {
+      password: "neuesPasswort", currentPassword: EMPLOYEE.password,
+    });
+    expect(res.status).toBe(200);
+
+    // Das Gerät, an dem gerade jemand sitzt, bleibt drin.
+    expect((await hier.get("/api/state")).status).toBe(200);
+    expect((await dort.get("/api/state")).status).toBe(401);
+  });
+
+  test("setzt die Administration ein Passwort zurück, ist das alte Gerät draussen", async () => {
+    const admin = await asAdmin();
+    const lea = await zweitesGeraet(EMPLOYEE);
+    const leaId = await eigeneId(lea);
+
+    await admin.post(`/api/accounts/${leaId}/password`, {
+      password: "vonAdminGesetzt", currentPassword: ADMIN.password,
+    });
+
+    expect((await lea.get("/api/state")).status).toBe(401);
+    expect((await admin.get("/api/state")).status).toBe(200);
+  });
+
+  test("befreit die Verwaltung ein Admin-Konto, endet dessen alte Anmeldung", async () => {
+    const admin = await asAdmin();
+    const su = client();
+    await su.login(SUPER);
+
+    const firmaId = server.db.prepare("SELECT id FROM companies WHERE code = '111111'").get().id;
+    const maraId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Mara Vogt'").get().id;
+
+    await su.post(`/api/companies/${firmaId}/admins/${maraId}/password`, {
+      password: "wiederDrin", currentPassword: SUPER.password,
+    });
+
+    expect((await admin.get("/api/state")).status).toBe(401);
+  });
+
+  test("Abmelden betrifft nur das eigene Gerät", async () => {
+    const hier = await zweitesGeraet(EMPLOYEE);
+    const dort = await zweitesGeraet(EMPLOYEE);
+
+    await hier.post("/api/logout");
+
+    expect((await hier.get("/api/state")).status).toBe(401);
+    expect((await dort.get("/api/state")).status).toBe(200);
+  });
+
+  test("ein Cookie aus der Zeit vor der Passwortänderung wird nicht wieder gültig", async () => {
+    const alt = await zweitesGeraet(EMPLOYEE);
+    const id = await eigeneId(alt);
+    const neu = await zweitesGeraet(EMPLOYEE);
+
+    await neu.post(`/api/accounts/${id}/password`, {
+      password: "einsZweiDrei", currentPassword: EMPLOYEE.password,
+    });
+    expect((await alt.get("/api/state")).status).toBe(401);
+
+    // Auch nach einer weiteren Änderung bleibt das erste Gerät draussen.
+    await neu.post(`/api/accounts/${id}/password`, {
+      password: "vierFuenfSechs", currentPassword: "einsZweiDrei",
+    });
+    expect((await alt.get("/api/state")).status).toBe(401);
   });
 });
 
@@ -591,6 +707,52 @@ describe("Schichten", () => {
   });
 });
 
+describe("Angaben beim Anlegen", () => {
+  const grunddaten = (qualId) => ({
+    name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+    repeat: "once", seats: 1, qualificationId: qualId,
+  });
+
+  const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+  test("ohne Uhrzeiten entsteht keine Schicht", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+
+    /* Leere Zeiten wurden als "" gespeichert. Die Überschneidungsrechnung las
+       daraus 0:00 bis 0:00 und machte eine Schicht über volle 24 Stunden
+       daraus — die kollidierte dann mit allem an diesem Tag. */
+    for (const zeiten of [{ startTime: "", endTime: "" }, { startTime: "6:00", endTime: "12:00" }, { endTime: "kaputt" }]) {
+      const res = await admin.post("/api/shifts", { ...grunddaten(qualId), ...zeiten });
+      expect(res.status).toBe(400);
+      expect(res.data.error).toMatch(/HH:MM/);
+    }
+
+    expect((await admin.get("/api/state")).data.company.shifts).toHaveLength(0);
+  });
+
+  test("rückwirkend lässt sich nichts anlegen", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+
+    const res = await admin.post("/api/shifts", {
+      ...grunddaten(qualId), date: toISO(addDays(startOfToday(), -1)),
+    });
+    expect(res.status).toBe(400);
+    expect((await admin.get("/api/state")).data.company.shifts).toHaveLength(0);
+  });
+
+  test("die Wiederholungen sind genau die aus der Auswahlliste", async () => {
+    const admin = await asAdmin();
+    const qualId = await qualVon(admin);
+
+    for (const repeat of REPEAT_KEYS) {
+      expect((await admin.post("/api/shifts", { ...grunddaten(qualId), repeat })).status).toBe(200);
+    }
+    expect((await admin.post("/api/shifts", { ...grunddaten(qualId), repeat: "monatlich" })).status).toBe(400);
+  });
+});
+
 describe("Konten", () => {
   test("das letzte Admin-Konto bleibt bestehen", async () => {
     const admin = await asAdmin();
@@ -599,6 +761,63 @@ describe("Konten", () => {
 
     const res = await admin.del(`/api/accounts/${mara.id}`);
     expect(res.status).toBe(409);
+  });
+
+  test("ein zweites Konto mit gleichem Namen und Passwort wäre unerreichbar", async () => {
+    const admin = await asAdmin();
+    await admin.post("/api/employees", { name: "Anna Meier", password: "start123" });
+
+    /* Die Anmeldung nimmt das erste Konto, dessen Passwort passt. Stimmen beide
+       Angaben überein, käme das zweite nie an die Reihe — die Person käme nicht
+       hinein und könnte ihr Passwort deshalb auch nicht ändern. */
+    const doppelt = await admin.post("/api/employees", { name: "Anna Meier", password: "start123" });
+    expect(doppelt.status).toBe(409);
+    expect(doppelt.data.error).toMatch(/nicht erreichbar/);
+
+    // Gleicher Name mit anderem Passwort bleibt erlaubt: Menschen heissen manchmal gleich.
+    const zweite = await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw" });
+    expect(zweite.status).toBe(200);
+
+    const eine = client();
+    await eine.login({ code: "111111", name: "Anna Meier", password: "start123" });
+    const andere = client();
+    await andere.login({ code: "111111", name: "Anna Meier", password: "andersPw" });
+    expect((await eine.get("/api/state")).data.userId).not.toBe((await andere.get("/api/state")).data.userId);
+    expect((await andere.get("/api/state")).data.userId).toBe(zweite.data.id);
+  });
+
+  test("auch ein neues Passwort darf ein Konto nicht verstecken", async () => {
+    const admin = await asAdmin();
+    await admin.post("/api/employees", { name: "Anna Meier", password: "start123" });
+    const zweiteId = (await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw" })).data.id;
+
+    const res = await admin.post(`/api/accounts/${zweiteId}/password`, {
+      password: "start123", currentPassword: "12345",
+    });
+    expect(res.status).toBe(409);
+
+    // Das alte Passwort gilt weiter.
+    expect((await client().login({ code: "111111", name: "Anna Meier", password: "andersPw" })).status).toBe(200);
+  });
+
+  test("Qualifikationen vergibt nur die Administration", async () => {
+    const admin = await asAdmin();
+    const state = (await admin.get("/api/state")).data;
+    const qualId = state.company.qualifications.find(
+      (q) => !state.company.accounts.find((a) => a.name === "Lea Brunner").qualifications.includes(q.id)
+    ).id;
+    const leaId = state.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    /* Sonst wäre „Erste Hilfe“ eine Selbstauskunft — während die automatische
+       Zuteilung sie als geprüfte Voraussetzung behandelt. */
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.patch(`/api/accounts/${leaId}/qualifications`, { qualificationId: qualId, value: true })).status).toBe(403);
+
+    const nachher = (await lea.get("/api/state")).data.company.accounts.find((a) => a.id === leaId);
+    expect(nachher.qualifications).not.toContain(qualId);
+
+    expect((await admin.patch(`/api/accounts/${leaId}/qualifications`, { qualificationId: qualId, value: true })).status).toBe(200);
   });
 
   test("Mitarbeitende ändern fremde Konten nicht", async () => {
@@ -671,6 +890,54 @@ describe("Konten", () => {
     expect((await client().login({ code: "111111", name: "Tom Klein", password: "vomAdmin" })).status).toBe(200);
     // Das erste Passwort gilt danach nicht mehr.
     expect((await client().login({ code: "111111", name: "Tom Klein", password: "erstesPw" })).status).toBe(401);
+  });
+
+  test("ein fremdes Admin-Konto rührt niemand aus der Firma an", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    await admin.post(`/api/accounts/${leaId}/promote`);
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+
+    /* Dieselbe Grenze für alles, was in ein Konto eingreift: Wer einen anderen
+       Admin entmachten könnte, könnte die Firma übernehmen. */
+    expect((await admin.del(`/api/accounts/${leaId}`)).status).toBe(403);
+    expect((await admin.post(`/api/accounts/${leaId}/password`, {
+      password: "uebernahme", currentPassword: "12345",
+    })).status).toBe(403);
+    expect((await admin.patch(`/api/accounts/${leaId}/qualifications`, {
+      qualificationId: qualId, value: false,
+    })).status).toBe(403);
+    expect((await admin.post(`/api/accounts/${leaId}/demote`)).status).toBe(403);
+
+    // Das Konto steht unverändert da.
+    const lea = (await admin.get("/api/state")).data.company.accounts.find((a) => a.id === leaId);
+    expect(lea.role).toBe("admin");
+  });
+
+  test("Adminrechte gibt jede Person nur selbst ab", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    await admin.post(`/api/accounts/${leaId}/promote`);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.post(`/api/accounts/${leaId}/demote`)).status).toBe(200);
+
+    const nachher = (await lea.get("/api/state")).data.company.accounts.find((a) => a.id === leaId);
+    expect(nachher.role).toBe("employee");
+    // Und die Admin-Wege sind für sie zu.
+    expect((await lea.post("/api/employees", { name: "Neu", password: "12345" })).status).toBe(403);
+  });
+
+  test("die letzte Administration behält ihre Rechte", async () => {
+    const admin = await asAdmin();
+    const maraId = (await admin.get("/api/state")).data.userId;
+
+    const res = await admin.post(`/api/accounts/${maraId}/demote`);
+    expect(res.status).toBe(409);
+    expect(res.data.error).toMatch(/letzte Administration/);
   });
 
   test("Admins setzen einander das Passwort nicht", async () => {
@@ -1550,6 +1817,100 @@ describe("Ausgesperrte Admins", () => {
   });
 });
 
+describe("Admin-Konten löschen", () => {
+  const alsSuper = async () => {
+    const c = client();
+    await c.login(SUPER);
+    return c;
+  };
+
+  const firmaId = async (su) => (await su.get("/api/state")).data.companies[0].id;
+
+  test("die Verwaltung entfernt ein Admin-Konto, die Firma selbst nicht", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    await admin.post(`/api/accounts/${leaId}/promote`);
+
+    const su = await alsSuper();
+    const id = await firmaId(su);
+    expect((await su.del(`/api/companies/${id}/admins/${leaId}`, {
+      currentPassword: SUPER.password,
+    })).status).toBe(200);
+
+    expect((await su.get("/api/state")).data.companies[0].adminCount).toBe(1);
+    expect((await client().login(EMPLOYEE)).status).toBe(401);
+  });
+
+  test("ohne das Verwaltungs-Passwort geht es nicht", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    await admin.post(`/api/accounts/${leaId}/promote`);
+
+    const su = await alsSuper();
+    const id = await firmaId(su);
+    expect((await su.del(`/api/companies/${id}/admins/${leaId}`, { currentPassword: "falsch" })).status).toBe(403);
+    expect((await su.get("/api/state")).data.companies[0].adminCount).toBe(2);
+  });
+
+  test("das letzte Admin-Konto geht nur mit Nachfolge", async () => {
+    const su = await alsSuper();
+    const id = await firmaId(su);
+    const admins = (await su.get(`/api/companies/${id}/admins`)).data;
+    const leute = (await su.get(`/api/companies/${id}/employees`)).data;
+    expect(admins).toHaveLength(1);
+
+    /* Eine Firma ohne Administration könnte niemand mehr verwalten, und ihre
+       Mitarbeitenden kämen an keine Schicht mehr. */
+    const ohne = await su.del(`/api/companies/${id}/admins/${admins[0].id}`, {
+      currentPassword: SUPER.password,
+    });
+    expect(ohne.status).toBe(409);
+    expect(ohne.data.error).toMatch(/Nachfolge|übernimmt/);
+
+    const mit = await su.del(`/api/companies/${id}/admins/${admins[0].id}`, {
+      currentPassword: SUPER.password,
+      nachfolgerId: leute[0].id,
+    });
+    expect(mit.status).toBe(200);
+    expect(mit.data.nachfolge).toBe("Lea Brunner");
+
+    // Lea führt die Firma jetzt — und kommt an die Admin-Wege.
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.get("/api/state")).data.company.accounts.find((a) => a.name === "Lea Brunner").role).toBe("admin");
+    expect((await lea.post("/api/employees", { name: "Neue Person", password: "startPw" })).status).toBe(200);
+  });
+
+  test("eine Nachfolge aus einer fremden Firma zählt nicht", async () => {
+    const fremdeId = createCompany(server.db, {
+      code: "222222", name: "Zweite Firma AG", adminName: "Andere Chefin", adminPassword: "12345",
+    });
+    const su = await alsSuper();
+    const id = await firmaId(su);
+    const admins = (await su.get(`/api/companies/${id}/admins`)).data;
+
+    const res = await su.del(`/api/companies/${id}/admins/${admins[0].id}`, {
+      currentPassword: SUPER.password,
+      nachfolgerId: readCompany(server.db, fremdeId).accounts[0].id,
+    });
+    expect(res.status).toBe(409);
+  });
+
+  test("Firmen-Admins kommen an diesen Weg nicht heran", async () => {
+    const su = await alsSuper();
+    const id = await firmaId(su);
+    const admins = (await su.get(`/api/companies/${id}/admins`)).data;
+
+    const admin = await asAdmin();
+    expect((await admin.del(`/api/companies/${id}/admins/${admins[0].id}`, {
+      currentPassword: SUPER.password,
+    })).status).toBe(403);
+    expect((await admin.get(`/api/companies/${id}/employees`)).status).toBe(403);
+  });
+});
+
 describe("Verwaltung", () => {
   test("legt Unternehmen an, aber keinen doppelten Firmencode", async () => {
     const su = client();
@@ -1599,7 +1960,14 @@ describe("Wartung", () => {
 
     const datei = path.join(server.dir, "export.db");
     fs.writeFileSync(datei, Buffer.from(await res.arrayBuffer()));
-    expect(readCompany(openDb(datei), server.db.prepare("SELECT id FROM companies").get().id).code).toBe("111111");
+    // Wieder schliessen: ein offenes Handle hält die Datei fest und das
+    // Wegwerf-Verzeichnis liesse sich danach nicht mehr löschen.
+    const kopie = openDb(datei);
+    try {
+      expect(readCompany(kopie, server.db.prepare("SELECT id FROM companies").get().id).code).toBe("111111");
+    } finally {
+      kopie.close();
+    }
   });
 
   test("eine Fremddatei wird abgewiesen", async () => {

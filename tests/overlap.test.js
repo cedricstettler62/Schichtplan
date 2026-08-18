@@ -18,6 +18,16 @@ describe("shiftsOverlap", () => {
     expect(shiftsOverlap(schicht("2026-03-10", "08:00", "16:00"), schicht("2026-03-10", "14:00", "22:00"))).toBe(true);
   });
 
+  test("die Zeitumstellung verschiebt keine Nachtschicht", () => {
+    /* In der Nacht zum 29.3.2026 hat der lokale Tag in vielen Zeitzonen nur 23
+       Stunden. Wurde der Tagesanfang lokal gerechnet, endete eine Nachtschicht
+       dadurch eine Stunde zu spät — und kollidierte mit der Frühschicht, die
+       genau dann anfängt, wenn sie aufhört. */
+    const nacht = schicht("2026-03-28", "22:00", "06:00");
+    expect(shiftsOverlap(nacht, schicht("2026-03-29", "06:00", "14:00"))).toBe(false);
+    expect(shiftsOverlap(nacht, schicht("2026-03-29", "05:59", "14:00"))).toBe(true);
+  });
+
   test("nahtlos aneinander ist keine Überschneidung", () => {
     // Wer um 16:00 aufhört, kann um 16:00 anfangen.
     expect(shiftsOverlap(schicht("2026-03-10", "08:00", "16:00"), schicht("2026-03-10", "16:00", "22:00"))).toBe(false);

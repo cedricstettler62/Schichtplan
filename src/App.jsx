@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import Header from "./features/layout/Header.jsx";
+import Header, { tabsFor } from "./features/layout/Header.jsx";
 import LoginScreen from "./features/login/LoginScreen.jsx";
 import OverviewTab from "./features/overview/OverviewTab.jsx";
 import AdminShiftsTab from "./features/shifts/AdminShiftsTab.jsx";
@@ -12,6 +12,7 @@ import SettingsTab from "./features/settings/SettingsTab.jsx";
 import SuperAdminView from "./features/superadmin/SuperAdminView.jsx";
 import PrivacyScreen from "./features/legal/PrivacyScreen.jsx";
 import Footer from "./components/Footer.jsx";
+import UpdateBanner from "./components/UpdateBanner.jsx";
 
 import { api, ApiError } from "./api.js";
 import { startOfToday } from "#shared/dates.js";
@@ -64,6 +65,25 @@ export default function App() {
     }
   };
 
+  /**
+   * Wie `act`, gibt aber die Meldung des Servers zurück — null heisst geklappt.
+   *
+   * Für alles, was in einem Formular steht: Eine Änderung, die stumm scheitert,
+   * sieht für die Bedienung genauso aus wie eine, die durchgegangen ist. Die
+   * Oberfläche meldete daraufhin Erfolg, obwohl nichts gespeichert war.
+   */
+  const actMitMeldung = (fn, { neuLaden = true } = {}) => async (...args) => {
+    try {
+      await fn(...args);
+      return null;
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    } finally {
+      if (neuLaden) await refresh();
+    }
+  };
+
   /* --- Session --- */
   const handleLogin = async (code, name, password) => {
     try {
@@ -96,87 +116,38 @@ export default function App() {
     return res.id;
   });
 
-  /* Gibt die Fehlermeldung zurück statt sie zu schlucken: Das Löschen kann am
-     Server scheitern, und ein Klick ohne jede Reaktion wäre nicht erklärbar. */
-  const handleDeleteQualification = async (qualId) => {
-    try {
-      await api.del(`/qualifications/${qualId}`);
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      return err.message;
-    } finally {
-      await refresh();
-    }
-    return null;
-  };
+  /* Das Löschen kann am Server scheitern (etwa wegen kommender Schichten), und
+     ein Klick ohne jede Reaktion wäre nicht erklärbar. */
+  const handleDeleteQualification = actMitMeldung((qualId) => api.del(`/qualifications/${qualId}`));
 
   /* --- Schichten --- */
-  const handleCreateShift = act((form) => api.post("/shifts", form));
+  const handleCreateShift = actMitMeldung((form) => api.post("/shifts", form));
   const handleForceAssign = act((shiftId) => api.post(`/shifts/${shiftId}/assign`));
-  /* Geben die Fehlermeldung zurück statt sie zu schlucken: Eine Überschneidung
-     mit einer anderen Schicht muss die Person erfahren, sonst passiert auf
-     Knopfdruck sichtbar nichts. */
-  const handleToggleEnroll = async (shiftId) => {
-    try {
-      await api.post(`/shifts/${shiftId}/enroll`);
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      return err.message;
-    } finally {
-      await refresh();
-    }
-    return null;
-  };
+  /* Eine Überschneidung mit einer anderen Schicht muss die Person erfahren,
+     sonst passiert auf Knopfdruck sichtbar nichts. */
+  const handleToggleEnroll = actMitMeldung((shiftId) => api.post(`/shifts/${shiftId}/enroll`));
   const handleRemoveEnrollment = act((shiftId, accountId) =>
     api.del(`/shifts/${shiftId}/enrollments/${accountId}`)
   );
-  /** Gibt die Fehlermeldung zurück — eine Änderung, die stumm scheitert, wäre fatal. */
-  const handleUpdateShift = async (shiftId, form) => {
-    try {
-      await api.patch(`/shifts/${shiftId}`, form);
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      return err.message;
-    } finally {
-      await refresh();
-    }
-    return null;
-  };
+  const handleUpdateShift = actMitMeldung((shiftId, form) => api.patch(`/shifts/${shiftId}`, form));
 
   const handleDeleteShift = act((shiftId) => api.del(`/shifts/${shiftId}`));
   const handleDeleteSeries = act((shiftId) => api.del(`/shifts/${shiftId}/series`));
   const handleAskForHelp = act((shiftId) => api.post(`/shifts/${shiftId}/help`));
-  const handleTakeOver = async (shiftId, _helperId, replaceId) => {
-    try {
-      await api.post(`/shifts/${shiftId}/takeover`, { replaceId: replaceId || null });
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      return err.message;
-    } finally {
-      await refresh();
-    }
-    return null;
-  };
+  const handleTakeOver = actMitMeldung((shiftId, replaceId) =>
+    api.post(`/shifts/${shiftId}/takeover`, { replaceId: replaceId || null })
+  );
 
   /* --- Konten --- */
-  const handleAddEmployee = act((data) => api.post("/employees", data));
+  const handleAddEmployee = actMitMeldung((data) => api.post("/employees", data));
 
   const handleSetAccountQualification = act((accountId, qualificationId, value) =>
     api.patch(`/accounts/${accountId}/qualifications`, { qualificationId, value })
   );
 
-  /** Gibt die Fehlermeldung zurück – ein Reset, der stumm scheitert, wäre fatal. */
-  const handleResetPassword = async (accountId, password, currentPassword) => {
-    try {
-      await api.post(`/accounts/${accountId}/password`, { password, currentPassword });
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      return err.message;
-    } finally {
-      await refresh();
-    }
-    return null;
-  };
+  const handleResetPassword = actMitMeldung((accountId, password, currentPassword) =>
+    api.post(`/accounts/${accountId}/password`, { password, currentPassword })
+  );
 
   const handlePromoteToAdmin = act((accountId) => api.post(`/accounts/${accountId}/promote`));
   const handleChangeAssignmentDay = act((assignmentDay) => api.patch("/settings", { assignmentDay }));
@@ -211,18 +182,27 @@ export default function App() {
   const handleLoadCompanyAdmins = (companyId) =>
     api.get(`/companies/${companyId}/admins`).catch(() => []);
 
-  /** Gibt die Fehlermeldung zurück — ein Reset, der stumm scheitert, wäre fatal. */
-  const handleResetCompanyAdminPassword = async (companyId, accountId, password, currentPassword) => {
-    try {
-      await api.post(`/companies/${companyId}/admins/${accountId}/password`, { password, currentPassword });
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      return err.message;
-    }
-    return null;
-  };
+  const handleLoadCompanyEmployees = (companyId) =>
+    api.get(`/companies/${companyId}/employees`).catch(() => []);
 
-  const handleUpdateCompanyName = act((companyId, name) => api.patch(`/companies/${companyId}`, { name }));
+  /* Der einzige Weg an ein Admin-Konto: Innerhalb der Firma darf niemand ein
+     fremdes anfassen. Beim letzten muss eine Nachfolge mitkommen. */
+  const handleDeleteCompanyAdmin = actMitMeldung(
+    (companyId, accountId, currentPassword, nachfolgerId) =>
+      api.del(`/companies/${companyId}/admins/${accountId}`, { currentPassword, nachfolgerId })
+  );
+
+  /* Ohne Neuladen: Der Zustand der Verwaltung ändert sich durch ein neues
+     Passwort nicht, und die Rückmeldung im Formular soll stehen bleiben. */
+  const handleResetCompanyAdminPassword = actMitMeldung(
+    (companyId, accountId, password, currentPassword) =>
+      api.post(`/companies/${companyId}/admins/${accountId}/password`, { password, currentPassword }),
+    { neuLaden: false }
+  );
+
+  const handleUpdateCompanyName = actMitMeldung((companyId, name) =>
+    api.patch(`/companies/${companyId}`, { name })
+  );
   const handleDeleteCompany = act((companyId) => api.del(`/companies/${companyId}`));
 
   /* --- Rendering --- */
@@ -250,6 +230,7 @@ export default function App() {
   if (state.type === "super") {
     return (
       <div className="sb-root">
+        <UpdateBanner />
         <SuperAdminView
           companies={state.companies}
           superAdminName={state.name}
@@ -257,7 +238,9 @@ export default function App() {
           onDeleteCompany={handleDeleteCompany}
           onUpdateCompanyName={handleUpdateCompanyName}
           onLoadAdmins={handleLoadCompanyAdmins}
+          onLoadEmployees={handleLoadCompanyEmployees}
           onResetAdminPassword={handleResetCompanyAdminPassword}
+          onDeleteAdmin={handleDeleteCompanyAdmin}
           onDataChanged={refresh}
           onLogout={handleLogout}
         />
@@ -275,25 +258,35 @@ export default function App() {
   const { qualifications, shifts, settings, accounts, combinableSeries } = company;
   const isAdmin = currentUser.role === "admin";
 
-  const handleToggleOwnQualification = (qualId, value) =>
-    handleSetAccountQualification(currentUser.id, qualId, value);
-  const handleChangePassword = act((password, currentPassword) =>
+  const handleChangePassword = actMitMeldung((password, currentPassword) =>
     api.post(`/accounts/${currentUser.id}/password`, { password, currentPassword })
   );
+  const handleDemoteSelf = actMitMeldung(() => api.post(`/accounts/${currentUser.id}/demote`));
+
+  /* Wer befördert wird, bleibt eingetragen, wo er eingetragen war. Ohne diesen
+     Tab wären die eigenen Zuteilungen danach nirgends mehr zu sehen — samt
+     Hilfegesuch, das nur von dort aus geht. */
+  const hatEigeneSchichten = shifts.some((s) => s.enrolled.includes(currentUser.id));
+  const tabs = tabsFor(currentUser.role, hatEigeneSchichten);
+  /* Der aktive Tab kann verschwinden — durch eine Beförderung oder weil die
+     letzte eigene Einschreibung zurückgezogen wurde. Sonst stünde eine leere
+     Seite da. */
+  const tab = tabs.some(([key]) => key === activeTab) ? activeTab : "overview";
 
   return (
     <div className="sb-root">
+      <UpdateBanner />
       <div className="sb-app">
-        <Header currentUser={currentUser} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+        <Header currentUser={currentUser} tabs={tabs} activeTab={tab} setActiveTab={setActiveTab} onLogout={handleLogout} />
         <main>
-          {activeTab === "overview" && (
+          {tab === "overview" && (
             <OverviewTab
               shifts={shifts} qualifications={qualifications} accounts={accounts}
               currentUser={currentUser} today={today} onTakeOver={handleTakeOver}
             />
           )}
 
-          {activeTab === "shifts" && (isAdmin ? (
+          {tab === "shifts" && (isAdmin ? (
             <AdminShiftsTab
               shifts={shifts} qualifications={qualifications} accounts={accounts} today={today}
               combinableSeries={combinableSeries}
@@ -309,7 +302,7 @@ export default function App() {
             />
           ))}
 
-          {activeTab === "employees" && isAdmin && (
+          {tab === "employees" && isAdmin && (
             <EmployeesTab
               accounts={accounts} qualifications={qualifications} verifyAdmin={verifySelf}
               onAddEmployee={handleAddEmployee} onResetPassword={handleResetPassword}
@@ -318,20 +311,24 @@ export default function App() {
             />
           )}
 
-          {activeTab === "settings" && isAdmin && (
+          {tab === "settings" && isAdmin && (
             <SettingsTab
               settings={settings} currentUser={currentUser} verifySelf={verifySelf}
               qualifications={qualifications}
               onAddQualification={handleAddQualification}
               onDeleteQualification={handleDeleteQualification}
-              canDeleteSelf={accounts.filter((a) => a.role === "admin").length > 1}
+              onSetOwnQualification={(qualId, value) =>
+                handleSetAccountQualification(currentUser.id, qualId, value)}
+              istLetzterAdmin={accounts.filter((a) => a.role === "admin").length <= 1}
+              onDemoteSelf={handleDemoteSelf}
               onChangeAssignmentDay={handleChangeAssignmentDay}
               onChangeOwnPassword={handleChangePassword}
               onDeleteOwnAccount={() => handleDeleteAccount(currentUser.id)}
+              onLogout={handleLogout}
             />
           )}
 
-          {activeTab === "myshifts" && !isAdmin && (
+          {tab === "myshifts" && (
             <MyShiftsTab
               shifts={shifts} qualifications={qualifications}
               currentUser={currentUser} today={today} assignmentDay={settings.assignmentDay}
@@ -339,10 +336,10 @@ export default function App() {
             />
           )}
 
-          {activeTab === "account" && !isAdmin && (
+          {tab === "account" && !isAdmin && (
             <AccountTab
               currentUser={currentUser} qualifications={qualifications} verifySelf={verifySelf}
-              onToggleQualification={handleToggleOwnQualification} onChangePassword={handleChangePassword}
+              onChangePassword={handleChangePassword} onLogout={handleLogout}
             />
           )}
         </main>

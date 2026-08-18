@@ -4,8 +4,10 @@ import {
   checkPassword,
   clearSession,
   createLoginLimiter,
+  refreshSession,
   requireCompany,
   safeEqual,
+  setAccountSession,
   setSession,
 } from "../auth.js";
 import { companySummaries, readCompany } from "../db.js";
@@ -45,7 +47,9 @@ export default function authRoutes(db, config) {
 
     // Namen sind nicht eindeutig — jedes passende Konto wird geprüft.
     const candidates = db
-      .prepare("SELECT id, password_hash FROM accounts WHERE company_id = ? AND lower(trim(name)) = ?")
+      .prepare(
+        "SELECT id, password_hash, session_epoch FROM accounts WHERE company_id = ? AND lower(trim(name)) = ?"
+      )
       .all(company.id, name);
     const account = candidates.find((a) => checkPassword(password, a.password_hash));
 
@@ -55,7 +59,7 @@ export default function authRoutes(db, config) {
     }
 
     limiter.reset(key);
-    setSession(res, { t: "company", accountId: account.id }, config);
+    setAccountSession(res, account, config);
     return res.json({ ok: true });
   });
 
@@ -65,6 +69,11 @@ export default function authRoutes(db, config) {
   });
 
   router.get("/state", (req, res) => {
+    /* Jeder Aufruf verlängert die Anmeldung. Die Oberfläche fragt den Stand
+       bei jedem Start und nach jeder Änderung ab — wer die App benutzt, bleibt
+       damit angemeldet, ohne je ein Passwort wieder einzugeben. */
+    refreshSession(req, res, config);
+
     if (req.session?.type === "super") {
       return res.json({
         type: "super",

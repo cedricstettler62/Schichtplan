@@ -42,7 +42,13 @@ export default function AdminShiftsTab({
         <NewShiftForm
           qualifications={qualifications}
           shifts={visible}
-          onCreate={async (f) => { await onCreate(f); setFormOpen(false); }}
+          /* Nur bei Erfolg schliessen: Sonst wäre die Eingabe weg und die
+             Meldung, warum es nicht ging, gleich mit. */
+          onCreate={async (f) => {
+            const meldung = await onCreate(f);
+            if (!meldung) setFormOpen(false);
+            return meldung;
+          }}
           onAddQualification={onAddQualification}
         />
       )}

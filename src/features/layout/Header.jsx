@@ -7,9 +7,20 @@ const EMPLOYEE_TABS = [
   ["overview", "Übersicht"], ["shifts", "Schichten"], ["myshifts", "Meine Schichten"], ["account", "Konto"],
 ];
 
-export default function Header({ currentUser, activeTab, setActiveTab, onLogout }) {
+/**
+ * Welche Tabs jemand sieht. Admins bekommen „Meine Schichten“ dazu, sobald sie
+ * selbst irgendwo eingetragen sind — eine Beförderung nimmt sonst niemandem die
+ * Schichten weg, aber die Sicht darauf.
+ */
+export function tabsFor(role, hatEigeneSchichten = false) {
+  if (role !== "admin") return EMPLOYEE_TABS;
+  if (!hatEigeneSchichten) return ADMIN_TABS;
+  const [uebersicht, ...rest] = ADMIN_TABS;
+  return [uebersicht, ["myshifts", "Meine Schichten"], ...rest];
+}
+
+export default function Header({ currentUser, tabs, activeTab, setActiveTab, onLogout }) {
   const isAdmin = currentUser.role === "admin";
-  const tabs = isAdmin ? ADMIN_TABS : EMPLOYEE_TABS;
 
   return (
     <header className="sb-header">

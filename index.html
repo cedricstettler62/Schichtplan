@@ -2,8 +2,24 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: auf dem Homescreen reicht die Seite bis unter
+         Statusleiste und Home-Anzeige. Die Ränder hält styles.css frei. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Schichtplanung für kleine Teams: Schichten ausschreiben, einschreiben, zuteilen." />
+    <meta name="theme-color" content="#F6F3EC" />
     <title>Schichtboard</title>
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Ohne Homescreen ändert nichts davon etwas; die Seite bleibt im Browser,
+         was sie war. iOS liest die apple-Angaben, Android das Manifest. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Schichtboard" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   </head>
   <body>
     <div id="root"></div>

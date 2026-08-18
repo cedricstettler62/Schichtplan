@@ -85,7 +85,7 @@ export function createClient(baseUrl) {
     get: (path) => call("GET", path),
     post: (path, body = {}) => call("POST", path, body),
     patch: (path, body = {}) => call("PATCH", path, body),
-    del: (path) => call("DELETE", path),
+    del: (path, body) => call("DELETE", path, body),
     login: (who) => call("POST", "/api/login", who),
     /** Antwort im Rohzustand — für Dateien statt JSON. */
     raw: roh,

@@ -6,6 +6,7 @@ import { Router } from "express";
 
 import { HORIZON_DAYS, buildShiftsFromForm, canTakeOver, hasQualification } from "#shared/assignment.js";
 import { addDays, fromISO, startOfToday, toISO } from "#shared/dates.js";
+import { REPEAT_KEYS } from "#shared/labels.js";
 
 import { requireAdmin, requireCompany } from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
@@ -15,7 +16,10 @@ import {
 import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
 
-const REPEATS = new Set(["once", "daily", "weekly", "weekday", "weekend"]);
+/* Dieselbe Liste, die auch das Formular anbietet — zwei Aufzählungen liefen
+   sonst auseinander, und eine Wiederholung ohne Beschriftung wäre für niemanden
+   auswählbar. */
+const REPEATS = new Set(REPEAT_KEYS);
 const UMFAENGE = new Set(["einzeln", "ab-datum"]);
 
 const istDatum = (wert) => /^\d{4}-\d{2}-\d{2}$/.test(String(wert || ""));
@@ -35,9 +39,23 @@ export default function shiftRoutes(db) {
     const name = String(form.name || "").trim();
     const seats = Number(form.seats);
     const repeat = String(form.repeat || "once");
+    const date = String(form.date || "");
+    const startTime = String(form.startTime || "");
+    const endTime = String(form.endTime || "");
 
-    if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(String(form.date || ""))) {
+    if (!name || !istDatum(date)) {
       return res.status(400).json({ error: "Name und Datum sind nötig." });
+    }
+    /* Ohne diese Prüfung landete eine leere Zeit als "" in der Datenbank. Die
+       Überschneidungsrechnung liest daraus 0:00 bis 0:00, macht daraus eine
+       Schicht über volle 24 Stunden — und die kollidiert mit allem, was an dem
+       Tag sonst noch läuft. */
+    if (!istUhrzeit(startTime) || !istUhrzeit(endTime)) {
+      return res.status(400).json({ error: "Start- und Endzeit müssen im Format HH:MM angegeben werden." });
+    }
+    // Wie beim Bearbeiten: rückwirkend anlegen ergibt keine Schicht, die noch jemand übernehmen könnte.
+    if (date < toISO(startOfToday())) {
+      return res.status(400).json({ error: "Eine Schicht lässt sich nicht in der Vergangenheit anlegen." });
     }
     if (!Number.isInteger(seats) || seats < 1) return res.status(400).json({ error: "Ungültige Platzzahl." });
     if (!REPEATS.has(repeat)) return res.status(400).json({ error: "Unbekannte Wiederholung." });
@@ -48,7 +66,7 @@ export default function shiftRoutes(db) {
     if (!qual) return res.status(400).json({ error: "Qualifikation nicht gefunden." });
 
     const shifts = buildShiftsFromForm(
-      { ...form, name, seats, repeat, qualificationId: qual.id },
+      { ...form, name, date, startTime, endTime, seats, repeat, qualificationId: qual.id },
       addDays(startOfToday(), HORIZON_DAYS),
       uid
     );

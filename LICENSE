@@ -1,0 +1,62 @@
+Schichtboard — Lizenz
+
+Copyright (c) 2026 Cedric Stettler. Alle Rechte vorbehalten.
+
+Diese Software ist proprietär. Der Quelltext liegt öffentlich, damit er
+eingesehen und geprüft werden kann — nicht, damit er ohne Erlaubnis benutzt
+wird. Öffentlich einsehbar und frei verwendbar sind zweierlei.
+
+
+1. Erlaubt
+
+   Den Quelltext einzusehen und zu lesen. Das Repository zu diesem Zweck zu
+   klonen, samt der technisch notwendigen Zwischenkopien.
+
+
+2. Ohne vorherige schriftliche Zustimmung des Rechteinhabers nicht erlaubt
+
+   a) die Software zu benutzen, zu installieren oder zu betreiben — auch rein
+      intern, auch unentgeltlich, auch zur Erprobung;
+   b) sie ganz oder in Teilen zu vervielfältigen, zu verändern oder davon
+      abgeleitete Werke zu erstellen;
+   c) sie weiterzugeben, zu veröffentlichen, zu vermieten, zu verkaufen oder
+      als Dienst für Dritte bereitzustellen;
+   d) Urheber-, Lizenz- oder Herkunftshinweise zu entfernen oder zu ändern.
+
+
+3. Nutzungsrechte
+
+   Nutzungsrechte werden ausschliesslich durch einen gesonderten schriftlichen
+   Vertrag eingeräumt. Diese Datei ist kein solcher Vertrag und begründet
+   keinen Anspruch auf einen.
+
+   Anfragen: cedricstettler62@gmail.com
+
+
+4. Beiträge
+
+   Wer Änderungen einreicht — als Pull Request, Patch oder Vorschlag —, räumt
+   dem Rechteinhaber daran ein unbefristetes, unwiderrufliches, übertragbares
+   und unentgeltliches Nutzungsrecht ein. Ohne das liesse sich ein fremder
+   Beitrag in einer proprietären Software nicht weiterverwenden.
+
+
+5. Gewährleistung und Haftung
+
+   Die Software wird ohne jede Gewährleistung bereitgestellt, soweit
+   gesetzlich zulässig. Der Rechteinhaber haftet nicht für Schäden aus ihrer
+   Verwendung. Zwingende gesetzliche Haftung — insbesondere für Vorsatz und
+   grobe Fahrlässigkeit sowie für Personenschäden — bleibt unberührt.
+
+
+6. Fremde Bestandteile
+
+   Die in package.json aufgeführten Abhängigkeiten stehen unter ihren eigenen
+   Lizenzen und werden von dieser Lizenz nicht berührt. Sie gilt allein für
+   den Quelltext dieses Repositorys.
+
+
+7. Recht und Gerichtsstand
+
+   Es gilt schweizerisches Recht unter Ausschluss des Kollisionsrechts.
+   Gerichtsstand ist der Wohnsitz des Rechteinhabers.

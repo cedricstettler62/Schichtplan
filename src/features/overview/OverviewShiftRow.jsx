@@ -4,7 +4,6 @@ import { hasQualification } from "#shared/assignment.js";
 
 /** Sagt konkret, warum eine Übernahme nicht geht – »nicht möglich« allein hilft niemandem. */
 function blockedReason(currentUser, shift, qualified, qualName) {
-  if (currentUser.role !== "employee") return "Als Admin kannst du Schichten nicht selbst übernehmen.";
   if (shift.assigned.includes(currentUser.id)) return "Du bist dieser Schicht bereits zugeteilt.";
   if (!qualified) return `Dafür fehlt dir die Qualifikation „${qualName || "der Schicht"}“.`;
   return "Eine Übernahme ist hier nicht möglich.";
@@ -15,13 +14,12 @@ export default function OverviewShiftRow({ shift, qualifications, accounts, curr
   const [error, setError] = useState("");
 
   const uebernehmen = async (replaceId) => {
-    setError((await onTakeOver(shift.id, currentUser.id, replaceId)) || "");
+    setError((await onTakeOver(shift.id, replaceId)) || "");
   };
   const qual = qualifications.find((q) => q.id === shift.qualificationId);
   const qualName = qual ? qual.name : null;
   const qualified = hasQualification(accounts, currentUser.id, shift.qualificationId);
-  const canTake =
-    currentUser.role === "employee" && qualified && !shift.assigned.includes(currentUser.id);
+  const canTake = qualified && !shift.assigned.includes(currentUser.id);
   const freeSeats = shift.seats - shift.assigned.length;
   // Bei einem Hilfegesuch ist die Schicht zwar voll besetzt — genau das zu
   // melden wäre hier aber irreführend: gesucht wird ja ein Ersatz.

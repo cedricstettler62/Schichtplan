@@ -6,7 +6,7 @@
  * Komponenten, und ob Browser und API wirklich zusammenpassen.
  */
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import App from "../src/App.jsx";
@@ -56,6 +56,43 @@ describe("Anmeldung", () => {
     const user = await openApp();
     await login(user, { ...ADMIN, password: "falsch" });
     expect(await screen.findByText("Name oder Passwort ist falsch.")).toBeInTheDocument();
+  });
+});
+
+describe("App einrichten und abmelden", () => {
+  /* Beide Karten stehen unten in den Einstellungen und im Konto — sie gehören
+     jedem Konto, nicht nur der Administration. */
+
+  const einstellungenOeffnen = async (user, tab) => {
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: tab }));
+  };
+
+  test("die Administration findet beide Karten unter Einstellungen", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    await einstellungenOeffnen(user, "Einstellungen");
+
+    expect(screen.getByRole("heading", { name: "Als Programm einrichten" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Anmeldung" })).toBeInTheDocument();
+  });
+
+  test("Mitarbeitende finden sie unter Konto", async () => {
+    const user = await openApp();
+    await login(user, EMPLOYEE);
+    await einstellungenOeffnen(user, "Konto");
+
+    expect(screen.getByRole("heading", { name: "Als Programm einrichten" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Anmeldung" })).toBeInTheDocument();
+  });
+
+  test("der Knopf dort meldet ab", async () => {
+    const user = await openApp();
+    await login(user, EMPLOYEE);
+    await einstellungenOeffnen(user, "Konto");
+
+    await user.click(screen.getByRole("button", { name: "Auf diesem Gerät abmelden" }));
+    await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
   });
 });
 
@@ -165,6 +202,152 @@ describe("Mitarbeitende", () => {
   });
 });
 
+describe("Meldungen statt Stille", () => {
+  test("ein abgelehntes Formular bleibt stehen und sagt warum", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Schichten" }));
+    await user.click(screen.getByRole("button", { name: "Neue Schicht" }));
+
+    await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Rückwirkend");
+    await user.type(screen.getByLabelText("Datum"), "2020-01-06");
+    await user.selectOptions(
+      screen.getByLabelText(/Erforderliche Qualifikation/),
+      screen.getByRole("option", { name: "Erste Hilfe" })
+    );
+    await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
+
+    /* Vorher schloss sich das Formular auch bei einem Fehler, leerte alle
+       Felder und meldete nichts — die Schicht war einfach nicht da. */
+    expect(await screen.findByText(/nicht in der Vergangenheit anlegen/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("z. B. Spätschicht Verkauf")).toHaveValue("Rückwirkend");
+  });
+
+  test("ohne Uhrzeit kommt eine Ansage statt einer 24-Stunden-Schicht", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Schichten" }));
+    await user.click(screen.getByRole("button", { name: "Neue Schicht" }));
+
+    await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Ohne Zeit");
+    await user.type(screen.getByLabelText("Datum"), new Date().toISOString().slice(0, 10));
+    await user.clear(screen.getByLabelText("Endzeit"));
+    await user.selectOptions(
+      screen.getByLabelText(/Erforderliche Qualifikation/),
+      screen.getByRole("option", { name: "Erste Hilfe" })
+    );
+    await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
+
+    expect(await screen.findByText("Bitte Start- und Endzeit angeben.")).toBeInTheDocument();
+    expect(screen.queryByText("Ohne Zeit")).not.toBeInTheDocument();
+  });
+});
+
+describe("Eigene Qualifikationen", () => {
+  test("die Administration setzt ihre eigenen unter Einstellungen", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Einstellungen" }));
+
+    /* Ohne diesen Abschnitt käme ein Admin an keine Qualifikation: Die
+       Mitarbeitendenliste führt nur Mitarbeitendenkonten. */
+    const karte = (await screen.findByRole("heading", { name: "Meine Qualifikationen" })).closest(".sb-card");
+    const schalter = () => within(karte).getByRole("button", { name: "Nachtschicht" });
+    expect(schalter()).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(schalter());
+    await waitFor(() => expect(schalter()).toHaveAttribute("aria-pressed", "true"));
+
+    // Und sie bleibt gesetzt, nicht nur im Formular.
+    await user.click(within(nav).getByRole("button", { name: "Übersicht" }));
+    await user.click(within(nav).getByRole("button", { name: "Einstellungen" }));
+    const wieder = (await screen.findByRole("heading", { name: "Meine Qualifikationen" })).closest(".sb-card");
+    expect(within(wieder).getByRole("button", { name: "Nachtschicht" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("Adminrechte abgeben", () => {
+  test("nur die eigenen, und nicht als letzte Administration", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    let nav = await screen.findByRole("navigation");
+
+    // Als einzige Administration geht es nicht.
+    await user.click(within(nav).getByRole("button", { name: "Einstellungen" }));
+    expect(await screen.findByText(/einzige Administration – befördere zuerst jemanden/)).toBeInTheDocument();
+
+    // Lea befördern, dann kann Mara abgeben.
+    await user.click(within(nav).getByRole("button", { name: "Mitarbeitende" }));
+    await user.click(screen.getByRole("button", { name: /Lea Brunner/ }));
+    await user.click(await screen.findByRole("button", { name: "Zum Admin befördern" }));
+    await user.click(await screen.findByRole("button", { name: "Ja, befördern" }));
+
+    await user.click(within(nav).getByRole("button", { name: "Einstellungen" }));
+    await user.click(await screen.findByRole("button", { name: "Adminrechte abgeben" }));
+    await user.click(await screen.findByRole("button", { name: "Ja, abgeben" }));
+
+    /* Die Tabs richten sich nach der Rolle — der aktive verschwindet dabei und
+       fällt auf die Übersicht zurück, statt eine leere Seite zu hinterlassen. */
+    nav = await screen.findByRole("navigation");
+    await waitFor(() =>
+      expect(within(nav).queryByRole("button", { name: "Einstellungen" })).not.toBeInTheDocument()
+    );
+    expect(within(nav).getByRole("button", { name: "Konto" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Übersicht" })).toBeInTheDocument();
+  });
+});
+
+describe("Wer befördert wird, behält seine Schichten", () => {
+  test("Meine Schichten bleibt erreichbar, auch als Admin", async () => {
+    // Eine vergangene und eine kommende Zuteilung für Lea, direkt in der Datenbank.
+    const leaId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Lea Brunner'").get().id;
+    const companyId = server.db.prepare("SELECT id FROM companies").get().id;
+    const qualId = server.db.prepare("SELECT id FROM qualifications WHERE company_id = ?").get(companyId).id;
+
+    const anlegen = (id, datum) => {
+      server.db.prepare(
+        `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
+                             repeat, seats, qualification_id, end_date, assignment_attempted, assigned_at)
+         VALUES (?, ?, ?, ?, ?, '08:00', '16:00', 'once', 1, ?, NULL, 1, ?)`
+      ).run(id, companyId, `serie_${id}`, id === "s_alt" ? "Alter Dienst" : "Neuer Dienst", datum, qualId, datum);
+      server.db.prepare("INSERT INTO enrollments (shift_id, account_id, assigned) VALUES (?, ?, 1)").run(id, leaId);
+    };
+    const tage = (n) => {
+      const d = new Date();
+      d.setDate(d.getDate() + n);
+      return d.toISOString().slice(0, 10);
+    };
+    anlegen("s_alt", tage(-30));
+    anlegen("s_neu", tage(20));
+
+    const user = await openApp();
+    await login(user, ADMIN);
+    let nav = await screen.findByRole("navigation");
+
+    // Lea befördern.
+    await user.click(within(nav).getByRole("button", { name: "Mitarbeitende" }));
+    await user.click(screen.getByRole("button", { name: /Lea Brunner/ }));
+    await user.click(await screen.findByRole("button", { name: "Zum Admin befördern" }));
+    await user.click(await screen.findByRole("button", { name: "Ja, befördern" }));
+
+    await user.click(screen.getByRole("button", { name: "Abmelden" }));
+    await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
+    await login(user, EMPLOYEE);
+
+    /* Die Beförderung nimmt niemandem die Schichten weg — vorher aber die Sicht
+       darauf: Der Tab hing allein an der Rolle. */
+    nav = await screen.findByRole("navigation");
+    expect(await within(nav).findByRole("button", { name: "Meine Schichten" })).toBeInTheDocument();
+    await user.click(within(nav).getByRole("button", { name: "Meine Schichten" }));
+    expect(await screen.findByText("Neuer Dienst")).toBeInTheDocument();
+    // Und was schon hinter ihr liegt, steht ebenfalls da.
+    expect(screen.getByText("Alter Dienst")).toBeInTheDocument();
+  });
+});
+
 describe("Super-Admin", () => {
   test("sieht die Unternehmensverwaltung", async () => {
     const user = await openApp();
@@ -194,16 +377,45 @@ describe("Super-Admin", () => {
     await user.click(screen.getByRole("button", { name: /Erste Firma AG/ }));
     expect(await screen.findByText("Admin-Passwort zurücksetzen")).toBeInTheDocument();
 
-    await user.selectOptions(
-      await screen.findByLabelText("Admin-Konto"),
-      screen.getByRole("option", { name: "Mara Vogt" })
-    );
+    // Auf das eigene Auswahlfeld eingrenzen: Der Löschabschnitt führt dieselben
+    // Konten noch einmal auf.
+    const auswahl = await screen.findByLabelText("Admin-Konto");
+    await user.selectOptions(auswahl, within(auswahl).getByRole("option", { name: "Mara Vogt" }));
     await user.type(screen.getByLabelText("Neues Passwort"), "wiederDrin");
     await user.type(screen.getByLabelText("Wiederholen"), "wiederDrin");
     await user.type(screen.getByLabelText("Dein Verwaltungs-Passwort"), SUPER.password);
     await user.click(screen.getByRole("button", { name: "Passwort setzen" }));
 
     expect(await screen.findByText("Neues Passwort gesetzt.")).toBeInTheDocument();
+  });
+
+  test("löscht das letzte Admin-Konto nur mit Nachfolge", async () => {
+    const user = await openApp();
+    await login(user, SUPER);
+    await screen.findByRole("heading", { name: "Schichtboard – Verwaltung" });
+
+    await user.click(screen.getByRole("button", { name: /Erste Firma AG/ }));
+    expect(await screen.findByText("Admin-Konto löschen")).toBeInTheDocument();
+
+    /* Mara ist die einzige Administration — ohne Nachfolge stünde die Firma
+       ohne da, also fragt das Formular danach. */
+    expect(screen.getByText(/Das ist die letzte Administration/)).toBeInTheDocument();
+    await user.selectOptions(
+      screen.getByLabelText("Nachfolge"),
+      screen.getByRole("option", { name: "Lea Brunner" })
+    );
+    await user.type(screen.getByLabelText("Verwaltungs-Passwort zur Bestätigung"), SUPER.password);
+    await user.click(screen.getByRole("button", { name: "Admin-Konto löschen" }));
+    await user.click(await screen.findByRole("button", { name: "Ja, löschen" }));
+
+    expect(await screen.findByText(/Mara Vogt wurde gelöscht/)).toBeInTheDocument();
+    expect(await screen.findByText("1 Admin · 0 Mitarbeitende")).toBeInTheDocument();
+
+    // Lea führt die Firma jetzt.
+    await user.click(screen.getByRole("button", { name: "Abmelden" }));
+    await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
+    await login(user, EMPLOYEE);
+    expect(await screen.findByText("Admin")).toHaveClass("sb-badge");
   });
 
   test("lehnt einen bereits vergebenen Firmencode ab", async () => {

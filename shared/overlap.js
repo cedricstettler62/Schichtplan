@@ -5,8 +5,6 @@
    dieselbe Rechnung, wenn sich jemand einschreiben will. Zwei Auslegungen von
    "überschneidet sich" wären ein Fehler mit Ansage. */
 
-import { fromISO } from "./dates.js";
-
 const TAG = 24 * 60;
 
 function minutenAusUhrzeit(hhmm) {
@@ -22,7 +20,11 @@ function minutenAusUhrzeit(hhmm) {
  * heraus und sie überschnitte sich mit nichts.
  */
 export function shiftSpan(shift) {
-  const tagNull = Math.round(fromISO(shift.date).getTime() / 60000);
+  /* Der Nullpunkt wird in UTC gerechnet: In der Nacht der Zeitumstellung hat
+     ein lokaler Tag 23 oder 25 Stunden, und eine Nachtschicht käme dadurch
+     eine Stunde verschoben heraus. */
+  const [jahr, monat, tag] = shift.date.split("-").map(Number);
+  const tagNull = Date.UTC(jahr, monat - 1, tag) / 60000;
   const start = tagNull + minutenAusUhrzeit(shift.startTime);
   const ende = tagNull + minutenAusUhrzeit(shift.endTime);
   return { start, end: ende <= start ? ende + TAG : ende };

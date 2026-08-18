@@ -5,15 +5,22 @@ import { assignmentDateOf } from "#shared/assignment.js";
 import { fmtDate } from "#shared/dates.js";
 
 /*
- * Dieselbe Zeile für beide Listen: `onAskForHelp` für eine feste Zuteilung,
- * `onWithdraw` für eine Einschreibung, über die noch nicht entschieden ist.
+ * Dieselbe Zeile für alle drei Listen: `onAskForHelp` für eine feste Zuteilung,
+ * `onWithdraw` für eine Einschreibung, über die noch nicht entschieden ist —
+ * und ohne beides für eine Schicht, die bereits vorbei ist.
  */
 export default function MyShiftRow({
   shift, qualifications, currentUser, assignmentDay, onAskForHelp, onWithdraw,
 }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
   const qual = qualifications.find((q) => q.id === shift.qualificationId);
   const wartend = !!onWithdraw;
+  const vergangen = !onWithdraw && !onAskForHelp;
+
+  /* Das Zurückziehen kann der Server ablehnen — etwa weil die Auslosung
+     inzwischen gelaufen ist und der Platz fest vergeben wurde. */
+  const zurueckziehen = async () => setError((await onWithdraw(shift.id)) || "");
   const askedForHelp = shift.helpRequests.includes(currentUser.id);
   const freiePlaetze = shift.seats - shift.assigned.length;
 
@@ -35,6 +42,7 @@ export default function MyShiftRow({
                 ? `${freiePlaetze} von ${shift.seats} Plätzen noch frei`
                 : `${shift.assigned.length} von ${shift.seats} Plätzen besetzt`}
             </span>
+            {vergangen && <span>vorbei</span>}
           </div>
         </div>
         <span className="sb-bar-caret">{open ? "▾" : "▸"}</span>
@@ -59,13 +67,18 @@ export default function MyShiftRow({
             )}
           </div>
 
-          {wartend ? (
+          {vergangen ? (
+            <p className="sb-status">
+              Diese Schicht liegt hinter dir. Drei Monate nach ihrem Datum wird sie samt
+              Einschreibung vollständig gelöscht.
+            </p>
+          ) : wartend ? (
             <>
               <p className="sb-status">
                 Bis zur Auslosung ist der Platz nicht sicher. Gehst du leer aus, verschwindet
                 die Schicht hier von selbst.
               </p>
-              <button type="button" className="sb-btn sb-btn-quiet" onClick={() => onWithdraw(shift.id)}>
+              <button type="button" className="sb-btn sb-btn-quiet" onClick={zurueckziehen}>
                 Einschreibung zurückziehen
               </button>
             </>
@@ -85,6 +98,7 @@ export default function MyShiftRow({
               </button>
             </>
           )}
+          {error && <p className="sb-error">{error}</p>}
         </div>
       )}
     </div>

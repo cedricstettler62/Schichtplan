@@ -22,7 +22,12 @@ CREATE TABLE IF NOT EXISTS accounts (
   company_id    TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role          TEXT NOT NULL CHECK (role IN ('admin', 'employee'))
+  role          TEXT NOT NULL CHECK (role IN ('admin', 'employee')),
+  /* Zählt bei jeder Passwortänderung um eins hoch. Ein Sitzungs-Cookie
+     trägt den Stand mit, der beim Anmelden galt — passt er nicht mehr, ist
+     die Sitzung vorbei. So endet mit dem alten Passwort auch alles, was mit
+     ihm angemeldet wurde. */
+  session_epoch INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id);
 
@@ -105,6 +110,7 @@ export function openDb(file) {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
   ensureColumn(db, "shifts", "end_date", "TEXT");
+  ensureColumn(db, "accounts", "session_epoch", "INTEGER NOT NULL DEFAULT 0");
   /* Konten kamen früher mit E-Mail-Adresse und bekamen ihr erstes Passwort
      über einen Link. Beides ist weg: Adressen werden nirgends mehr gebraucht,
      und offene Token sollen nicht in einer Datenbank liegen bleiben, in der

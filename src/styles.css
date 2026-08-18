@@ -19,7 +19,15 @@
 
 /* Basis für die eigenständige Seite (im Artifact kam das von der Host-Seite). */
 html, body { height: 100%; background: var(--sb-bg); color-scheme: light; }
-body { margin: 0; }
+/* Auf dem Homescreen läuft die Seite unter Statusleiste und Home-Anzeige
+   hindurch (viewport-fit=cover in index.html) — diese Ränder halten den
+   Inhalt davon frei. Im Browser sind alle vier Werte 0, dort ändert sich
+   nichts. */
+body {
+  margin: 0;
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
 #root { min-height: 100%; }
 
 .sb-root { background: var(--sb-bg); color: var(--sb-ink); font-family: var(--sb-font-sans); min-height: 100%; padding: 0; }
@@ -42,6 +50,21 @@ body { margin: 0; }
 .sb-avatar-admin { border-color: var(--sb-amber); color: var(--sb-amber); background: rgba(226,163,59,0.1); }
 .sb-avatar-employee { border-color: var(--sb-petrol); color: var(--sb-petrol); background: rgba(63,124,116,0.1); }
 .sb-account-name-lg { font-family: var(--sb-font-head); font-size: 20px; font-weight: 700; }
+
+/* Hinweis auf eine neue Fassung — steht über allem, nimmt aber nichts weg:
+   Wer ihn stehen lässt, arbeitet einfach weiter. */
+.sb-update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--sb-ink);
+  color: var(--sb-paper);
+  font-size: 14px;
+}
+.sb-update-banner .sb-btn { flex-shrink: 0; }
 
 /* Header / Nav */
 .sb-header { padding-top: 22px; border-bottom: 1px solid var(--sb-line); margin-bottom: 24px; }
@@ -205,6 +228,8 @@ body { margin: 0; }
 .sb-toggle-list { display: flex; flex-direction: column; }
 
 /* Qualifications management */
+/* Nur zum Nachlesen, ohne Knopf: gleiche Form, aber rundum gleicher Abstand. */
+.sb-qual-chip { display: inline-flex; align-items: center; border: 1px solid var(--sb-line); border-radius: 20px; padding: 5px 12px; font-size: 12.5px; background: #fff; color: var(--sb-ink); }
 .sb-qual-manage-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--sb-line); border-radius: 20px; padding: 4px 6px 4px 13px; font-size: 12.5px; background: #fff; }
 /* Rückfrage »Sicher?« – umbricht, statt aus der Karte zu laufen. */
 .sb-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
@@ -217,6 +242,7 @@ body { margin: 0; }
 .sb-manage-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Nur dieses Element schiebt sich nach rechts; alles davor bleibt am Namen. */
 .sb-manage-summary { margin-left: auto; font-size: 12.5px; color: var(--sb-ink-65); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-manage-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 12px 10px; }
 .sb-manage-meta { font-size: 12.5px; color: var(--sb-ink-65); white-space: nowrap; }
 .sb-manage-row-body { padding: 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px; }
 .sb-manage-section { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }

@@ -5,7 +5,7 @@ import NewCompanyForm from "./NewCompanyForm.jsx";
 import SystemPanel from "./SystemPanel.jsx";
 
 /** `companies` sind hier Kurzfassungen: { id, code, name, adminCount, employeeCount }. */
-export default function SuperAdminView({ companies, superAdminName, onCreateCompany, onDeleteCompany, onUpdateCompanyName, onLoadAdmins, onResetAdminPassword, onDataChanged, onLogout }) {
+export default function SuperAdminView({ companies, superAdminName, onCreateCompany, onDeleteCompany, onUpdateCompanyName, onLoadAdmins, onLoadEmployees, onResetAdminPassword, onDeleteAdmin, onDataChanged, onLogout }) {
   const [formOpen, setFormOpen] = useState(false);
   const [angelegt, setAngelegt] = useState(null);
 
@@ -67,7 +67,9 @@ export default function SuperAdminView({ companies, superAdminName, onCreateComp
                   onDelete={onDeleteCompany}
                   onUpdateName={onUpdateCompanyName}
                   onLoadAdmins={onLoadAdmins}
+                  onLoadEmployees={onLoadEmployees}
                   onResetAdminPassword={onResetAdminPassword}
+                  onDeleteAdmin={onDeleteAdmin}
                 />
               ))}
             </div>

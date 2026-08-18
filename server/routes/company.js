@@ -6,7 +6,15 @@ import { Router } from "express";
 
 import { startOfToday, toISO } from "#shared/dates.js";
 
-import { checkPassword, hashPassword, requireAdmin, requireCompany } from "../auth.js";
+import {
+  checkPassword,
+  endeAlleSitzungen,
+  hashPassword,
+  kontoWaereUnerreichbar,
+  requireAdmin,
+  requireCompany,
+  setAccountSession,
+} from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
 import { dateiname, personalData } from "../personalData.js";
 import { uid } from "../ids.js";
@@ -18,13 +26,28 @@ function ownAccount(db, req, id) {
     .get(id, req.session.companyId);
 }
 
+/**
+ * Darf die angemeldete Person in dieses Konto eingreifen?
+ *
+ * Das eigene immer. Fremde nur als Admin und nur, wenn es kein Admin-Konto ist:
+ * Sonst könnte ein Admin die anderen entmachten und die Firma übernehmen. Wer
+ * ein Admin-Konto braucht — löschen, Passwort, Rolle —, geht über die
+ * Verwaltung. Dieselbe Grenze gilt für Passwort, Qualifikationen, Rolle und
+ * Löschen; eine mildere Handlung schwächer zu schützen als eine härtere wäre
+ * die falsche Reihenfolge.
+ */
+function darfEingreifen(req, target) {
+  if (target.id === req.session.accountId) return true;
+  return req.session.role === "admin" && target.role !== "admin";
+}
+
 function adminCount(db, companyId) {
   return db
     .prepare("SELECT COUNT(*) AS n FROM accounts WHERE company_id = ? AND role = 'admin'")
     .get(companyId).n;
 }
 
-export default function companyRoutes(db) {
+export default function companyRoutes(db, config) {
   // Bewusst pro Route abgesichert statt per router.use: dieser Router hängt
   // direkt unter /api und darf nachfolgende Router (etwa /api/companies für
   // die Verwaltung) nicht abfangen.
@@ -86,6 +109,11 @@ export default function companyRoutes(db) {
     const password = String(req.body?.password || "");
     if (!name) return res.status(400).json({ error: "Ein Name ist nötig." });
     if (password.length < 4) return res.status(400).json({ error: "Das Passwort braucht mindestens 4 Zeichen." });
+    if (kontoWaereUnerreichbar(db, req.session.companyId, name, password)) {
+      return res.status(409).json({
+        error: "Dieses Konto wäre nicht erreichbar: Es gibt bereits ein Konto mit diesem Namen und diesem Passwort. Bitte ein anderes Passwort vergeben.",
+      });
+    }
 
     const id = uid("a");
     db.prepare(
@@ -95,13 +123,20 @@ export default function companyRoutes(db) {
     res.json({ id });
   });
 
-  router.patch("/accounts/:id/qualifications", requireCompany, (req, res) => {
+  /**
+   * Qualifikationen vergibt ausschliesslich die Administration — für die
+   * Belegschaft und für sich selbst, nicht für andere Admin-Konten.
+   *
+   * Vorher durfte jedes Konto seine eigenen setzen, damit war „Erste Hilfe“
+   * eine Selbstauskunft, während Oberfläche und Handbuch sie als Zusicherung
+   * der Administration beschreiben. Von beidem kann nur eines stimmen.
+   */
+  router.patch("/accounts/:id/qualifications", requireAdmin, (req, res) => {
     const target = ownAccount(db, req, req.params.id);
     if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-
-    const isSelf = target.id === req.session.accountId;
-    const mayEdit = isSelf || (req.session.role === "admin" && target.role !== "admin");
-    if (!mayEdit) return res.status(403).json({ error: "Nicht erlaubt." });
+    if (!darfEingreifen(req, target)) {
+      return res.status(403).json({ error: "Ein fremdes Admin-Konto ändert nur die Verwaltung." });
+    }
 
     const qual = db
       .prepare("SELECT id FROM qualifications WHERE id = ? AND company_id = ?")
@@ -122,7 +157,33 @@ export default function companyRoutes(db) {
   router.post("/accounts/:id/promote", requireAdmin, (req, res) => {
     const target = ownAccount(db, req, req.params.id);
     if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
+    if (target.role === "admin") return res.json({ ok: true });
     db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(target.id);
+    res.json({ ok: true });
+  });
+
+  /**
+   * Adminrechte abgeben — ausschliesslich die eigenen.
+   *
+   * Ein Admin stuft keinen anderen herunter: Das wäre dasselbe Entmachten wie
+   * ein fremdes Passwort zu setzen, nur leiser. Wer versehentlich befördert
+   * wurde, gibt die Rechte selbst wieder ab; die letzte Administration kann es
+   * nicht, sonst stünde die Firma ohne da.
+   */
+  router.post("/accounts/:id/demote", requireCompany, (req, res) => {
+    const target = ownAccount(db, req, req.params.id);
+    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
+    if (target.id !== req.session.accountId) {
+      return res.status(403).json({ error: "Adminrechte gibt jede Person nur selbst ab." });
+    }
+    if (target.role !== "admin") return res.json({ ok: true });
+    if (adminCount(db, req.session.companyId) <= 1) {
+      return res.status(409).json({
+        error: "Du bist die letzte Administration. Befördere zuerst jemanden, der übernimmt.",
+      });
+    }
+
+    db.prepare("UPDATE accounts SET role = 'employee' WHERE id = ?").run(target.id);
     res.json({ ok: true });
   });
 
@@ -135,11 +196,9 @@ export default function companyRoutes(db) {
     const target = ownAccount(db, req, req.params.id);
     if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
 
-    const isSelf = target.id === req.session.accountId;
-    // Unter Admins setzt niemand das Passwort eines anderen — sonst könnte ein
-    // Admin die Firma übernehmen, indem er die anderen aussperrt.
-    const mayReset = isSelf || (req.session.role === "admin" && target.role !== "admin");
-    if (!mayReset) return res.status(403).json({ error: "Nicht erlaubt." });
+    if (!darfEingreifen(req, target)) {
+      return res.status(403).json({ error: "Ein fremdes Admin-Konto ändert nur die Verwaltung." });
+    }
 
     const password = String(req.body?.password || "");
     if (password.length < 4) return res.status(400).json({ error: "Mindestens 4 Zeichen." });
@@ -148,8 +207,27 @@ export default function companyRoutes(db) {
     if (!checkPassword(String(req.body?.currentPassword || ""), eigenes.password_hash)) {
       return res.status(403).json({ error: "Das aktuelle Passwort ist falsch." });
     }
+    // Sonst liesse sich ein Konto nachträglich hinter einem gleichnamigen verstecken.
+    if (kontoWaereUnerreichbar(db, req.session.companyId, target.name, password, target.id)) {
+      return res.status(409).json({
+        error: "Mit diesem Passwort wäre das Konto nicht mehr erreichbar: Ein anderes Konto mit demselben Namen benutzt es bereits. Bitte ein anderes wählen.",
+      });
+    }
 
     db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(hashPassword(password), target.id);
+
+    /* Mit dem alten Passwort endet jede Anmeldung, die damit zustande kam —
+       sonst liefe das Telefon eines Ausgesperrten unbehelligt weiter, und ein
+       neues Passwort wäre nur eine halbe Sperre.
+
+       Das Gerät, an dem gerade jemand sitzt, bekommt ein frisches Cookie:
+       Wer sein eigenes Passwort ändert, ist in diesem Moment nachweislich er
+       selbst und soll nicht mitten in der Arbeit hinausfliegen. Abgemeldet
+       werden also alle anderen. */
+    const epoche = endeAlleSitzungen(db, target.id);
+    if (target.id === req.session.accountId) {
+      setAccountSession(res, { id: target.id, session_epoch: epoche }, config);
+    }
     res.json({ ok: true });
   });
 
@@ -177,11 +255,17 @@ export default function companyRoutes(db) {
     const target = ownAccount(db, req, req.params.id);
     if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
 
-    const isSelf = target.id === req.session.accountId;
-    if (!isSelf && req.session.role !== "admin") return res.status(403).json({ error: "Nicht erlaubt." });
-    if (target.role === "admin" && adminCount(db, req.session.companyId) <= 1) {
-      return res.status(409).json({ error: "Die letzte Administration lässt sich nicht löschen." });
+    /* Ein fremdes Admin-Konto löscht niemand aus der Firma heraus — das ist die
+       härteste Form des Entmachtens, und sie war bisher als einzige offen. */
+    if (!darfEingreifen(req, target)) {
+      return res.status(403).json({ error: "Ein fremdes Admin-Konto löscht nur die Verwaltung." });
     }
+    if (target.role === "admin" && adminCount(db, req.session.companyId) <= 1) {
+      return res.status(409).json({
+        error: "Die letzte Administration lässt sich nicht selbst löschen. Das übernimmt die Verwaltung, die dabei eine Nachfolge bestimmt.",
+      });
+    }
+    const isSelf = target.id === req.session.accountId;
 
     /* Schichten, die dieses Konto besetzt hat, dürfen nicht still an die
        nächstbeste eingeschriebene Person weitergereicht werden — sie sollen

@@ -2,8 +2,8 @@ import { useState } from "react";
 import Avatar from "../../components/Avatar.jsx";
 import Badge from "../../components/Badge.jsx";
 import Toggle from "../../components/Toggle.jsx";
-import PasswordResetForm from "../../components/PasswordResetForm.jsx";
-import DeleteAccountButton from "../../components/DeleteAccountButton.jsx";
+import PasswordForm from "../../components/PasswordForm.jsx";
+import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
 
 export default function EmployeeManageRow({ account, qualifications, verifyAdmin, onResetPassword, onSetQualification, onDeleteAccount, onPromote }) {
@@ -23,9 +23,10 @@ export default function EmployeeManageRow({ account, qualifications, verifyAdmin
           <div className="sb-manage-section">
             <span className="sb-detail-label">Passwort zurücksetzen</span>
             <p className="sb-status">Für den Fall, dass {account.name.split(" ")[0]} nicht mehr hineinkommt.</p>
-            <PasswordResetForm
+            <PasswordForm
+              fremd
               verify={verifyAdmin}
-              onReset={(neu, adminPw) => onResetPassword(account.id, neu, adminPw)}
+              onSubmit={(neu, adminPw) => onResetPassword(account.id, neu, adminPw)}
             />
           </div>
 
@@ -62,9 +63,11 @@ export default function EmployeeManageRow({ account, qualifications, verifyAdmin
             ) : (
               <>
                 <button type="button" className="sb-btn sb-btn-amber" onClick={() => setConfirmingPromote(true)}>Zum Admin befördern</button>
-                <DeleteAccountButton
+                <ConfirmDelete
                   onConfirm={() => onDeleteAccount(account.id)}
+                  label="Konto löschen"
                   question={`Konto von ${account.name} wirklich löschen? Das lässt sich nicht rückgängig machen.`}
+                  variant="button"
                 />
               </>
             )}

@@ -13,6 +13,11 @@ export default function EmployeesTab({
   const [angelegt, setAngelegt] = useState("");
 
   const employees = accounts.filter((a) => a.role === "employee");
+  /* Gleiche Namen sind erlaubt — zwei Menschen dürfen gleich heissen. Nur muss
+     dann das Passwort ein anderes sein, sonst landet jede Anmeldung beim ersten
+     der beiden Konten und das zweite bleibt unerreichbar. */
+  const namensdopplung =
+    name.trim() && accounts.some((a) => a.name.trim().toLowerCase() === name.trim().toLowerCase());
 
   const submitEmployee = async () => {
     if (!name.trim()) { setError("Bitte einen Namen eingeben."); return; }
@@ -20,8 +25,8 @@ export default function EmployeesTab({
     if (passwort !== wiederholung) { setError("Die beiden Passwörter stimmen nicht überein."); return; }
     setError("");
 
-    const res = await onAddEmployee({ name: name.trim(), password: passwort });
-    if (!res) { setError("Das Konto konnte nicht angelegt werden."); return; }
+    const meldung = await onAddEmployee({ name: name.trim(), password: passwort });
+    if (meldung) { setError(meldung); return; }
 
     setAngelegt(name.trim());
     setName(""); setPasswort(""); setWiederholung("");
@@ -47,6 +52,12 @@ export default function EmployeesTab({
             <label className="sb-field"><span>Erstes Passwort</span><input type="password" value={passwort} onChange={(e) => setPasswort(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} autoComplete="new-password" /></label>
             <label className="sb-field"><span>Wiederholen</span><input type="password" value={wiederholung} onChange={(e) => setWiederholung(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} autoComplete="new-password" /></label>
           </div>
+          {namensdopplung && (
+            <p className="sb-status">
+              Es gibt bereits ein Konto mit diesem Namen. Das ist möglich – vergib aber ein anderes
+              Passwort als dort, sonst ist eines der beiden Konten nicht mehr erreichbar.
+            </p>
+          )}
           {error && <p className="sb-error">{error}</p>}
           <div className="sb-form-actions">
             <button type="button" className="sb-btn sb-btn-ink" onClick={submitEmployee}>Konto anlegen</button>

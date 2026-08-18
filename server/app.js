@@ -13,6 +13,7 @@ import authRoutes from "./routes/auth.js";
 import calendarRoutes from "./routes/calendar.js";
 import companiesRoutes from "./routes/companies.js";
 import companyRoutes from "./routes/company.js";
+import logbookRoutes from "./routes/logbook.js";
 import shiftRoutes from "./routes/shifts.js";
 
 /**
@@ -45,6 +46,7 @@ export function createApp(db, config) {
   app.use("/api/admin", adminRoutes(db, config));
   app.use("/api", companyRoutes(db, config));
   app.use("/api/shifts", shiftRoutes(db));
+  app.use("/api/logbook", logbookRoutes(db));
   app.use("/api/companies", companiesRoutes(db, config));
   // Ohne Anmeldung erreichbar: das Zeichen in der Adresse ist hier der Zugang.
   app.use("/api", calendarRoutes(db));

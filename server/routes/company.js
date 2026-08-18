@@ -18,6 +18,8 @@ import {
   setAccountSession,
 } from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
+import { toShift } from "../db.js";
+import { logUnassigned } from "../logbook.js";
 import { dateiname, personalData } from "../personalData.js";
 import { uid } from "../ids.js";
 
@@ -313,8 +315,21 @@ export default function companyRoutes(db, config) {
       .prepare("SELECT shift_id FROM enrollments WHERE account_id = ? AND assigned = 1")
       .all(target.id)
       .map((r) => r.shift_id);
+    const freiRows = frei.length
+      ? db.prepare(`SELECT * FROM shifts WHERE id IN (${frei.map(() => "?").join(", ")})`).all(...frei)
+      : [];
 
-    db.prepare("DELETE FROM accounts WHERE id = ?").run(target.id);
+    db.transaction(() => {
+      // Vor dem Löschen protokollieren: actor_account_id/target_account_id
+      // sind Fremdschlüssel und würden ein bereits gelöschtes Konto ablehnen.
+      for (const row of freiRows) {
+        logUnassigned(
+          db, req.session.companyId, toShift(db, row), target.name, target.id,
+          req.session.name, req.session.accountId, "wegen Kontolöschung ausgetragen"
+        );
+      }
+      db.prepare("DELETE FROM accounts WHERE id = ?").run(target.id);
+    })();
     releaseSeats(db, frei);
     recompute(db, req.session.companyId);
     res.json({ ok: true, self: isSelf });

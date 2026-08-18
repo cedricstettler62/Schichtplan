@@ -1,7 +1,8 @@
 import Badge from "../../components/Badge.jsx";
 
 const ADMIN_TABS = [
-  ["overview", "Übersicht"], ["shifts", "Schichten"], ["employees", "Mitarbeitende"], ["settings", "Einstellungen"],
+  ["overview", "Übersicht"], ["shifts", "Schichten"], ["employees", "Mitarbeitende"],
+  ["logbook", "Logbuch"], ["settings", "Einstellungen"],
 ];
 const EMPLOYEE_TABS = [
   ["overview", "Übersicht"], ["shifts", "Schichten"], ["myshifts", "Meine Schichten"], ["account", "Konto"],

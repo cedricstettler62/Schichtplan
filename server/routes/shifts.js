@@ -15,6 +15,7 @@ import {
 } from "../conflicts.js";
 import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
+import { logAssigned, logHelp, logReassigned, logShiftCreated, logShiftUpdated, logUnassigned } from "../logbook.js";
 
 /* Dieselbe Liste, die auch das Formular anbietet — zwei Aufzählungen liefen
    sonst auseinander, und eine Wiederholung ohne Beschriftung wäre für niemanden
@@ -91,6 +92,7 @@ export default function shiftRoutes(db) {
       for (const s of shifts) {
         insert.run(s.id, req.session.companyId, s.seriesId, s.name, s.date,
           s.startTime, s.endTime, s.repeat, s.seats, s.qualificationId, s.endDate);
+        logShiftCreated(db, req.session.companyId, s, req.session.name, req.session.accountId);
       }
       for (const andere of kombinierbar) {
         if (bekannteSerien.has(andere)) merkeKombinierbar(db, req.session.companyId, seriesId, andere);
@@ -245,6 +247,13 @@ export default function shiftRoutes(db) {
          und ist oben schon geschrieben. */
     })();
 
+    if (geaendert) {
+      const updatedRows = db.prepare(`SELECT * FROM shifts WHERE id IN (${platzhalter})`).all(...betroffen);
+      for (const row of updatedRows) {
+        logShiftUpdated(db, req.session.companyId, toShift(db, row), req.session.name, req.session.accountId);
+      }
+    }
+
     recompute(db, req.session.companyId);
     res.json({ updated: betroffen.length, ausgetragen, geaendert });
   });
@@ -295,6 +304,9 @@ export default function shiftRoutes(db) {
         .run(shift.id, me, sofortZuteilen ? 1 : 0);
       if (sofortZuteilen && !shift.assignedAt) {
         db.prepare("UPDATE shifts SET assigned_at = ? WHERE id = ?").run(toISO(startOfToday()), shift.id);
+      }
+      if (sofortZuteilen) {
+        logAssigned(db, req.session.companyId, shift, req.session.name, me);
       }
     })();
 
@@ -349,9 +361,15 @@ export default function shiftRoutes(db) {
       return res.status(404).json({ error: "Diese Person ist für die Schicht nicht eingetragen." });
     }
 
+    const warAssigned = shift.assigned.includes(accountId);
+    const betroffenePerson = db.prepare("SELECT name FROM accounts WHERE id = ?").get(accountId);
+
     db.transaction(() => {
       db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, accountId);
       db.prepare("DELETE FROM help_requests WHERE shift_id = ? AND account_id = ?").run(shift.id, accountId);
+      if (warAssigned && betroffenePerson) {
+        logUnassigned(db, req.session.companyId, shift, betroffenePerson.name, accountId, req.session.name, req.session.accountId);
+      }
     })();
     releaseSeats(db, [shift.id]);
 
@@ -369,8 +387,10 @@ export default function shiftRoutes(db) {
 
     if (shift.helpRequests.includes(me)) {
       db.prepare("DELETE FROM help_requests WHERE shift_id = ? AND account_id = ?").run(shift.id, me);
+      logHelp(db, req.session.companyId, shift, req.session.name, me, false);
     } else {
       db.prepare("INSERT INTO help_requests (shift_id, account_id) VALUES (?, ?)").run(shift.id, me);
+      logHelp(db, req.session.companyId, shift, req.session.name, me, true);
     }
     res.json({ ok: true });
   });
@@ -391,6 +411,8 @@ export default function shiftRoutes(db) {
     const konflikt = findeKonflikt(db, req.session.companyId, me, shift);
     if (konflikt) return res.status(409).json({ error: konfliktMeldung(shift, konflikt) });
 
+    const replacedAccount = replaceId ? db.prepare("SELECT name FROM accounts WHERE id = ?").get(replaceId) : null;
+
     db.transaction(() => {
       if (replaceId) {
         db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, replaceId);
@@ -400,6 +422,10 @@ export default function shiftRoutes(db) {
         .run(shift.id, me);
       if (!shift.assignedAt) {
         db.prepare("UPDATE shifts SET assigned_at = ? WHERE id = ?").run(toISO(startOfToday()), shift.id);
+      }
+      logReassigned(db, req.session.companyId, shift, req.session.name, me, replacedAccount?.name);
+      if (replaceId && replacedAccount) {
+        logUnassigned(db, req.session.companyId, shift, replacedAccount.name, replaceId, req.session.name, me, "durch Übernahme ersetzt");
       }
     })();
 

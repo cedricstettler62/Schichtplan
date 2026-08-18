@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
+import LogbookEntryRow from "../logbook/LogbookEntryRow.jsx";
 
-export default function CompanyRow({ company, onDelete, onUpdateName, onLoadAdmins, onLoadEmployees, onResetAdminPassword, onDeleteAdmin }) {
+export default function CompanyRow({
+  company, onDelete, onUpdateName, onLoadAdmins, onLoadEmployees, onResetAdminPassword, onDeleteAdmin, onLoadLogbook,
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(company.name);
   const [saved, setSaved] = useState(false);
@@ -20,6 +23,12 @@ export default function CompanyRow({ company, onDelete, onUpdateName, onLoadAdmi
   const [superPw, setSuperPw] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetSaved, setResetSaved] = useState(false);
+  const [logbook, setLogbook] = useState(null); // null = noch nicht geladen
+
+  const logbuchLaden = async () => {
+    if (logbook !== null) { setLogbook(null); return; }
+    setLogbook(await onLoadLogbook(company.id));
+  };
 
   /* Erst beim Aufklappen laden: Die Übersicht zeigt oft viele Unternehmen,
      und die Namen der Admin-Konten braucht nur, wer eines befreien will. */
@@ -220,6 +229,25 @@ export default function CompanyRow({ company, onDelete, onUpdateName, onLoadAdmi
               </>
             )}
             {loeschError && <p className="sb-error">{loeschError}</p>}
+          </div>
+
+          <div className="sb-manage-section">
+            <span className="sb-detail-label">Logbuch</span>
+            <p className="sb-status">
+              Anlegen, Ändern, Zu-/Umteilungen und Hilfegesuche dieses Unternehmens — nur auf Wunsch geladen.
+            </p>
+            <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={logbuchLaden}>
+              {logbook !== null ? "Logbuch ausblenden" : "Logbuch laden"}
+            </button>
+            {logbook !== null && (
+              logbook.length === 0 ? (
+                <p className="sb-empty">Noch keine Einträge.</p>
+              ) : (
+                <div className="sb-log-list">
+                  {logbook.map((e) => <LogbookEntryRow key={e.id} entry={e} />)}
+                </div>
+              )
+            )}
           </div>
 
           <div className="sb-manage-actions">

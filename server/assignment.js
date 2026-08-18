@@ -7,6 +7,7 @@ import { shiftsOverlap } from "#shared/overlap.js";
 import { raeumeFreigaben } from "./conflicts.js";
 import { readAccountsForLogic, readShiftsForLogic } from "./db.js";
 import { uid } from "./ids.js";
+import { logAssigned } from "./logbook.js";
 
 /**
  * Wann sich zwei Schichten gegenseitig ausschliessen: wenn sie sich zeitlich
@@ -51,6 +52,11 @@ export function recompute(db, companyId, forceIds = []) {
   const setShift = db.prepare("UPDATE shifts SET assignment_attempted = ?, assigned_at = ? WHERE id = ?");
   const setAssigned = db.prepare("UPDATE enrollments SET assigned = 1 WHERE shift_id = ? AND account_id = ?");
   const warteliste = db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND assigned = 0");
+  /* Für die Logbuch-Meldung — readAccountsForLogic liefert keine Namen, die
+     braucht nur die Zuteilungslogik selbst nicht. */
+  const namen = new Map(
+    db.prepare("SELECT id, name FROM accounts WHERE company_id = ?").all(companyId).map((a) => [a.id, a.name])
+  );
 
   db.transaction(() => {
     after.forEach((shift, i) => {
@@ -59,7 +65,10 @@ export function recompute(db, companyId, forceIds = []) {
         setShift.run(shift.assignmentAttempted ? 1 : 0, shift.assignedAt, shift.id);
       }
       for (const accountId of shift.assigned) {
-        if (!old.assigned.includes(accountId)) setAssigned.run(shift.id, accountId);
+        if (!old.assigned.includes(accountId)) {
+          setAssigned.run(shift.id, accountId);
+          logAssigned(db, companyId, shift, namen.get(accountId) || "Unbekannt", accountId);
+        }
       }
       /* Mit der Auslosung hat die Warteliste ihren Zweck erfüllt: Wer keine
          Zusage bekommen hat, soll die Schicht nicht weiter unter "Meine

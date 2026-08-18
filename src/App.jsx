@@ -9,6 +9,7 @@ import MyShiftsTab from "./features/shifts/MyShiftsTab.jsx";
 import EmployeesTab from "./features/employees/EmployeesTab.jsx";
 import AccountTab from "./features/account/AccountTab.jsx";
 import SettingsTab from "./features/settings/SettingsTab.jsx";
+import LogbookTab from "./features/logbook/LogbookTab.jsx";
 import SuperAdminView from "./features/superadmin/SuperAdminView.jsx";
 import PrivacyScreen from "./features/legal/PrivacyScreen.jsx";
 import Footer from "./components/Footer.jsx";
@@ -138,6 +139,17 @@ export default function App() {
     api.post(`/shifts/${shiftId}/takeover`, { replaceId: replaceId || null })
   );
 
+  /* --- Logbuch --- */
+  const handleLoadLogbook = () => api.get("/logbook").catch(() => []);
+  const handleLoadShiftLogbook = (shiftId) => api.get(`/logbook?shiftId=${shiftId}`).catch(() => []);
+  const handleLoadEligibleShifts = () => api.get("/logbook/eligible-shifts").catch(() => []);
+  const handleRequestLogbookAccess = actMitMeldung((shiftId, note) =>
+    api.post("/logbook/requests", { shiftId, note })
+  );
+  const handleApproveLogbookRequest = act((id) => api.post(`/logbook/requests/${id}/approve`));
+  const handleDeclineLogbookRequest = act((id) => api.post(`/logbook/requests/${id}/decline`));
+  const handleLoadCompanyLogbook = (companyId) => api.get(`/companies/${companyId}/logbook`).catch(() => []);
+
   /* --- Konten --- */
   const handleAddEmployee = actMitMeldung((data) => api.post("/employees", data));
 
@@ -241,6 +253,7 @@ export default function App() {
           onLoadEmployees={handleLoadCompanyEmployees}
           onResetAdminPassword={handleResetCompanyAdminPassword}
           onDeleteAdmin={handleDeleteCompanyAdmin}
+          onLoadLogbook={handleLoadCompanyLogbook}
           onDataChanged={refresh}
           onLogout={handleLogout}
         />
@@ -255,7 +268,7 @@ export default function App() {
     return <div className="sb-root"><LoginScreen onLogin={handleLogin} /><Footer /></div>;
   }
 
-  const { qualifications, shifts, settings, accounts, combinableSeries } = company;
+  const { qualifications, shifts, settings, accounts, combinableSeries, logbookAccessRequests } = company;
   const isAdmin = currentUser.role === "admin";
 
   const handleChangePassword = actMitMeldung((password, currentPassword) =>
@@ -283,6 +296,9 @@ export default function App() {
             <OverviewTab
               shifts={shifts} qualifications={qualifications} accounts={accounts}
               currentUser={currentUser} today={today} onTakeOver={handleTakeOver}
+              logbookAccessRequests={logbookAccessRequests}
+              onApproveLogbookRequest={handleApproveLogbookRequest}
+              onDeclineLogbookRequest={handleDeclineLogbookRequest}
             />
           )}
 
@@ -309,6 +325,10 @@ export default function App() {
               onSetQualification={handleSetAccountQualification} onDeleteAccount={handleDeleteAccount}
               onPromote={handlePromoteToAdmin}
             />
+          )}
+
+          {tab === "logbook" && isAdmin && (
+            <LogbookTab onLoad={handleLoadLogbook} />
           )}
 
           {tab === "settings" && isAdmin && (
@@ -340,6 +360,10 @@ export default function App() {
             <AccountTab
               currentUser={currentUser} qualifications={qualifications} verifySelf={verifySelf}
               onChangePassword={handleChangePassword} onLogout={handleLogout}
+              logbookAccessRequests={logbookAccessRequests}
+              onLoadEligibleShifts={handleLoadEligibleShifts}
+              onRequestLogbookAccess={handleRequestLogbookAccess}
+              onLoadShiftLogbook={handleLoadShiftLogbook}
             />
           )}
         </main>

@@ -4,7 +4,8 @@ import { Router } from "express";
 
 import { endeAlleSitzungen, hashPassword, kontoWaereUnerreichbar, requireSuper, safeEqual } from "../auth.js";
 import { releaseSeats, recompute } from "../assignment.js";
-import { createCompany } from "../db.js";
+import { createCompany, toShift } from "../db.js";
+import { logUnassigned, readLogbook } from "../logbook.js";
 
 export default function companiesRoutes(db, config) {
   const router = Router();
@@ -56,6 +57,13 @@ export default function companiesRoutes(db, config) {
         .prepare("SELECT id, name FROM accounts WHERE company_id = ? AND role = 'employee' ORDER BY rowid")
         .all(req.params.id)
     );
+  });
+
+  /** Das volle Logbuch einer Firma — nur auf Wunsch geladen, nicht mit der Firmenliste. */
+  router.get("/:id/logbook", (req, res) => {
+    const company = db.prepare("SELECT id FROM companies WHERE id = ?").get(req.params.id);
+    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
+    res.json(readLogbook(db, company.id));
   });
 
   /** Die Admin-Konten einer Firma, damit die Verwaltung weiss, wen sie befreit. */
@@ -149,10 +157,21 @@ export default function companiesRoutes(db, config) {
       .prepare("SELECT shift_id FROM enrollments WHERE account_id = ? AND assigned = 1")
       .all(target.id)
       .map((r) => r.shift_id);
+    const freiRows = frei.length
+      ? db.prepare(`SELECT * FROM shifts WHERE id IN (${frei.map(() => "?").join(", ")})`).all(...frei)
+      : [];
 
     db.transaction(() => {
       if (nachfolge) {
         db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(nachfolge.id);
+      }
+      // Vor dem Löschen protokollieren, sonst lehnt der Fremdschlüssel auf
+      // target_account_id ein schon gelöschtes Konto ab.
+      for (const row of freiRows) {
+        logUnassigned(
+          db, req.params.id, toShift(db, row), target.name, target.id,
+          config.superAdmin.name, null, "wegen Kontolöschung ausgetragen"
+        );
       }
       db.prepare("DELETE FROM accounts WHERE id = ?").run(target.id);
     })();

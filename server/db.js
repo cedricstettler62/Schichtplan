@@ -87,6 +87,41 @@ CREATE TABLE IF NOT EXISTS help_requests (
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   PRIMARY KEY (shift_id, account_id)
 );
+
+/* Unveränderlicher Audit-Trail: anlegen, ändern, zu-/umteilen, Hilfegesuche.
+   Nur INSERT und SELECT — keine Route ändert oder löscht einen Eintrag. Name
+   und Schicht stehen zusätzlich als Text da (shift_label, message), damit ein
+   Eintrag auch nach gelöschtem Konto oder gelöschter Schicht lesbar bleibt. */
+CREATE TABLE IF NOT EXISTS logbook_entries (
+  id                 TEXT PRIMARY KEY,
+  company_id         TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  shift_id           TEXT REFERENCES shifts(id) ON DELETE SET NULL,
+  shift_label        TEXT NOT NULL,
+  type               TEXT NOT NULL CHECK (type IN
+                        ('created', 'updated', 'assigned', 'unassigned', 'reassigned', 'help_requested', 'help_withdrawn')),
+  message            TEXT NOT NULL,
+  actor_account_id   TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  target_account_id  TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  created_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_logbook_company ON logbook_entries(company_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_logbook_shift ON logbook_entries(shift_id);
+
+/* Bitte eines Mitarbeitenden, das Logbuch einer eigenen vergangenen Schicht
+   einsehen zu dürfen. Anders als logbook_entries ein Workflow-Objekt: der
+   Status darf sich ändern (pending -> approved/declined). */
+CREATE TABLE IF NOT EXISTS logbook_access_requests (
+  id           TEXT PRIMARY KEY,
+  company_id   TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  shift_id     TEXT REFERENCES shifts(id) ON DELETE SET NULL,
+  shift_label  TEXT NOT NULL,
+  account_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  note         TEXT,
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+  created_at   TEXT NOT NULL,
+  decided_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lar_company ON logbook_access_requests(company_id, status);
 `;
 
 /** Fügt einer bereits bestehenden Tabelle eine Spalte hinzu, falls sie fehlt
@@ -205,6 +240,19 @@ export function readCompany(db, companyId) {
     .all(companyId)
     .map((r) => [r.series_a, r.series_b]);
 
+  /* Klein genug fürs Gesamtbündel — anders als logbook_entries, die auf
+     Wunsch pro Tab bzw. pro freigegebener Schicht nachgeladen werden. */
+  const logbookAccessRequests = db
+    .prepare(
+      `SELECT r.id, r.shift_id AS shiftId, r.shift_label AS shiftLabel, r.account_id AS accountId,
+              a.name AS accountName, r.note, r.status, r.created_at AS createdAt, r.decided_at AS decidedAt
+         FROM logbook_access_requests r
+         JOIN accounts a ON a.id = r.account_id
+        WHERE r.company_id = ?
+        ORDER BY r.created_at DESC`
+    )
+    .all(companyId);
+
   return {
     id: row.id,
     code: row.code,
@@ -213,6 +261,7 @@ export function readCompany(db, companyId) {
     accounts,
     shifts,
     combinableSeries,
+    logbookAccessRequests,
     settings: { assignmentDay: row.assignment_day },
   };
 }

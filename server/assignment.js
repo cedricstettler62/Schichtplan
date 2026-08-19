@@ -113,7 +113,7 @@ export function releaseSeats(db, shiftIds) {
  * Verschwindet dabei die letzte Schicht einer Serie, geht ihre Freigabe mit:
  * Für Serien-IDs gibt es keinen Fremdschlüssel, der das erledigen könnte.
  */
-export function purgeOldShifts(db, monate = 3) {
+export function purgeOldShifts(db, monate = 60) {
   const grenze = toISO(addMonths(startOfToday(), -monate));
   const geloescht = db.prepare("DELETE FROM shifts WHERE date < ?").run(grenze).changes;
   if (geloescht > 0) raeumeFreigaben(db);

@@ -119,8 +119,14 @@ export function attachSession(db, config) {
     }
 
     if (payload.t === "company" && payload.accountId) {
+      // Pausiert oder archiviert: kein Konto der Firma kommt herein, auch mit
+      // gültigem Cookie nicht — der Join liefert dann schlicht keine Zeile.
       const account = db
-        .prepare("SELECT id, company_id, name, role, session_epoch FROM accounts WHERE id = ?")
+        .prepare(
+          `SELECT a.id, a.company_id, a.name, a.role, a.session_epoch
+             FROM accounts a JOIN companies c ON c.id = a.company_id
+            WHERE a.id = ? AND c.paused_at IS NULL AND c.archived_at IS NULL`
+        )
         .get(payload.accountId);
       // Ein Cookie aus der Zeit vor der letzten Passwortänderung zählt nicht mehr.
       if (account && (payload.e ?? 0) === account.session_epoch) {

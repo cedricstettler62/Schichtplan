@@ -87,9 +87,18 @@ export default function PrivacyScreen() {
 
         <h2 className="sb-legal-h">4. Wie lange</h2>
         <ul className="sb-legal-list">
-          <li>Schichten samt Einschreibungen und Hilfegesuchen werden <strong>drei Monate nach ihrem Datum</strong> automatisch und vollständig gelöscht.</li>
+          <li>Schichten samt Einschreibungen und Hilfegesuchen werden <strong>fünf Jahre nach ihrem Datum</strong> automatisch und vollständig gelöscht.</li>
           <li>Konten bleiben, bis sie gelöscht werden. Mit einem Konto verschwinden alle daran hängenden Einschreibungen.</li>
-          <li>Mit einem gelöschten Unternehmen verschwinden alle seine Konten, Schichten und Qualifikationen.</li>
+          <li>
+            Wird ein Unternehmen gelöscht, ist der Zugang für alle seine Konten sofort gesperrt. Seine
+            Daten — darunter das Logbuch und die aufbewahrungspflichtigen Schichten — bleiben zunächst
+            archiviert und ausschliesslich für den Betreiber einsehbar, bis sie endgültig entfernt werden.
+          </li>
+          <li>
+            Der Betreiber kann den Zugang eines Unternehmens auch vorübergehend sperren
+            („pausieren“), ohne etwas an den gespeicherten Daten zu ändern — die Anmeldung ist dann
+            bis zur Aufhebung nicht möglich.
+          </li>
           <li>Sicherungskopien der Datenbank können ältere Stände enthalten. Es bleiben die letzten 20 liegen, ältere rücken nach.</li>
         </ul>
 

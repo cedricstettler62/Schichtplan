@@ -10,7 +10,7 @@ import {
   setAccountSession,
   setSession,
 } from "../auth.js";
-import { companySummaries, readCompany } from "../db.js";
+import { archivedCompanySummaries, companySummaries, readCompany } from "../db.js";
 
 export default function authRoutes(db, config) {
   const router = Router();
@@ -39,10 +39,16 @@ export default function authRoutes(db, config) {
       return res.json({ ok: true });
     }
 
-    const company = db.prepare("SELECT id FROM companies WHERE code = ?").get(code);
-    if (!company) {
+    const company = db.prepare("SELECT id, paused_at, archived_at FROM companies WHERE code = ?").get(code);
+    // Archiviert heisst für den Login: als gäbe es die Firma nicht mehr — kein
+    // Hinweis darauf, dass der Code einmal gültig war.
+    if (!company || company.archived_at) {
       limiter.fail(key);
       return res.status(401).json({ error: "Unbekannter Firmencode." });
+    }
+    if (company.paused_at) {
+      limiter.fail(key);
+      return res.status(403).json({ error: "Dieses Unternehmen ist vorübergehend gesperrt." });
     }
 
     // Namen sind nicht eindeutig — jedes passende Konto wird geprüft.
@@ -79,6 +85,7 @@ export default function authRoutes(db, config) {
         type: "super",
         name: config.superAdmin.name,
         companies: companySummaries(db),
+        archivedCompanies: archivedCompanySummaries(db),
       });
     }
     if (req.session?.type === "company") {

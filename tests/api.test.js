@@ -1645,7 +1645,7 @@ describe("Freigaben aufräumen", () => {
     const { frueh, tag } = await mitFreigabe(admin);
 
     // Beide Schichten weit genug in die Vergangenheit schieben.
-    const uralt = toISO(addMonths(startOfToday(), -4));
+    const uralt = toISO(addMonths(startOfToday(), -61));
     for (const id of [frueh.id, tag.id]) {
       server.db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(uralt, id);
     }
@@ -1663,17 +1663,88 @@ describe("Freigaben aufräumen", () => {
     expect(freigaben()).toBe(1);
   });
 
-  test("Freigaben einer gelöschten Firma verschwinden mit ihr", async () => {
+  test("Freigaben einer endgültig gelöschten Firma verschwinden mit ihr", async () => {
     const admin = await asAdmin();
     await mitFreigabe(admin);
 
     const su = client();
     await su.login(SUPER);
     const firmaId = server.db.prepare("SELECT id FROM companies WHERE code = '111111'").get().id;
+    // Endgültiges Löschen geht nur aus dem Archiv heraus.
+    await su.post(`/api/companies/${firmaId}/archive`);
     await su.del(`/api/companies/${firmaId}`);
 
     // Das erledigt der Fremdschlüssel auf company_id von selbst.
     expect(freigaben()).toBe(0);
+  });
+});
+
+describe("Archivieren und Pausieren", () => {
+  const firmaId = () => server.db.prepare("SELECT id FROM companies WHERE code = '111111'").get().id;
+  const alsSuper = async () => { const c = client(); await c.login(SUPER); return c; };
+
+  test("Archivieren sperrt neue Logins, ohne Daten zu löschen", async () => {
+    const admin = await asAdmin();
+    const superadmin = await alsSuper();
+
+    expect((await superadmin.post(`/api/companies/${firmaId()}/archive`)).status).toBe(200);
+
+    // Bestehende Sitzung endet beim nächsten Aufruf von selbst.
+    expect((await admin.get("/api/state")).status).toBe(401);
+    // Ein neuer Loginversuch verhält sich wie ein unbekannter Firmencode.
+    const loginVersuch = await client().login(ADMIN);
+    expect(loginVersuch.status).toBe(401);
+    expect(loginVersuch.data.error).toBe("Unbekannter Firmencode.");
+
+    // Logbuch bleibt für die Verwaltung einsehbar.
+    expect((await superadmin.get(`/api/companies/${firmaId()}/logbook`)).status).toBe(200);
+  });
+
+  test("archivierte Firma taucht nur noch unter archivedCompanies auf", async () => {
+    const superadmin = await alsSuper();
+    await superadmin.post(`/api/companies/${firmaId()}/archive`);
+
+    const { data } = await superadmin.get("/api/state");
+    expect(data.companies.some((c) => c.id === firmaId())).toBe(false);
+    expect(data.archivedCompanies.some((c) => c.id === firmaId())).toBe(true);
+  });
+
+  test("Wiederherstellen macht den Zugang wieder nutzbar", async () => {
+    const superadmin = await alsSuper();
+    await superadmin.post(`/api/companies/${firmaId()}/archive`);
+    await superadmin.post(`/api/companies/${firmaId()}/restore`);
+
+    expect((await client().login(ADMIN)).status).toBe(200);
+    const { data } = await superadmin.get("/api/state");
+    expect(data.companies.some((c) => c.id === firmaId())).toBe(true);
+    expect(data.archivedCompanies.some((c) => c.id === firmaId())).toBe(false);
+  });
+
+  test("endgültiges Löschen verlangt vorheriges Archivieren", async () => {
+    const superadmin = await alsSuper();
+    const res = await superadmin.del(`/api/companies/${firmaId()}`);
+    expect(res.status).toBe(409);
+  });
+
+  test("Pausieren sperrt Logins reversibel, ohne zu archivieren", async () => {
+    const admin = await asAdmin();
+    const superadmin = await alsSuper();
+
+    expect((await superadmin.post(`/api/companies/${firmaId()}/pause`)).status).toBe(200);
+
+    expect((await admin.get("/api/state")).status).toBe(401);
+    const loginVersuch = await client().login(ADMIN);
+    expect(loginVersuch.status).toBe(403);
+    expect(loginVersuch.data.error).toBe("Dieses Unternehmen ist vorübergehend gesperrt.");
+
+    // Bleibt in der normalen Liste sichtbar, nicht im Archiv.
+    const { data } = await superadmin.get("/api/state");
+    const firma = data.companies.find((c) => c.id === firmaId());
+    expect(firma).toBeTruthy();
+    expect(firma.pausedAt).toBeTruthy();
+
+    await superadmin.post(`/api/companies/${firmaId()}/unpause`);
+    expect((await client().login(ADMIN)).status).toBe(200);
   });
 });
 
@@ -2018,7 +2089,7 @@ describe("Wartung", () => {
 });
 
 describe("Aufräumen", () => {
-  test("Schichten verschwinden drei Monate nach ihrem Datum vollständig", async () => {
+  test("Schichten verschwinden fünf Jahre nach ihrem Datum vollständig", async () => {
     const admin = await asAdmin();
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     const companyId = (await admin.get("/api/state")).data.company.id;
@@ -2035,8 +2106,8 @@ describe("Aufräumen", () => {
       return id;
     };
 
-    const uralt = anlegen(toISO(addMonths(startOfToday(), -4)));
-    const knappDrunter = anlegen(toISO(addDays(addMonths(startOfToday(), -3), 1)));
+    const uralt = anlegen(toISO(addMonths(startOfToday(), -61)));
+    const knappDrunter = anlegen(toISO(addDays(addMonths(startOfToday(), -60), 1)));
 
     // Einschreibung an der alten Schicht, damit auch die Verknüpfung geprüft ist.
     const leaId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Lea Brunner'").get().id;

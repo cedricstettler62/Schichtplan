@@ -254,6 +254,8 @@ body {
 .sb-manage-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 12px 10px; }
 .sb-manage-meta { font-size: 12.5px; color: var(--sb-ink-65); white-space: nowrap; }
 .sb-manage-row-body { padding: 14px; border-top: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px; }
+/* Knopfreihe der kompakten Übersicht — welcher Bereich sich öffnet, wählt sich hier aus. */
+.sb-manage-menu { display: flex; gap: 6px; flex-wrap: wrap; }
 .sb-manage-section { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
 /* Überschneidungen beim Anlegen — abgesetzt, weil hier eine Entscheidung
    verlangt wird und nicht bloss ein Feld ausgefüllt. */

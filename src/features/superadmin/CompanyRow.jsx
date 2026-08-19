@@ -2,10 +2,25 @@ import { useEffect, useState } from "react";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import LogbookEntryRow from "../logbook/LogbookEntryRow.jsx";
 
+const MENU = [
+  ["name", "Name ändern"],
+  ["password", "Admin-Passwort zurücksetzen"],
+  ["delete-admin", "Admin-Konto löschen"],
+  ["logbook", "Logbuch"],
+];
+
+/**
+ * Aufklappen zeigt zunächst nur eine kompakte Übersicht mit einer Knopfreihe.
+ * Erst ein Klick auf einen dieser Knöpfe blendet den jeweiligen Bereich ein —
+ * vorher standen alle fünf Formulare gleichzeitig da, was bei einer langen
+ * Firmenliste schnell unübersichtlich wurde.
+ */
 export default function CompanyRow({
-  company, onDelete, onUpdateName, onLoadAdmins, onLoadEmployees, onResetAdminPassword, onDeleteAdmin, onLoadLogbook,
+  company, onArchive, onPause, onUnpause, onUpdateName,
+  onLoadAdmins, onLoadEmployees, onResetAdminPassword, onDeleteAdmin, onLoadLogbook,
 }) {
   const [open, setOpen] = useState(false);
+  const [section, setSection] = useState(null); // null = nur Übersicht + Menü
   const [name, setName] = useState(company.name);
   const [saved, setSaved] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -25,15 +40,19 @@ export default function CompanyRow({
   const [resetSaved, setResetSaved] = useState(false);
   const [logbook, setLogbook] = useState(null); // null = noch nicht geladen
 
+  const wähleAbschnitt = (key) => setSection((s) => (s === key ? null : key));
+
   const logbuchLaden = async () => {
     if (logbook !== null) { setLogbook(null); return; }
     setLogbook(await onLoadLogbook(company.id));
   };
 
-  /* Erst beim Aufklappen laden: Die Übersicht zeigt oft viele Unternehmen,
-     und die Namen der Admin-Konten braucht nur, wer eines befreien will. */
+  /* Erst laden, wenn ein Bereich es tatsächlich braucht: Die Übersicht zeigt
+     oft viele Unternehmen, und die Admin-Konten braucht nur, wer eines
+     zurücksetzen oder löschen will. */
   useEffect(() => {
-    if (!open || admins !== null) return;
+    if (section !== "password" && section !== "delete-admin") return;
+    if (admins !== null) return;
     let abgebrochen = false;
     Promise.all([onLoadAdmins(company.id), onLoadEmployees(company.id)]).then(([adminListe, leute]) => {
       if (abgebrochen) return;
@@ -42,7 +61,7 @@ export default function CompanyRow({
       if (adminListe.length === 1) { setAdminId(adminListe[0].id); setLoeschId(adminListe[0].id); }
     });
     return () => { abgebrochen = true; };
-  }, [open, admins, company.id, onLoadAdmins, onLoadEmployees]);
+  }, [section, admins, company.id, onLoadAdmins, onLoadEmployees]);
 
   const saveName = async () => {
     const trimmed = name.trim();
@@ -82,16 +101,20 @@ export default function CompanyRow({
     const weg = admins.find((a) => a.id === loeschId);
     setGeloescht(weg ? weg.name : "Das Konto");
     setLoeschError(""); setLoeschPw(""); setNachfolgerId(""); setLoeschId("");
-    // Beide Listen sind jetzt veraltet — beim nächsten Aufklappen frisch holen.
+    // Beide Listen sind jetzt veraltet — beim nächsten Öffnen frisch holen.
     setAdmins(null);
+    setSection(null);
     setOpen(false);
   };
+
+  const pausiert = !!company.pausedAt;
 
   return (
     <div className="sb-manage-row">
       <button type="button" className="sb-manage-row-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <span className="sb-manage-name">{company.name}</span>
         <span className="sb-manage-meta sb-mono">{company.code}</span>
+        {pausiert && <span className="sb-manage-meta">· pausiert</span>}
         <span className="sb-manage-summary">
           {company.adminCount} Admin{company.adminCount === 1 ? "" : "s"} · {company.employeeCount} Mitarbeitende
         </span>
@@ -107,157 +130,187 @@ export default function CompanyRow({
       )}
       {open && (
         <div className="sb-manage-row-body">
-          <div className="sb-manage-section">
-            <span className="sb-detail-label">Name des Unternehmens</span>
-            <div className="sb-inline-add">
-              <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} />
-              <button type="button" className="sb-btn sb-btn-ink" onClick={saveName}>Speichern</button>
-              {saved && <span className="sb-saved-note">Gespeichert.</span>}
-            </div>
-            {nameError && <p className="sb-error">{nameError}</p>}
+          <div className="sb-manage-menu">
+            {MENU.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={`sb-btn sb-btn-sm ${section === key ? "sb-btn-ink" : "sb-btn-quiet"}`}
+                onClick={() => wähleAbschnitt(key)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+
+          <div className="sb-manage-actions">
+            <button
+              type="button"
+              className="sb-btn sb-btn-sm sb-btn-quiet"
+              onClick={() => (pausiert ? onUnpause(company.id) : onPause(company.id))}
+            >
+              {pausiert ? "Fortsetzen" : "Pausieren"}
+            </button>
+            <ConfirmDelete
+              onConfirm={() => onArchive(company.id)}
+              label="Unternehmen löschen"
+              confirmLabel="Ja, löschen"
+              question={`„${company.name}“ löschen? Der Zugang wird sofort gesperrt. Logbuch und aufbewahrungspflichtige Daten bleiben unter „Archiviert“ einsehbar.`}
+              variant="button"
+              small
+            />
+          </div>
+
+          {section === "name" && (
+            <div className="sb-manage-section">
+              <span className="sb-detail-label">Name des Unternehmens</span>
+              <div className="sb-inline-add">
+                <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} />
+                <button type="button" className="sb-btn sb-btn-ink" onClick={saveName}>Speichern</button>
+                {saved && <span className="sb-saved-note">Gespeichert.</span>}
+              </div>
+              {nameError && <p className="sb-error">{nameError}</p>}
+            </div>
+          )}
 
           {/* Admins setzen einander das Passwort nicht — sonst könnte einer die
               Firma übernehmen. Für ein ausgesperrtes Admin-Konto bleibt daher
               nur dieser Weg. */}
-          <div className="sb-manage-section">
-            <span className="sb-detail-label">Admin-Passwort zurücksetzen</span>
-            <p className="sb-status">
-              Für den Fall, dass sich die Administration dieses Unternehmens ausgesperrt hat.
-              Gib das neue Passwort persönlich weiter.
-            </p>
-            {admins === null ? (
-              <p className="sb-status">Admin-Konten werden geladen …</p>
-            ) : admins.length === 0 ? (
-              <p className="sb-empty">Dieses Unternehmen hat kein Admin-Konto.</p>
-            ) : (
-              <div className="sb-form-grid">
-                <label className="sb-field">
-                  <span>Admin-Konto</span>
-                  <select value={adminId} onChange={(e) => { setAdminId(e.target.value); setResetError(""); }}>
-                    <option value="">Bitte wählen</option>
-                    {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </label>
-                <label className="sb-field">
-                  <span>Neues Passwort</span>
-                  <input type="password" value={neu} onChange={(e) => setNeu(e.target.value)} autoComplete="new-password" />
-                </label>
-                <label className="sb-field">
-                  <span>Wiederholen</span>
-                  <input type="password" value={wiederholung} onChange={(e) => setWiederholung(e.target.value)} autoComplete="new-password" />
-                </label>
-                <label className="sb-field">
-                  <span>Dein Verwaltungs-Passwort</span>
-                  <input
-                    type="password"
-                    value={superPw}
-                    onChange={(e) => setSuperPw(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && submitReset()}
-                    autoComplete="current-password"
-                  />
-                </label>
-                <div className="sb-field sb-field-btn">
-                  <button type="button" className="sb-btn sb-btn-ink" onClick={submitReset}>Passwort setzen</button>
-                </div>
-              </div>
-            )}
-            {resetError && <p className="sb-error">{resetError}</p>}
-            {resetSaved && <p className="sb-saved-note">Neues Passwort gesetzt.</p>}
-          </div>
-
-          <div className="sb-manage-section">
-            <span className="sb-detail-label">Admin-Konto löschen</span>
-            <p className="sb-status">
-              Innerhalb der Firma kann das niemand: Admins entmachten einander nicht. Ist jemand
-              ausgeschieden und das Konto bleibt stehen, entfernt es die Verwaltung.
-            </p>
-            {admins === null ? (
-              <p className="sb-status">Admin-Konten werden geladen …</p>
-            ) : admins.length === 0 ? (
-              <p className="sb-empty">Dieses Unternehmen hat kein Admin-Konto.</p>
-            ) : (
-              <>
-                {letztes && (
-                  <p className="sb-status">
-                    Das ist die letzte Administration. Bestimme, wer sie übernimmt – das Konto wird
-                    dabei zum Admin-Konto.
-                  </p>
-                )}
+          {section === "password" && (
+            <div className="sb-manage-section">
+              <span className="sb-detail-label">Admin-Passwort zurücksetzen</span>
+              <p className="sb-status">
+                Für den Fall, dass sich die Administration dieses Unternehmens ausgesperrt hat.
+                Gib das neue Passwort persönlich weiter.
+              </p>
+              {admins === null ? (
+                <p className="sb-status">Admin-Konten werden geladen …</p>
+              ) : admins.length === 0 ? (
+                <p className="sb-empty">Dieses Unternehmen hat kein Admin-Konto.</p>
+              ) : (
                 <div className="sb-form-grid">
                   <label className="sb-field">
-                    <span>Zu löschendes Admin-Konto</span>
-                    <select value={loeschId} onChange={(e) => { setLoeschId(e.target.value); setLoeschError(""); }}>
+                    <span>Admin-Konto</span>
+                    <select value={adminId} onChange={(e) => { setAdminId(e.target.value); setResetError(""); }}>
                       <option value="">Bitte wählen</option>
                       {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                   </label>
-                  {letztes && (
-                    <label className="sb-field">
-                      <span>Nachfolge</span>
-                      <select value={nachfolgerId} onChange={(e) => { setNachfolgerId(e.target.value); setLoeschError(""); }}>
-                        <option value="">Bitte wählen</option>
-                        {employees.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                      </select>
-                    </label>
-                  )}
                   <label className="sb-field">
-                    <span>Verwaltungs-Passwort zur Bestätigung</span>
+                    <span>Neues Passwort</span>
+                    <input type="password" value={neu} onChange={(e) => setNeu(e.target.value)} autoComplete="new-password" />
+                  </label>
+                  <label className="sb-field">
+                    <span>Wiederholen</span>
+                    <input type="password" value={wiederholung} onChange={(e) => setWiederholung(e.target.value)} autoComplete="new-password" />
+                  </label>
+                  <label className="sb-field">
+                    <span>Dein Verwaltungs-Passwort</span>
                     <input
                       type="password"
-                      value={loeschPw}
-                      onChange={(e) => setLoeschPw(e.target.value)}
+                      value={superPw}
+                      onChange={(e) => setSuperPw(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && submitReset()}
                       autoComplete="current-password"
                     />
                   </label>
                   <div className="sb-field sb-field-btn">
-                    <ConfirmDelete
-                      onConfirm={adminLoeschen}
-                      label="Admin-Konto löschen"
-                      confirmLabel="Ja, löschen"
-                      question="Dieses Admin-Konto endgültig löschen? Zuteilungen daraus werden frei."
-                      variant="button"
-                    />
+                    <button type="button" className="sb-btn sb-btn-ink" onClick={submitReset}>Passwort setzen</button>
                   </div>
                 </div>
-                {letztes && employees.length === 0 && (
-                  <p className="sb-empty">
-                    Es gibt kein Mitarbeitendenkonto, das übernehmen könnte. Ohne Nachfolge bleibt
-                    nur, das Unternehmen zu löschen.
-                  </p>
-                )}
-              </>
-            )}
-            {loeschError && <p className="sb-error">{loeschError}</p>}
-          </div>
+              )}
+              {resetError && <p className="sb-error">{resetError}</p>}
+              {resetSaved && <p className="sb-saved-note">Neues Passwort gesetzt.</p>}
+            </div>
+          )}
 
-          <div className="sb-manage-section">
-            <span className="sb-detail-label">Logbuch</span>
-            <p className="sb-status">
-              Anlegen, Ändern, Zu-/Umteilungen und Hilfegesuche dieses Unternehmens — nur auf Wunsch geladen.
-            </p>
-            <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={logbuchLaden}>
-              {logbook !== null ? "Logbuch ausblenden" : "Logbuch laden"}
-            </button>
-            {logbook !== null && (
-              logbook.length === 0 ? (
-                <p className="sb-empty">Noch keine Einträge.</p>
+          {section === "delete-admin" && (
+            <div className="sb-manage-section">
+              <span className="sb-detail-label">Admin-Konto löschen</span>
+              <p className="sb-status">
+                Innerhalb der Firma kann das niemand: Admins entmachten einander nicht. Ist jemand
+                ausgeschieden und das Konto bleibt stehen, entfernt es die Verwaltung.
+              </p>
+              {admins === null ? (
+                <p className="sb-status">Admin-Konten werden geladen …</p>
+              ) : admins.length === 0 ? (
+                <p className="sb-empty">Dieses Unternehmen hat kein Admin-Konto.</p>
               ) : (
-                <div className="sb-log-list">
-                  {logbook.map((e) => <LogbookEntryRow key={e.id} entry={e} />)}
-                </div>
-              )
-            )}
-          </div>
+                <>
+                  {letztes && (
+                    <p className="sb-status">
+                      Das ist die letzte Administration. Bestimme, wer sie übernimmt – das Konto wird
+                      dabei zum Admin-Konto.
+                    </p>
+                  )}
+                  <div className="sb-form-grid">
+                    <label className="sb-field">
+                      <span>Zu löschendes Admin-Konto</span>
+                      <select value={loeschId} onChange={(e) => { setLoeschId(e.target.value); setLoeschError(""); }}>
+                        <option value="">Bitte wählen</option>
+                        {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    </label>
+                    {letztes && (
+                      <label className="sb-field">
+                        <span>Nachfolge</span>
+                        <select value={nachfolgerId} onChange={(e) => { setNachfolgerId(e.target.value); setLoeschError(""); }}>
+                          <option value="">Bitte wählen</option>
+                          {employees.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    <label className="sb-field">
+                      <span>Verwaltungs-Passwort zur Bestätigung</span>
+                      <input
+                        type="password"
+                        value={loeschPw}
+                        onChange={(e) => setLoeschPw(e.target.value)}
+                        autoComplete="current-password"
+                      />
+                    </label>
+                    <div className="sb-field sb-field-btn">
+                      <ConfirmDelete
+                        onConfirm={adminLoeschen}
+                        label="Jetzt löschen"
+                        confirmLabel="Ja, löschen"
+                        question="Dieses Admin-Konto endgültig löschen? Zuteilungen daraus werden frei."
+                        variant="button"
+                      />
+                    </div>
+                  </div>
+                  {letztes && employees.length === 0 && (
+                    <p className="sb-empty">
+                      Es gibt kein Mitarbeitendenkonto, das übernehmen könnte. Ohne Nachfolge bleibt
+                      nur, das Unternehmen zu löschen.
+                    </p>
+                  )}
+                </>
+              )}
+              {loeschError && <p className="sb-error">{loeschError}</p>}
+            </div>
+          )}
 
-          <div className="sb-manage-actions">
-            <ConfirmDelete
-              onConfirm={() => onDelete(company.id)}
-              label="Unternehmen löschen"
-              question={`„${company.name}“ mit allen Konten und Schichten wirklich löschen?`}
-              variant="button"
-            />
-          </div>
+          {section === "logbook" && (
+            <div className="sb-manage-section">
+              <span className="sb-detail-label">Logbuch</span>
+              <p className="sb-status">
+                Anlegen, Ändern, Zu-/Umteilungen und Hilfegesuche dieses Unternehmens — nur auf Wunsch geladen.
+              </p>
+              <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={logbuchLaden}>
+                {logbook !== null ? "Logbuch ausblenden" : "Logbuch laden"}
+              </button>
+              {logbook !== null && (
+                logbook.length === 0 ? (
+                  <p className="sb-empty">Noch keine Einträge.</p>
+                ) : (
+                  <div className="sb-log-list">
+                    {logbook.map((e) => <LogbookEntryRow key={e.id} entry={e} />)}
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

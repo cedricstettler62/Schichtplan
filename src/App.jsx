@@ -215,7 +215,11 @@ export default function App() {
   const handleUpdateCompanyName = actMitMeldung((companyId, name) =>
     api.patch(`/companies/${companyId}`, { name })
   );
-  const handleDeleteCompany = act((companyId) => api.del(`/companies/${companyId}`));
+  const handleArchiveCompany = act((companyId) => api.post(`/companies/${companyId}/archive`));
+  const handleRestoreCompany = act((companyId) => api.post(`/companies/${companyId}/restore`));
+  const handlePurgeCompany = act((companyId) => api.del(`/companies/${companyId}`));
+  const handlePauseCompany = act((companyId) => api.post(`/companies/${companyId}/pause`));
+  const handleUnpauseCompany = act((companyId) => api.post(`/companies/${companyId}/unpause`));
 
   /* --- Rendering --- */
   /* Die Datenschutzerklärung steht vor allem anderen: Sie muss auch ohne
@@ -245,9 +249,14 @@ export default function App() {
         <UpdateBanner />
         <SuperAdminView
           companies={state.companies}
+          archivedCompanies={state.archivedCompanies}
           superAdminName={state.name}
           onCreateCompany={handleCreateCompany}
-          onDeleteCompany={handleDeleteCompany}
+          onArchiveCompany={handleArchiveCompany}
+          onRestoreCompany={handleRestoreCompany}
+          onPurgeCompany={handlePurgeCompany}
+          onPauseCompany={handlePauseCompany}
+          onUnpauseCompany={handleUnpauseCompany}
           onUpdateCompanyName={handleUpdateCompanyName}
           onLoadAdmins={handleLoadCompanyAdmins}
           onLoadEmployees={handleLoadCompanyEmployees}

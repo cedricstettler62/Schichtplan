@@ -35,16 +35,70 @@ export default function companiesRoutes(db, config) {
     res.json({ id });
   });
 
+  /** Ein archiviertes Unternehmen ist eingefroren — nur restore() oder die
+   *  endgültige Löschung wirken noch darauf. Gibt bei Erfolg null zurück,
+   *  sonst schon die fertige Fehlerantwort. */
+  const requireNichtArchiviert = (req, res) => {
+    const company = db.prepare("SELECT archived_at FROM companies WHERE id = ?").get(req.params.id);
+    if (!company) { res.status(404).json({ error: "Unternehmen nicht gefunden." }); return false; }
+    if (company.archived_at) { res.status(409).json({ error: "Dieses Unternehmen ist archiviert." }); return false; }
+    return true;
+  };
+
   router.patch("/:id", (req, res) => {
+    if (!requireNichtArchiviert(req, res)) return;
     const name = String(req.body?.name || "").trim();
     if (!name) return res.status(400).json({ error: "Name fehlt." });
     db.prepare("UPDATE companies SET name = ? WHERE id = ?").run(name, req.params.id);
     res.json({ ok: true });
   });
 
+  /**
+   * Löscht den Zugang eines Unternehmens sofort — ohne seine Daten
+   * anzufassen. Schichten, Logbuch und Konten bleiben, damit die
+   * Aufbewahrungspflicht (siehe Datenschutzerklärung) eingehalten wird; die
+   * Verwaltung sieht das Unternehmen danach nur noch unter „Archiviert“.
+   */
+  router.post("/:id/archive", (req, res) => {
+    const company = db.prepare("SELECT id FROM companies WHERE id = ?").get(req.params.id);
+    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
+    db.prepare("UPDATE companies SET archived_at = ? WHERE id = ?").run(new Date().toISOString(), req.params.id);
+    res.json({ ok: true });
+  });
+
+  /** Macht ein archiviertes Unternehmen wieder zugänglich — ohne Datenverlust. */
+  router.post("/:id/restore", (req, res) => {
+    const company = db.prepare("SELECT id FROM companies WHERE id = ?").get(req.params.id);
+    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
+    db.prepare("UPDATE companies SET archived_at = NULL WHERE id = ?").run(req.params.id);
+    res.json({ ok: true });
+  });
+
+  /**
+   * Endgültige Löschung — nur aus dem Archiv heraus. Erst hier greift das
+   * bisherige Verhalten: Konten, Schichten, Einschreibungen und das Logbuch
+   * hängen per ON DELETE CASCADE daran und verschwinden mit.
+   */
   router.delete("/:id", (req, res) => {
-    // Konten, Schichten und Einschreibungen hängen per ON DELETE CASCADE daran.
+    const company = db.prepare("SELECT archived_at FROM companies WHERE id = ?").get(req.params.id);
+    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
+    if (!company.archived_at) {
+      return res.status(409).json({ error: "Erst archivieren, dann endgültig löschen." });
+    }
     db.prepare("DELETE FROM companies WHERE id = ?").run(req.params.id);
+    res.json({ ok: true });
+  });
+
+  /** Sperrt den Zugang reversibel, ohne das Unternehmen zu archivieren — z. B. bei offenen Rückfragen. */
+  router.post("/:id/pause", (req, res) => {
+    if (!requireNichtArchiviert(req, res)) return;
+    db.prepare("UPDATE companies SET paused_at = ? WHERE id = ?").run(new Date().toISOString(), req.params.id);
+    res.json({ ok: true });
+  });
+
+  router.post("/:id/unpause", (req, res) => {
+    if (!requireNichtArchiviert(req, res)) return;
+    db.prepare("UPDATE companies SET paused_at = NULL WHERE id = ?").run(req.params.id);
     res.json({ ok: true });
   });
 
@@ -86,6 +140,7 @@ export default function companiesRoutes(db, config) {
    * Browser soll nicht reichen, um sich in jede Firma zu setzen.
    */
   router.post("/:id/admins/:accountId/password", (req, res) => {
+    if (!requireNichtArchiviert(req, res)) return;
     const target = db
       .prepare("SELECT id, name FROM accounts WHERE id = ? AND company_id = ? AND role = 'admin'")
       .get(req.params.accountId, req.params.id);
@@ -124,6 +179,7 @@ export default function companiesRoutes(db, config) {
    * verwalten, und ihre Mitarbeitenden kämen an keine Schicht mehr.
    */
   router.delete("/:id/admins/:accountId", (req, res) => {
+    if (!requireNichtArchiviert(req, res)) return;
     const target = db
       .prepare("SELECT id, name FROM accounts WHERE id = ? AND company_id = ? AND role = 'admin'")
       .get(req.params.accountId, req.params.id);

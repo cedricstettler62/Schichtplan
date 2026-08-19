@@ -151,6 +151,11 @@ export function openDb(file) {
   ensureColumn(db, "shifts", "end_date", "TEXT");
   ensureColumn(db, "accounts", "session_epoch", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "accounts", "calendar_token", "TEXT");
+  /* NULL = normaler Betrieb. Beide unabhängig voneinander: pausiert sperrt nur
+     den Zugang, archiviert zusätzlich die sichtbare Firmenliste — beides lässt
+     sich einzeln wieder aufheben, siehe server/routes/companies.js. */
+  ensureColumn(db, "companies", "paused_at", "TEXT");
+  ensureColumn(db, "companies", "archived_at", "TEXT");
   /* SQLite lässt eine per ALTER TABLE nachgerüstete Spalte keine UNIQUE-
      Bedingung tragen (Einschränkung von ALTER TABLE ADD COLUMN) — ein eigener
      Index leistet dasselbe: Jedes Zeichen bleibt genau einem Konto zugeordnet,
@@ -316,13 +321,32 @@ export function readShiftsForLogic(db, companyId) {
 export function companySummaries(db) {
   return db
     .prepare(
-      `SELECT c.id, c.code, c.name,
+      `SELECT c.id, c.code, c.name, c.paused_at AS pausedAt,
               SUM(CASE WHEN a.role = 'admin'    THEN 1 ELSE 0 END) AS adminCount,
               SUM(CASE WHEN a.role = 'employee' THEN 1 ELSE 0 END) AS employeeCount
          FROM companies c
     LEFT JOIN accounts a ON a.company_id = c.id
+        WHERE c.archived_at IS NULL
      GROUP BY c.id
      ORDER BY c.rowid`
+    )
+    .all()
+    .map((r) => ({ ...r, adminCount: r.adminCount || 0, employeeCount: r.employeeCount || 0 }));
+}
+
+/** Unternehmen, deren Zugang gelöscht wurde — Daten bleiben bis zur endgültigen
+ *  Löschung erhalten, siehe purgeCompany() in server/routes/companies.js. */
+export function archivedCompanySummaries(db) {
+  return db
+    .prepare(
+      `SELECT c.id, c.code, c.name, c.archived_at AS archivedAt,
+              SUM(CASE WHEN a.role = 'admin'    THEN 1 ELSE 0 END) AS adminCount,
+              SUM(CASE WHEN a.role = 'employee' THEN 1 ELSE 0 END) AS employeeCount
+         FROM companies c
+    LEFT JOIN accounts a ON a.company_id = c.id
+        WHERE c.archived_at IS NOT NULL
+     GROUP BY c.id
+     ORDER BY c.archived_at DESC`
     )
     .all()
     .map((r) => ({ ...r, adminCount: r.adminCount || 0, employeeCount: r.employeeCount || 0 }));

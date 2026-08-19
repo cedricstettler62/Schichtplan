@@ -19,7 +19,7 @@ export default function MyShiftsTab({
   );
   /* Was man tatsächlich geleistet hat — sonst gibt es dafür keine Ansicht, und
      „habe ich letzten Monat gearbeitet?“ könnte niemand mehr beantworten.
-     Weiter als drei Monate zurück steht ohnehin nichts mehr in der Datenbank. */
+     Weiter als fünf Jahre zurück steht ohnehin nichts mehr in der Datenbank. */
   const vergangen = shifts
     .filter((s) => !isFutureOrToday(s.date, today) && s.assigned.includes(currentUser.id))
     .sort((a, b) => b.date.localeCompare(a.date));

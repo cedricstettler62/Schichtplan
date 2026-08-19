@@ -388,7 +388,9 @@ describe("Super-Admin", () => {
     await screen.findByRole("heading", { name: "Schichtboard – Verwaltung" });
 
     await user.click(screen.getByRole("button", { name: /Erste Firma AG/ }));
-    expect(await screen.findByText("Admin-Passwort zurücksetzen")).toBeInTheDocument();
+    // Aufklappen zeigt zuerst nur die Übersicht mit dem Auswahl-Menü — der
+    // gewünschte Bereich muss gezielt angewählt werden.
+    await user.click(screen.getByRole("button", { name: "Admin-Passwort zurücksetzen" }));
 
     // Auf das eigene Auswahlfeld eingrenzen: Der Löschabschnitt führt dieselben
     // Konten noch einmal auf.
@@ -408,7 +410,8 @@ describe("Super-Admin", () => {
     await screen.findByRole("heading", { name: "Schichtboard – Verwaltung" });
 
     await user.click(screen.getByRole("button", { name: /Erste Firma AG/ }));
-    expect(await screen.findByText("Admin-Konto löschen")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Admin-Konto löschen" }));
+    expect(await screen.findByLabelText("Nachfolge")).toBeInTheDocument();
 
     /* Mara ist die einzige Administration — ohne Nachfolge stünde die Firma
        ohne da, also fragt das Formular danach. */
@@ -418,7 +421,7 @@ describe("Super-Admin", () => {
       screen.getByRole("option", { name: "Lea Brunner" })
     );
     await user.type(screen.getByLabelText("Verwaltungs-Passwort zur Bestätigung"), SUPER.password);
-    await user.click(screen.getByRole("button", { name: "Admin-Konto löschen" }));
+    await user.click(screen.getByRole("button", { name: "Jetzt löschen" }));
     await user.click(await screen.findByRole("button", { name: "Ja, löschen" }));
 
     expect(await screen.findByText(/Mara Vogt wurde gelöscht/)).toBeInTheDocument();
@@ -429,6 +432,37 @@ describe("Super-Admin", () => {
     await screen.findByText("Mit Firmencode, Name und Passwort anmelden.");
     await login(user, EMPLOYEE);
     expect(await screen.findByText("Admin")).toHaveClass("sb-badge");
+  });
+
+  test("pausiert, archiviert und stellt ein Unternehmen wieder her", async () => {
+    const user = await openApp();
+    await login(user, SUPER);
+    await screen.findByRole("heading", { name: "Schichtboard – Verwaltung" });
+
+    await user.click(screen.getByRole("button", { name: /Erste Firma AG/ }));
+    await user.click(screen.getByRole("button", { name: "Pausieren" }));
+    expect(await screen.findByText("· pausiert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Fortsetzen" }));
+    // Wartet auf den zurückgeflippten Knopf, statt sofort auf das Verschwinden
+    // des Hinweises zu prüfen — die Antwort vom Server braucht einen Moment.
+    await screen.findByRole("button", { name: "Pausieren" });
+    expect(screen.queryByText("· pausiert")).not.toBeInTheDocument();
+
+    // Löschen sperrt den Zugang sofort und verschiebt die Firma ins Archiv.
+    await user.click(screen.getByRole("button", { name: "Unternehmen löschen" }));
+    await user.click(await screen.findByRole("button", { name: "Ja, löschen" }));
+    await waitFor(() => expect(screen.queryByText("Erste Firma AG")).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /Archiviert/ }));
+    expect(await screen.findByText("Erste Firma AG")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Erste Firma AG/ }));
+    await user.click(screen.getByRole("button", { name: "Wiederherstellen" }));
+    expect(await screen.findByText("Kein archiviertes Unternehmen.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Unternehmen" }));
+    expect(await screen.findByText("Erste Firma AG")).toBeInTheDocument();
   });
 
   test("lehnt einen bereits vergebenen Firmencode ab", async () => {

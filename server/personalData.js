@@ -80,7 +80,7 @@ export function personalData(db, accountId) {
       "Die Adresse eines eingeschalteten Kalenderabos ist ein Zugangsschlüssel wie ein Passwort und steht deshalb ebenfalls nicht in dieser Auskunft. Sie lässt sich unter Einstellungen bzw. Konto jederzeit neu erzeugen, wodurch die alte ungültig wird.",
       "Eine E-Mail-Adresse wird nicht gespeichert; das Programm verschickt keine Nachrichten.",
       "IP-Adressen von Anmeldeversuchen liegen nur flüchtig im Arbeitsspeicher und werden nicht in die Datenbank geschrieben.",
-      "Schichten und die daran hängenden Einschreibungen werden drei Monate nach ihrem Datum vollständig gelöscht. Ältere Einträge stehen deshalb nicht mehr hier.",
+      "Schichten und die daran hängenden Einschreibungen werden fünf Jahre nach ihrem Datum vollständig gelöscht. Ältere Einträge stehen deshalb nicht mehr hier.",
       "Sicherungskopien der Datenbank können ältere Stände enthalten, bis sie nachrücken.",
     ],
   };

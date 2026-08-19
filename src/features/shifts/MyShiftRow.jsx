@@ -69,7 +69,7 @@ export default function MyShiftRow({
 
           {vergangen ? (
             <p className="sb-status">
-              Diese Schicht liegt hinter dir. Drei Monate nach ihrem Datum wird sie samt
+              Diese Schicht liegt hinter dir. Fünf Jahre nach ihrem Datum wird sie samt
               Einschreibung vollständig gelöscht.
             </p>
           ) : wartend ? (

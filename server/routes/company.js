@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 
 import { startOfToday, toISO } from "#shared/dates.js";
+import { passwortProblem } from "#shared/password.js";
 
 import {
   checkPassword,
@@ -19,7 +20,7 @@ import {
 } from "../auth.js";
 import { recompute, releaseSeats } from "../assignment.js";
 import { toShift } from "../db.js";
-import { logUnassigned } from "../logbook.js";
+import { logAccountChanged, logPasswordChanged, logUnassigned } from "../logbook.js";
 import { dateiname, personalData } from "../personalData.js";
 import { uid } from "../ids.js";
 
@@ -118,7 +119,8 @@ export default function companyRoutes(db, config) {
     const name = String(req.body?.name || "").trim();
     const password = String(req.body?.password || "");
     if (!name) return res.status(400).json({ error: "Ein Name ist nötig." });
-    if (password.length < 4) return res.status(400).json({ error: "Das Passwort braucht mindestens 4 Zeichen." });
+    const passwortFehler = passwortProblem(password);
+    if (passwortFehler) return res.status(400).json({ error: passwortFehler });
     if (kontoWaereUnerreichbar(db, req.session.companyId, name, password)) {
       return res.status(409).json({
         error: "Dieses Konto wäre nicht erreichbar: Es gibt bereits ein Konto mit diesem Namen und diesem Passwort. Bitte ein anderes Passwort vergeben.",
@@ -149,7 +151,7 @@ export default function companyRoutes(db, config) {
     }
 
     const qual = db
-      .prepare("SELECT id FROM qualifications WHERE id = ? AND company_id = ?")
+      .prepare("SELECT id, name FROM qualifications WHERE id = ? AND company_id = ?")
       .get(String(req.body?.qualificationId || ""), req.session.companyId);
     if (!qual) return res.status(404).json({ error: "Qualifikation nicht gefunden." });
 
@@ -160,6 +162,11 @@ export default function companyRoutes(db, config) {
       db.prepare("DELETE FROM account_qualifications WHERE account_id = ? AND qualification_id = ?")
         .run(target.id, qual.id);
     }
+    logAccountChanged(db, req.session.companyId, {
+      accountName: target.name, accountId: target.id,
+      message: `Qualifikation „${qual.name}“ ${req.body?.value ? "vergeben" : "entzogen"}, durch ${req.session.name}.`,
+      actorAccountId: req.session.accountId,
+    });
     recompute(db, req.session.companyId);
     res.json({ ok: true });
   });
@@ -169,6 +176,11 @@ export default function companyRoutes(db, config) {
     if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
     if (target.role === "admin") return res.json({ ok: true });
     db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(target.id);
+    logAccountChanged(db, req.session.companyId, {
+      accountName: target.name, accountId: target.id,
+      message: `Rolle geändert von Mitarbeitende zu Administration, durch ${req.session.name}.`,
+      actorAccountId: req.session.accountId,
+    });
     res.json({ ok: true });
   });
 
@@ -194,6 +206,11 @@ export default function companyRoutes(db, config) {
     }
 
     db.prepare("UPDATE accounts SET role = 'employee' WHERE id = ?").run(target.id);
+    logAccountChanged(db, req.session.companyId, {
+      accountName: target.name, accountId: target.id,
+      message: `Rolle geändert von Administration zu Mitarbeitende, durch ${req.session.name}.`,
+      actorAccountId: req.session.accountId,
+    });
     res.json({ ok: true });
   });
 
@@ -211,7 +228,8 @@ export default function companyRoutes(db, config) {
     }
 
     const password = String(req.body?.password || "");
-    if (password.length < 4) return res.status(400).json({ error: "Mindestens 4 Zeichen." });
+    const passwortFehler = passwortProblem(password);
+    if (passwortFehler) return res.status(400).json({ error: passwortFehler });
 
     const eigenes = db.prepare("SELECT password_hash FROM accounts WHERE id = ?").get(req.session.accountId);
     if (!checkPassword(String(req.body?.currentPassword || ""), eigenes.password_hash)) {
@@ -238,6 +256,12 @@ export default function companyRoutes(db, config) {
     if (target.id === req.session.accountId) {
       setAccountSession(res, { id: target.id, session_epoch: epoche }, config);
     }
+    // Wer und wann, nie das Passwort selbst — das Logbuch ist kein Tresor dafür.
+    logPasswordChanged(db, req.session.companyId, {
+      accountName: target.name, accountId: target.id,
+      actorName: req.session.name, actorAccountId: req.session.accountId,
+      selbst: target.id === req.session.accountId,
+    });
     res.json({ ok: true });
   });
 

@@ -133,6 +133,11 @@ body {
   font-family: var(--sb-font-sans); border: 1px solid var(--sb-line); border-radius: 5px; padding: 8px 10px; font-size: 14px; background: #fff; color: var(--sb-ink); min-width: 0;
 }
 .sb-field input:focus, .sb-field select:focus { outline: 2px solid var(--sb-petrol); outline-offset: 1px; }
+/* Kurzer Hinweis unter einem Feld, z. B. die Passwort-Regel — kleiner als das
+   Label. Steht bewusst ausserhalb des <label>, sonst würde er Teil von dessen
+   zugänglichem Namen (Screenreader läsen ihn bei jedem Fokussieren mit vor). */
+.sb-field-wrap { display: flex; flex-direction: column; min-width: 0; }
+.sb-field-hint { font-size: 11.5px; color: var(--sb-ink-50); font-weight: 400; margin-top: 4px; }
 .sb-error { color: var(--sb-rust); font-size: 13px; margin: 0; }
 .sb-password-expand { padding-top: 14px; border-top: 1px dashed var(--sb-line); animation: sb-expand .18s ease-out; display: flex; flex-direction: column; gap: 10px; }
 @keyframes sb-expand { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }

@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { addDays, addMonths, toISO, startOfToday } from "#shared/dates.js";
@@ -124,7 +125,7 @@ describe("Angemeldet bleiben", () => {
     const id = await eigeneId(hier);
 
     const res = await hier.post(`/api/accounts/${id}/password`, {
-      password: "neuesPasswort", currentPassword: EMPLOYEE.password,
+      password: "neuesPasswort1", currentPassword: EMPLOYEE.password,
     });
     expect(res.status).toBe(200);
 
@@ -139,7 +140,7 @@ describe("Angemeldet bleiben", () => {
     const leaId = await eigeneId(lea);
 
     await admin.post(`/api/accounts/${leaId}/password`, {
-      password: "vonAdminGesetzt", currentPassword: ADMIN.password,
+      password: "vonAdminGesetzt1", currentPassword: ADMIN.password,
     });
 
     expect((await lea.get("/api/state")).status).toBe(401);
@@ -155,7 +156,7 @@ describe("Angemeldet bleiben", () => {
     const maraId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Mara Vogt'").get().id;
 
     await su.post(`/api/companies/${firmaId}/admins/${maraId}/password`, {
-      password: "wiederDrin", currentPassword: SUPER.password,
+      password: "wiederDrin1", currentPassword: SUPER.password,
     });
 
     expect((await admin.get("/api/state")).status).toBe(401);
@@ -177,13 +178,13 @@ describe("Angemeldet bleiben", () => {
     const neu = await zweitesGeraet(EMPLOYEE);
 
     await neu.post(`/api/accounts/${id}/password`, {
-      password: "einsZweiDrei", currentPassword: EMPLOYEE.password,
+      password: "einsZweiDrei1", currentPassword: EMPLOYEE.password,
     });
     expect((await alt.get("/api/state")).status).toBe(401);
 
     // Auch nach einer weiteren Änderung bleibt das erste Gerät draussen.
     await neu.post(`/api/accounts/${id}/password`, {
-      password: "vierFuenfSechs", currentPassword: "einsZweiDrei",
+      password: "vierFuenfSechs1", currentPassword: "einsZweiDrei1",
     });
     expect((await alt.get("/api/state")).status).toBe(401);
   });
@@ -248,7 +249,7 @@ describe("Schichten", () => {
 
     // Zweite Mitarbeiterin mit derselben Qualifikation.
     const tomId = await legeMitarbeitendeAn(admin, {
-      name: "Tom Klein", password: "12345",
+      name: "Tom Klein", password: "geheim123",
     });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -264,7 +265,7 @@ describe("Schichten", () => {
     expect((await lea.get("/api/state")).data.company.shifts[0].assigned).toHaveLength(1);
 
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     const res = await tom.post(`/api/shifts/${shiftId}/takeover`, { replaceId: null });
 
     expect(res.status).toBe(409);
@@ -326,7 +327,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
 
     const tomId = await legeMitarbeitendeAn(admin, {
-      name: "Tom Klein", password: "12345",
+      name: "Tom Klein", password: "geheim123",
     });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -341,7 +342,7 @@ describe("Schichten", () => {
     await lea.login(EMPLOYEE);
     await lea.post(`/api/shifts/${shiftId}/enroll`);
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     await tom.post(`/api/shifts/${shiftId}/enroll`);
 
     const vorher = (await admin.get("/api/state")).data.company.shifts[0];
@@ -365,7 +366,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
 
     const tomId = await legeMitarbeitendeAn(admin, {
-      name: "Tom Klein", password: "12345",
+      name: "Tom Klein", password: "geheim123",
     });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -379,7 +380,7 @@ describe("Schichten", () => {
     await lea.login(EMPLOYEE);
     await lea.post(`/api/shifts/${shiftId}/enroll`);
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     await tom.post(`/api/shifts/${shiftId}/enroll`);
 
     const vorher = (await admin.get("/api/state")).data.company.shifts[0];
@@ -459,7 +460,7 @@ describe("Schichten", () => {
     const admin = await asAdmin();
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     const tomId = await legeMitarbeitendeAn(admin, {
-      name: "Tom Klein", password: "12345",
+      name: "Tom Klein", password: "geheim123",
     });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -473,7 +474,7 @@ describe("Schichten", () => {
     await lea.login(EMPLOYEE);
     await lea.post(`/api/shifts/${shiftId}/enroll`);
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     await tom.post(`/api/shifts/${shiftId}/enroll`);
 
     const shift = (await admin.get("/api/state")).data.company.shifts[0];
@@ -485,7 +486,7 @@ describe("Schichten", () => {
     const admin = await asAdmin();
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     const tomId = await legeMitarbeitendeAn(admin, {
-      name: "Tom Klein", password: "12345",
+      name: "Tom Klein", password: "geheim123",
     });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -504,7 +505,7 @@ describe("Schichten", () => {
     await lea.login(EMPLOYEE);
     await lea.post(`/api/shifts/${shiftId}/enroll`);
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     await tom.post(`/api/shifts/${shiftId}/enroll`);
 
     // Vor der Auslosung stehen beide auf der Liste.
@@ -522,7 +523,7 @@ describe("Schichten", () => {
     const admin = await asAdmin();
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     const tomId = await legeMitarbeitendeAn(admin, {
-      name: "Tom Klein", password: "12345",
+      name: "Tom Klein", password: "geheim123",
     });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -541,7 +542,7 @@ describe("Schichten", () => {
     await lea.post(`/api/shifts/${shiftId}/enroll`);
     const leaId = (await lea.get("/api/state")).data.userId;
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     await tom.post(`/api/shifts/${shiftId}/enroll`);
 
     await admin.post(`/api/shifts/${shiftId}/assign`);
@@ -631,7 +632,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
 
     const tomId = await legeMitarbeitendeAn(admin, {
-      name: "Tom Klein", password: "12345",
+      name: "Tom Klein", password: "geheim123",
     });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -646,7 +647,7 @@ describe("Schichten", () => {
     await lea.login(EMPLOYEE);
     await lea.post(`/api/shifts/${shiftId}/enroll`);
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     await tom.post(`/api/shifts/${shiftId}/enroll`);
 
     const belegt = (await admin.get("/api/state")).data.company.shifts[0];
@@ -775,13 +776,13 @@ describe("Konten", () => {
     expect(doppelt.data.error).toMatch(/nicht erreichbar/);
 
     // Gleicher Name mit anderem Passwort bleibt erlaubt: Menschen heissen manchmal gleich.
-    const zweite = await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw" });
+    const zweite = await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw1" });
     expect(zweite.status).toBe(200);
 
     const eine = client();
     await eine.login({ code: "111111", name: "Anna Meier", password: "start123" });
     const andere = client();
-    await andere.login({ code: "111111", name: "Anna Meier", password: "andersPw" });
+    await andere.login({ code: "111111", name: "Anna Meier", password: "andersPw1" });
     expect((await eine.get("/api/state")).data.userId).not.toBe((await andere.get("/api/state")).data.userId);
     expect((await andere.get("/api/state")).data.userId).toBe(zweite.data.id);
   });
@@ -789,7 +790,7 @@ describe("Konten", () => {
   test("auch ein neues Passwort darf ein Konto nicht verstecken", async () => {
     const admin = await asAdmin();
     await admin.post("/api/employees", { name: "Anna Meier", password: "start123" });
-    const zweiteId = (await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw" })).data.id;
+    const zweiteId = (await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw1" })).data.id;
 
     const res = await admin.post(`/api/accounts/${zweiteId}/password`, {
       password: "start123", currentPassword: "12345",
@@ -797,7 +798,7 @@ describe("Konten", () => {
     expect(res.status).toBe(409);
 
     // Das alte Passwort gilt weiter.
-    expect((await client().login({ code: "111111", name: "Anna Meier", password: "andersPw" })).status).toBe(200);
+    expect((await client().login({ code: "111111", name: "Anna Meier", password: "andersPw1" })).status).toBe(200);
   });
 
   test("Qualifikationen vergibt nur die Administration", async () => {
@@ -851,15 +852,15 @@ describe("Konten", () => {
     const meineId = (await lea.get("/api/state")).data.userId;
 
     expect((await lea.post(`/api/accounts/${meineId}/password`, {
-      password: "neuesGeheim", currentPassword: "falsch",
+      password: "neuesGeheim1", currentPassword: "falsch",
     })).status).toBe(403);
 
     expect((await lea.post(`/api/accounts/${meineId}/password`, {
-      password: "neuesGeheim", currentPassword: "12345",
+      password: "neuesGeheim1", currentPassword: "12345",
     })).status).toBe(200);
 
     const nochmal = client();
-    expect((await nochmal.login({ ...EMPLOYEE, password: "neuesGeheim" })).status).toBe(200);
+    expect((await nochmal.login({ ...EMPLOYEE, password: "neuesGeheim1" })).status).toBe(200);
   });
 
   test("die Administration setzt ein vergessenes Passwort neu", async () => {
@@ -869,27 +870,27 @@ describe("Konten", () => {
 
     // Bestätigt wird mit dem eigenen Admin-Passwort, nicht mit dem fremden.
     expect((await admin.post(`/api/accounts/${leaId}/password`, {
-      password: "neuStart", currentPassword: "falsch",
+      password: "neuStart1", currentPassword: "falsch",
     })).status).toBe(403);
 
     expect((await admin.post(`/api/accounts/${leaId}/password`, {
-      password: "neuStart", currentPassword: "12345",
+      password: "neuStart1", currentPassword: "12345",
     })).status).toBe(200);
 
-    expect((await client().login({ ...EMPLOYEE, password: "neuStart" })).status).toBe(200);
+    expect((await client().login({ ...EMPLOYEE, password: "neuStart1" })).status).toBe(200);
   });
 
   test("die Administration setzt ein neues Konto später wieder neu", async () => {
     const admin = await asAdmin();
-    const { data } = await admin.post("/api/employees", { name: "Tom Klein", password: "erstesPw" });
+    const { data } = await admin.post("/api/employees", { name: "Tom Klein", password: "erstesPw1" });
 
     expect((await admin.post(`/api/accounts/${data.id}/password`, {
-      password: "vomAdmin", currentPassword: "12345",
+      password: "vomAdmin1", currentPassword: "12345",
     })).status).toBe(200);
 
-    expect((await client().login({ code: "111111", name: "Tom Klein", password: "vomAdmin" })).status).toBe(200);
+    expect((await client().login({ code: "111111", name: "Tom Klein", password: "vomAdmin1" })).status).toBe(200);
     // Das erste Passwort gilt danach nicht mehr.
-    expect((await client().login({ code: "111111", name: "Tom Klein", password: "erstesPw" })).status).toBe(401);
+    expect((await client().login({ code: "111111", name: "Tom Klein", password: "erstesPw1" })).status).toBe(401);
   });
 
   test("ein fremdes Admin-Konto rührt niemand aus der Firma an", async () => {
@@ -970,11 +971,11 @@ describe("Erstes Passwort", () => {
      auf dem es unterwegs mitlesbar wäre. */
   test("ein neues Konto meldet sich sofort an", async () => {
     const admin = await asAdmin();
-    const { status, data } = await admin.post("/api/employees", { name: "Tom Klein", password: "startPw" });
+    const { status, data } = await admin.post("/api/employees", { name: "Tom Klein", password: "startPw1" });
 
     expect(status).toBe(200);
     expect(data.id).toBeTruthy();
-    expect((await client().login({ code: "111111", name: "Tom Klein", password: "startPw" })).status).toBe(200);
+    expect((await client().login({ code: "111111", name: "Tom Klein", password: "startPw1" })).status).toBe(200);
   });
 
   test("ohne Passwort entsteht kein Konto", async () => {
@@ -984,6 +985,24 @@ describe("Erstes Passwort", () => {
     expect((await admin.post("/api/employees", { name: "Tom Klein" })).status).toBe(400);
     expect((await admin.post("/api/employees", { name: "Tom Klein", password: "abc" })).status).toBe(400);
     expect((await admin.post("/api/employees", { password: "langGenug" })).status).toBe(400);
+
+    expect((await admin.get("/api/state")).data.company.accounts.map((a) => a.name)).not.toContain("Tom Klein");
+  });
+
+  test("ein zu schwaches Passwort entsteht kein Konto", async () => {
+    const admin = await asAdmin();
+
+    const zuKurz = await admin.post("/api/employees", { name: "Tom Klein", password: "abc123" });
+    expect(zuKurz.status).toBe(400);
+    expect(zuKurz.data.error).toMatch(/8 Zeichen/);
+
+    const nurBuchstaben = await admin.post("/api/employees", { name: "Tom Klein", password: "nurBuchstaben" });
+    expect(nurBuchstaben.status).toBe(400);
+    expect(nurBuchstaben.data.error).toMatch(/Zahl oder ein Sonderzeichen/);
+
+    const nurZiffern = await admin.post("/api/employees", { name: "Tom Klein", password: "12345678" });
+    expect(nurZiffern.status).toBe(400);
+    expect(nurZiffern.data.error).toMatch(/Buchstaben/);
 
     expect((await admin.get("/api/state")).data.company.accounts.map((a) => a.name)).not.toContain("Tom Klein");
   });
@@ -1002,10 +1021,10 @@ describe("Erstes Passwort", () => {
     const su = client();
     await su.login(SUPER);
     await su.post("/api/companies", {
-      name: "Zweite Firma AG", code: "222222", adminName: "Neue Chefin", adminPassword: "chefinPw",
+      name: "Zweite Firma AG", code: "222222", adminName: "Neue Chefin", adminPassword: "chefinPw1",
     });
 
-    expect((await client().login({ code: "222222", name: "Neue Chefin", password: "chefinPw" })).status).toBe(200);
+    expect((await client().login({ code: "222222", name: "Neue Chefin", password: "chefinPw1" })).status).toBe(200);
   });
 });
 
@@ -1850,11 +1869,11 @@ describe("Ausgesperrte Admins", () => {
   test("die Verwaltung befreit ein ausgesperrtes Admin-Konto", async () => {
     const su = await alsSuper();
     const res = await su.post(`/api/companies/${firmaId()}/admins/${maraId()}/password`, {
-      password: "wiederDrin", currentPassword: SUPER.password,
+      password: "wiederDrin1", currentPassword: SUPER.password,
     });
 
     expect(res.status).toBe(200);
-    expect((await client().login({ ...ADMIN, password: "wiederDrin" })).status).toBe(200);
+    expect((await client().login({ ...ADMIN, password: "wiederDrin1" })).status).toBe(200);
   });
 
   test("ohne das Verwaltungs-Passwort geht es nicht", async () => {
@@ -1951,7 +1970,7 @@ describe("Admin-Konten löschen", () => {
     const lea = client();
     await lea.login(EMPLOYEE);
     expect((await lea.get("/api/state")).data.company.accounts.find((a) => a.name === "Lea Brunner").role).toBe("admin");
-    expect((await lea.post("/api/employees", { name: "Neue Person", password: "startPw" })).status).toBe(200);
+    expect((await lea.post("/api/employees", { name: "Neue Person", password: "startPw1" })).status).toBe(200);
   });
 
   test("eine Nachfolge aus einer fremden Firma zählt nicht", async () => {
@@ -1989,7 +2008,7 @@ describe("Verwaltung", () => {
 
     const daten = {
       name: "Zweite Firma AG", code: "222222",
-      adminName: "Neue Chefin", adminPassword: "chefinPw",
+      adminName: "Neue Chefin", adminPassword: "chefinPw1",
     };
     expect((await su.post("/api/companies", daten)).status).toBe(200);
 
@@ -2059,7 +2078,7 @@ describe("Wartung", () => {
 
     await su.post("/api/companies", {
       name: "Kommt Wieder Weg AG", code: "555555",
-      adminName: "Chefin", adminPassword: "12345",
+      adminName: "Chefin", adminPassword: "chefinPw1",
     });
     expect((await su.get("/api/admin/info")).data.db.companies).toBe(2);
 
@@ -2144,6 +2163,58 @@ describe("Neustart", () => {
   });
 });
 
+describe("Migration: neue Logbuch-Typen", () => {
+  /* SQLite kann eine CHECK-Bedingung nicht per ALTER TABLE erweitern — dieser
+     Test baut von Hand die *alte* Fassung von logbook_entries (vor den
+     Kontoänderungen im Logbuch) und prüft, dass openDb() sie beim nächsten
+     Start migriert, ohne den bisherigen Inhalt zu verlieren. */
+  test("eine Datenbank mit der alten CHECK-Liste bekommt beim Öffnen die neue, ohne Daten zu verlieren", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "schichtboard-migration-"));
+    const file = path.join(dir, "test.db");
+
+    const alt = new Database(file);
+    alt.exec(`
+      CREATE TABLE companies (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, assignment_day INTEGER NOT NULL DEFAULT 7);
+      CREATE TABLE logbook_entries (
+        id                 TEXT PRIMARY KEY,
+        company_id         TEXT NOT NULL,
+        shift_id           TEXT,
+        shift_label        TEXT NOT NULL,
+        type               TEXT NOT NULL CHECK (type IN
+                              ('created', 'updated', 'assigned', 'unassigned', 'reassigned', 'help_requested', 'help_withdrawn')),
+        message            TEXT NOT NULL,
+        actor_account_id   TEXT,
+        target_account_id  TEXT,
+        created_at         TEXT NOT NULL
+      );
+    `);
+    alt.prepare("INSERT INTO companies (id, code, name) VALUES ('c1', '999999', 'Alt AG')").run();
+    alt.prepare(
+      `INSERT INTO logbook_entries (id, company_id, shift_id, shift_label, type, message, created_at)
+       VALUES ('log1', 'c1', NULL, 'Alte Schicht', 'created', 'Schicht angelegt von Jemandem.', '2024-01-01T00:00:00.000Z')`
+    ).run();
+    // Die alte Tabelle lässt den neuen Wert (noch) nicht zu — sonst wäre dieser Test gegenstandslos.
+    expect(() => alt.prepare(
+      `INSERT INTO logbook_entries (id, company_id, shift_id, shift_label, type, message, created_at)
+       VALUES ('log2', 'c1', NULL, 'X', 'account_updated', 'egal', '2024-01-01T00:00:00.000Z')`
+    ).run()).toThrow();
+    alt.close();
+
+    const db = openDb(file);
+    // Der alte Eintrag ist noch da …
+    expect(db.prepare("SELECT message FROM logbook_entries WHERE id = 'log1'").get().message)
+      .toBe("Schicht angelegt von Jemandem.");
+    // … und der neue Typ geht jetzt.
+    expect(() => db.prepare(
+      `INSERT INTO logbook_entries (id, company_id, shift_id, shift_label, type, message, created_at)
+       VALUES ('log2', 'c1', NULL, 'X', 'account_updated', 'egal', '2024-01-01T00:00:00.000Z')`
+    ).run()).not.toThrow();
+    db.close();
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("Kalenderabo", () => {
   /* Nur zugeteilte Schichten gehören in den Kalender — eine Einschreibung ist
      ein Wunsch, eine Zuteilung eine Verpflichtung. Das Zeichen in der Adresse
@@ -2180,7 +2251,7 @@ describe("Kalenderabo", () => {
   test("nur die eigenen zugeteilten Schichten stehen im Feed, blosse Einschreibungen nicht", async () => {
     const admin = await asAdmin();
     const qualId = await qualVon(admin);
-    const tomId = await legeMitarbeitendeAn(admin, { name: "Tom Klein", password: "12345" });
+    const tomId = await legeMitarbeitendeAn(admin, { name: "Tom Klein", password: "geheim123" });
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
     await admin.post("/api/shifts", {
@@ -2200,7 +2271,7 @@ describe("Kalenderabo", () => {
     await lea.post(`/api/shifts/${zugeteiltId}/enroll`); // bekommt den einzigen Platz
 
     const tom = client();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
     await tom.post(`/api/shifts/${wartelisteId}/enroll`); // besetzt den einzigen Platz zuerst
     await lea.post(`/api/shifts/${wartelisteId}/enroll`); // Lea bleibt auf der Warteliste
 

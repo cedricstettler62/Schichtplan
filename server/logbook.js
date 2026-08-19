@@ -11,20 +11,23 @@ export function shiftLabel(shift) {
   return `${shift.name} · ${shift.date} ${shift.startTime}–${shift.endTime}`;
 }
 
-function insert(db, { companyId, shift, type, message, actorAccountId = null, targetAccountId = null }) {
+/** `subjectLabel` ist meist eine Schicht (shiftLabel(shift)), bei Kontoänderungen
+ *  ohne Schicht der Name des betroffenen Kontos — beides beantwortet dieselbe
+ *  Frage: worum es in dieser Zeile geht. */
+function insert(db, { companyId, shiftId = null, subjectLabel, type, message, actorAccountId = null, targetAccountId = null }) {
   db.prepare(
     `INSERT INTO logbook_entries
        (id, company_id, shift_id, shift_label, type, message, actor_account_id, target_account_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
-    uid("log"), companyId, shift.id, shiftLabel(shift), type, message,
+    uid("log"), companyId, shiftId, subjectLabel, type, message,
     actorAccountId, targetAccountId, new Date().toISOString()
   );
 }
 
 export function logShiftCreated(db, companyId, shift, actorName, actorAccountId) {
   insert(db, {
-    companyId, shift, type: "created",
+    companyId, shiftId: shift.id, subjectLabel: shiftLabel(shift), type: "created",
     message: `Schicht angelegt von ${actorName}.`,
     actorAccountId,
   });
@@ -32,7 +35,7 @@ export function logShiftCreated(db, companyId, shift, actorName, actorAccountId)
 
 export function logShiftUpdated(db, companyId, shift, actorName, actorAccountId) {
   insert(db, {
-    companyId, shift, type: "updated",
+    companyId, shiftId: shift.id, subjectLabel: shiftLabel(shift), type: "updated",
     message: `Schicht bearbeitet von ${actorName}.`,
     actorAccountId,
   });
@@ -41,7 +44,7 @@ export function logShiftUpdated(db, companyId, shift, actorName, actorAccountId)
 /** `actorName` = null heisst: automatische Zuteilung (Auslosung/Scheduler), kein Zutun einer Person. */
 export function logAssigned(db, companyId, shift, targetName, targetAccountId, actorName = null, actorAccountId = null) {
   insert(db, {
-    companyId, shift, type: "assigned",
+    companyId, shiftId: shift.id, subjectLabel: shiftLabel(shift), type: "assigned",
     message: actorName
       ? `${targetName} wurde von ${actorName} zugeteilt.`
       : `${targetName} wurde automatisch zugeteilt.`,
@@ -51,7 +54,7 @@ export function logAssigned(db, companyId, shift, targetName, targetAccountId, a
 
 export function logUnassigned(db, companyId, shift, targetName, targetAccountId, actorName, actorAccountId, grund = "ausgetragen") {
   insert(db, {
-    companyId, shift, type: "unassigned",
+    companyId, shiftId: shift.id, subjectLabel: shiftLabel(shift), type: "unassigned",
     message: `${targetName} wurde von ${actorName} ${grund}.`,
     actorAccountId, targetAccountId,
   });
@@ -59,7 +62,7 @@ export function logUnassigned(db, companyId, shift, targetName, targetAccountId,
 
 export function logReassigned(db, companyId, shift, newName, newAccountId, oldName = null) {
   insert(db, {
-    companyId, shift, type: "reassigned",
+    companyId, shiftId: shift.id, subjectLabel: shiftLabel(shift), type: "reassigned",
     message: oldName
       ? `${newName} hat die Schicht von ${oldName} übernommen.`
       : `${newName} hat eine offene Schicht übernommen.`,
@@ -69,12 +72,39 @@ export function logReassigned(db, companyId, shift, newName, newAccountId, oldNa
 
 export function logHelp(db, companyId, shift, actorName, actorAccountId, requested) {
   insert(db, {
-    companyId, shift,
+    companyId, shiftId: shift.id, subjectLabel: shiftLabel(shift),
     type: requested ? "help_requested" : "help_withdrawn",
     message: requested
       ? `${actorName} hat ein Hilfegesuch gestellt.`
       : `${actorName} hat das Hilfegesuch zurückgezogen.`,
     actorAccountId, targetAccountId: actorAccountId,
+  });
+}
+
+/**
+ * Änderung an einem Konto, die sich gefahrlos mit altem und neuem Stand
+ * protokollieren lässt (Rolle, Qualifikation — nicht das Passwort, siehe
+ * logPasswordChanged). `message` ist ein fertiger Satz mit altem und neuem
+ * Wert, analog zu den übrigen Logbuch-Einträgen.
+ */
+export function logAccountChanged(db, companyId, { accountName, accountId, message, actorAccountId = null }) {
+  insert(db, {
+    companyId, subjectLabel: accountName, type: "account_updated",
+    message, actorAccountId, targetAccountId: accountId,
+  });
+}
+
+/**
+ * Passwortänderung — bewusst ohne altes oder neues Passwort, nur wessen
+ * Konto es betrifft, wer es geändert hat und wann (created_at). Ein Admin
+ * erfährt dadurch nie ein fremdes Passwort, aber jede Änderung an einem
+ * Mitarbeitendenkonto steht sichtbar im Logbuch.
+ */
+export function logPasswordChanged(db, companyId, { accountName, accountId, actorName, actorAccountId = null, selbst }) {
+  insert(db, {
+    companyId, subjectLabel: accountName, type: "password_changed",
+    message: selbst ? "Eigenes Passwort geändert." : `Passwort geändert durch ${actorName}.`,
+    actorAccountId, targetAccountId: accountId,
   });
 }
 

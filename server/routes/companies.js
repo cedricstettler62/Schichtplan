@@ -5,7 +5,8 @@ import { Router } from "express";
 import { endeAlleSitzungen, hashPassword, kontoWaereUnerreichbar, requireSuper, safeEqual } from "../auth.js";
 import { releaseSeats, recompute } from "../assignment.js";
 import { createCompany, toShift } from "../db.js";
-import { logUnassigned, readLogbook } from "../logbook.js";
+import { logPasswordChanged, logUnassigned, readLogbook } from "../logbook.js";
+import { passwortProblem } from "#shared/password.js";
 
 export default function companiesRoutes(db, config) {
   const router = Router();
@@ -21,9 +22,8 @@ export default function companiesRoutes(db, config) {
     if (!name || !adminName) {
       return res.status(400).json({ error: "Firmenname und Admin-Name sind nötig." });
     }
-    if (adminPassword.length < 4) {
-      return res.status(400).json({ error: "Das Passwort des Admin-Kontos braucht mindestens 4 Zeichen." });
-    }
+    const passwortFehler = passwortProblem(adminPassword);
+    if (passwortFehler) return res.status(400).json({ error: passwortFehler });
 
     const taken = db.prepare("SELECT 1 FROM companies WHERE code = ?").get(code);
     if (taken || code === config.superAdmin.code) {
@@ -151,7 +151,8 @@ export default function companiesRoutes(db, config) {
     }
 
     const password = String(req.body?.password || "");
-    if (password.length < 4) return res.status(400).json({ error: "Mindestens 4 Zeichen." });
+    const passwortFehler = passwortProblem(password);
+    if (passwortFehler) return res.status(400).json({ error: passwortFehler });
     /* Gleicher Name und gleiches Passwort wie ein anderes Konto der Firma: Die
        Anmeldung landete dann immer beim ersten, und das befreite Konto bliebe
        genauso ausgesperrt wie vorher. */
@@ -165,6 +166,11 @@ export default function companiesRoutes(db, config) {
     /* Hier zählt es doppelt: Wird ein Admin-Konto befreit, weil es in falsche
        Hände geraten ist, muss jede noch offene Anmeldung damit enden. */
     endeAlleSitzungen(db, target.id);
+    // Wer und wann, nie das Passwort selbst — das Logbuch ist kein Tresor dafür.
+    logPasswordChanged(db, req.params.id, {
+      accountName: target.name, accountId: target.id,
+      actorName: config.superAdmin.name, actorAccountId: null, selbst: false,
+    });
     res.json({ ok: true });
   });
 

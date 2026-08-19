@@ -396,8 +396,8 @@ describe("Super-Admin", () => {
     // Konten noch einmal auf.
     const auswahl = await screen.findByLabelText("Admin-Konto");
     await user.selectOptions(auswahl, within(auswahl).getByRole("option", { name: "Mara Vogt" }));
-    await user.type(screen.getByLabelText("Neues Passwort"), "wiederDrin");
-    await user.type(screen.getByLabelText("Wiederholen"), "wiederDrin");
+    await user.type(screen.getByLabelText("Neues Passwort"), "wiederDrin1");
+    await user.type(screen.getByLabelText("Wiederholen"), "wiederDrin1");
     await user.type(screen.getByLabelText("Dein Verwaltungs-Passwort"), SUPER.password);
     await user.click(screen.getByRole("button", { name: "Passwort setzen" }));
 
@@ -474,8 +474,8 @@ describe("Super-Admin", () => {
     await user.type(screen.getByPlaceholderText("z. B. Muster GmbH"), "Zweite Firma AG");
     await user.type(screen.getByPlaceholderText("6 Ziffern"), "111111");
     await user.type(screen.getByLabelText("Name"), "Neue Chefin");
-    await user.type(screen.getByLabelText("Erstes Passwort"), "chefinPw");
-    await user.type(screen.getByLabelText("Wiederholen"), "chefinPw");
+    await user.type(screen.getByLabelText("Erstes Passwort"), "chefinPw1");
+    await user.type(screen.getByLabelText("Wiederholen"), "chefinPw1");
     await user.click(screen.getByRole("button", { name: "Unternehmen anlegen" }));
 
     expect(await screen.findByText("Dieser Firmencode wird bereits verwendet.")).toBeInTheDocument();

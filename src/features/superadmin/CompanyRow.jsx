@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import LogbookEntryRow from "../logbook/LogbookEntryRow.jsx";
+import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
 
 const MENU = [
   ["name", "Name ändern"],
@@ -75,7 +76,8 @@ export default function CompanyRow({
 
   const submitReset = async () => {
     if (!adminId) { setResetError("Bitte ein Admin-Konto auswählen."); return; }
-    if (neu.length < 4) { setResetError("Mindestens 4 Zeichen."); return; }
+    const passwortFehler = passwortProblem(neu);
+    if (passwortFehler) { setResetError(passwortFehler); return; }
     if (neu !== wiederholung) { setResetError("Die beiden Passwörter stimmen nicht überein."); return; }
 
     const meldung = await onResetAdminPassword(company.id, adminId, neu, superPw);
@@ -196,10 +198,13 @@ export default function CompanyRow({
                       {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                   </label>
-                  <label className="sb-field">
-                    <span>Neues Passwort</span>
-                    <input type="password" value={neu} onChange={(e) => setNeu(e.target.value)} autoComplete="new-password" />
-                  </label>
+                  <div className="sb-field-wrap">
+                    <label className="sb-field">
+                      <span>Neues Passwort</span>
+                      <input type="password" value={neu} onChange={(e) => setNeu(e.target.value)} autoComplete="new-password" />
+                    </label>
+                    <span className="sb-field-hint">{PASSWORD_HINWEIS}</span>
+                  </div>
                   <label className="sb-field">
                     <span>Wiederholen</span>
                     <input type="password" value={wiederholung} onChange={(e) => setWiederholung(e.target.value)} autoComplete="new-password" />

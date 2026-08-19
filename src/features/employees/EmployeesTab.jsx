@@ -1,5 +1,6 @@
 import { useState } from "react";
 import EmployeeManageRow from "./EmployeeManageRow.jsx";
+import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
 
 export default function EmployeesTab({
   accounts, qualifications, verifyAdmin,
@@ -21,7 +22,8 @@ export default function EmployeesTab({
 
   const submitEmployee = async () => {
     if (!name.trim()) { setError("Bitte einen Namen eingeben."); return; }
-    if (passwort.length < 4) { setError("Das Passwort braucht mindestens 4 Zeichen."); return; }
+    const passwortFehler = passwortProblem(passwort);
+    if (passwortFehler) { setError(passwortFehler); return; }
     if (passwort !== wiederholung) { setError("Die beiden Passwörter stimmen nicht überein."); return; }
     setError("");
 
@@ -49,7 +51,13 @@ export default function EmployeesTab({
           <span className="sb-detail-label">Neues Mitarbeitendenkonto</span>
           <div className="sb-form-grid">
             <label className="sb-field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} placeholder="Vor- und Nachname" /></label>
-            <label className="sb-field"><span>Erstes Passwort</span><input type="password" value={passwort} onChange={(e) => setPasswort(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} autoComplete="new-password" /></label>
+            <div className="sb-field-wrap">
+              <label className="sb-field">
+                <span>Erstes Passwort</span>
+                <input type="password" value={passwort} onChange={(e) => setPasswort(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} autoComplete="new-password" />
+              </label>
+              <span className="sb-field-hint">{PASSWORD_HINWEIS}</span>
+            </div>
             <label className="sb-field"><span>Wiederholen</span><input type="password" value={wiederholung} onChange={(e) => setWiederholung(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} autoComplete="new-password" /></label>
           </div>
           {namensdopplung && (

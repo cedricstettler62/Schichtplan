@@ -9,6 +9,33 @@ import bcrypt from "bcryptjs";
 
 import { uid } from "./ids.js";
 
+/* Eigene Konstante statt inline in SCHEMA: ensureLogbookTypes() unten legt die
+   Tabelle bei Bedarf neu an und braucht dieselbe CREATE-Anweisung noch einmal. */
+const LOGBOOK_ENTRIES = `
+/* Unveränderlicher Audit-Trail: anlegen, ändern, zu-/umteilen, Hilfegesuche,
+   Kontoänderungen. Nur INSERT und SELECT — keine Route ändert oder löscht
+   einen Eintrag. Name/Schicht bzw. Kontoname stehen zusätzlich als Text da
+   (shift_label, message), damit ein Eintrag auch nach gelöschtem Konto oder
+   gelöschter Schicht lesbar bleibt. Bei einer Kontoänderung ohne Schicht trägt
+   shift_label den Namen des betroffenen Kontos — derselbe Sinn wie bei einer
+   Schicht: worum es in dieser Zeile geht. */
+CREATE TABLE IF NOT EXISTS logbook_entries (
+  id                 TEXT PRIMARY KEY,
+  company_id         TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  shift_id           TEXT REFERENCES shifts(id) ON DELETE SET NULL,
+  shift_label        TEXT NOT NULL,
+  type               TEXT NOT NULL CHECK (type IN
+                        ('created', 'updated', 'assigned', 'unassigned', 'reassigned', 'help_requested', 'help_withdrawn',
+                         'account_updated', 'password_changed')),
+  message            TEXT NOT NULL,
+  actor_account_id   TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  target_account_id  TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  created_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_logbook_company ON logbook_entries(company_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_logbook_shift ON logbook_entries(shift_id);
+`;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS companies (
   id             TEXT PRIMARY KEY,
@@ -88,25 +115,7 @@ CREATE TABLE IF NOT EXISTS help_requests (
   PRIMARY KEY (shift_id, account_id)
 );
 
-/* Unveränderlicher Audit-Trail: anlegen, ändern, zu-/umteilen, Hilfegesuche.
-   Nur INSERT und SELECT — keine Route ändert oder löscht einen Eintrag. Name
-   und Schicht stehen zusätzlich als Text da (shift_label, message), damit ein
-   Eintrag auch nach gelöschtem Konto oder gelöschter Schicht lesbar bleibt. */
-CREATE TABLE IF NOT EXISTS logbook_entries (
-  id                 TEXT PRIMARY KEY,
-  company_id         TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-  shift_id           TEXT REFERENCES shifts(id) ON DELETE SET NULL,
-  shift_label        TEXT NOT NULL,
-  type               TEXT NOT NULL CHECK (type IN
-                        ('created', 'updated', 'assigned', 'unassigned', 'reassigned', 'help_requested', 'help_withdrawn')),
-  message            TEXT NOT NULL,
-  actor_account_id   TEXT REFERENCES accounts(id) ON DELETE SET NULL,
-  target_account_id  TEXT REFERENCES accounts(id) ON DELETE SET NULL,
-  created_at         TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_logbook_company ON logbook_entries(company_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_logbook_shift ON logbook_entries(shift_id);
-
+${LOGBOOK_ENTRIES}
 /* Bitte eines Mitarbeitenden, das Logbuch einer eigenen vergangenen Schicht
    einsehen zu dürfen. Anders als logbook_entries ein Workflow-Objekt: der
    Status darf sich ändern (pending -> approved/declined). */
@@ -142,12 +151,37 @@ function dropColumn(db, table, column) {
   }
 }
 
+/**
+ * logbook_entries.type bekam mit den Kontoänderungen zwei neue Werte
+ * ('account_updated', 'password_changed'). SQLite kann eine CHECK-Bedingung
+ * nicht per ALTER TABLE erweitern — anders als bei ensureColumn() reicht ein
+ * einfacher Zusatz nicht. Auf einer Datenbank, deren Tabelle die alte,
+ * engere Liste noch trägt, wird sie deshalb einmalig neu angelegt und ihr
+ * bisheriger Inhalt hinübergeholt; auf einer frisch erzeugten (CREATE TABLE
+ * IF NOT EXISTS mit der aktuellen SCHEMA-Fassung) enthält sie die neuen
+ * Werte bereits, und diese Funktion tut nichts.
+ */
+function ensureLogbookTypes(db) {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'logbook_entries'")
+    .get();
+  if (!row || row.sql.includes("account_updated")) return;
+
+  db.transaction(() => {
+    db.exec("ALTER TABLE logbook_entries RENAME TO logbook_entries_alt");
+    db.exec(LOGBOOK_ENTRIES);
+    db.exec("INSERT INTO logbook_entries SELECT * FROM logbook_entries_alt");
+    db.exec("DROP TABLE logbook_entries_alt");
+  })();
+}
+
 export function openDb(file) {
   if (file !== ":memory:") fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   const db = new Database(file);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  ensureLogbookTypes(db);
   ensureColumn(db, "shifts", "end_date", "TEXT");
   ensureColumn(db, "accounts", "session_epoch", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "accounts", "calendar_token", "TEXT");

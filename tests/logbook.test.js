@@ -75,7 +75,7 @@ describe("Logbuch", () => {
     });
 
     const tomId = (
-      await admin.post("/api/employees", { name: "Tom Klein", password: "12345" })
+      await admin.post("/api/employees", { name: "Tom Klein", password: "geheim123" })
     ).data.id;
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
 
@@ -83,7 +83,7 @@ describe("Logbuch", () => {
     await lea.post(`/api/shifts/${shiftId}/enroll`);
     // Tom bleibt aussen vor — nur so kann er die Schicht später übernehmen.
     const tom = c();
-    await tom.login({ code: "111111", name: "Tom Klein", password: "12345" });
+    await tom.login({ code: "111111", name: "Tom Klein", password: "geheim123" });
 
     await lea.post(`/api/shifts/${shiftId}/help`); // Hilfegesuch stellen …
     await lea.post(`/api/shifts/${shiftId}/help`); // … und wieder zurückziehen.
@@ -111,12 +111,12 @@ describe("Logbuch", () => {
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
     const leaId = (
-      await admin.post("/api/employees", { name: "Nina Frei", password: "12345" })
+      await admin.post("/api/employees", { name: "Nina Frei", password: "geheim123" })
     ).data.id;
     await admin.patch(`/api/accounts/${leaId}/qualifications`, { qualificationId: qualId, value: true });
 
     const nina = c();
-    await nina.login({ code: "111111", name: "Nina Frei", password: "12345" });
+    await nina.login({ code: "111111", name: "Nina Frei", password: "geheim123" });
     await nina.post(`/api/shifts/${shiftId}/enroll`);
 
     await admin.del(`/api/accounts/${leaId}`);
@@ -165,6 +165,50 @@ describe("Logbuch", () => {
     // Für eine fremde Schicht kommt niemand an eine Anfrage.
     const fremd = await lea.post("/api/logbook/requests", { shiftId: "shift-existiert-nicht" });
     expect(fremd.status).toBe(400);
+  });
+
+  test("Rollenwechsel, Qualifikation und Passwortänderung werden protokolliert", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const tomId = (
+      await admin.post("/api/employees", { name: "Tom Klein", password: "geheim123" })
+    ).data.id;
+
+    await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
+    // Passwort ändern, bevor Tom Admin wird — sonst darf ein Admin nicht mehr
+    // an sein Konto (siehe darfEingreifen in server/routes/company.js).
+    await admin.post(`/api/accounts/${tomId}/password`, {
+      password: "neuesPasswort1", currentPassword: ADMIN.password,
+    });
+    await admin.post(`/api/accounts/${tomId}/promote`);
+
+    const { data: eintraege } = await admin.get("/api/logbook");
+    const tomEintraege = eintraege.filter((e) => e.shiftLabel === "Tom Klein");
+
+    const qualEintrag = tomEintraege.find((e) => e.type === "account_updated" && e.message.includes("Qualifikation"));
+    expect(qualEintrag.message).toBe("Qualifikation „Erste Hilfe“ vergeben, durch Mara Vogt.");
+
+    const rolleEintrag = tomEintraege.find((e) => e.type === "account_updated" && e.message.includes("Rolle"));
+    expect(rolleEintrag.message).toBe("Rolle geändert von Mitarbeitende zu Administration, durch Mara Vogt.");
+
+    const pwEintrag = tomEintraege.find((e) => e.type === "password_changed");
+    expect(pwEintrag.message).toBe("Passwort geändert durch Mara Vogt.");
+    // Nie das Passwort selbst — weder im Eintrag noch sonst irgendwo in der Antwort.
+    expect(JSON.stringify(eintraege)).not.toContain("neuesPasswort1");
+  });
+
+  test("eine eigene Passwortänderung ist als solche erkennbar, ohne das Passwort zu zeigen", async () => {
+    const lea = await asLea();
+    const leaId = (await lea.get("/api/state")).data.userId;
+    await lea.post(`/api/accounts/${leaId}/password`, {
+      password: "eigenesNeu1", currentPassword: EMPLOYEE.password,
+    });
+
+    const admin = await asAdmin();
+    const { data: eintraege } = await admin.get("/api/logbook");
+    const eintrag = eintraege.find((e) => e.type === "password_changed" && e.shiftLabel === "Lea Brunner");
+    expect(eintrag.message).toBe("Eigenes Passwort geändert.");
+    expect(JSON.stringify(eintraege)).not.toContain("eigenesNeu1");
   });
 
   test("eine abgelehnte Anfrage bleibt ohne Zugriff", async () => {

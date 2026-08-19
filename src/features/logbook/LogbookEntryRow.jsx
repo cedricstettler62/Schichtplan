@@ -8,6 +8,8 @@ const TYPE_INFO = {
   reassigned: ["Übernommen", "amber"],
   help_requested: ["Hilfegesuch", "amber"],
   help_withdrawn: ["Hilfegesuch zurück", "ink"],
+  account_updated: ["Konto geändert", "petrol"],
+  password_changed: ["Passwort geändert", "rust"],
 };
 
 function fmtWhen(iso) {

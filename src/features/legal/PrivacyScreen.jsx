@@ -64,6 +64,13 @@ export default function PrivacyScreen() {
             Kalender abonniert — vergleichbar einem Passwort, nicht aus echten Daten der Person
             gebildet.
           </li>
+          <li>
+            <strong>Logbuch:</strong> wer eine Schicht angelegt, geändert, zu- oder umgeteilt hat,
+            sowie Rollen-, Qualifikations- und Passwortänderungen an einem Konto — jeweils mit
+            Zeitpunkt und, ausser bei einem Passwort, wer die Änderung vorgenommen hat. Bei einem
+            Passwort steht nur, wessen Konto betroffen ist und wann — nie das Passwort selbst,
+            weder das alte noch das neue.
+          </li>
         </ul>
         <p>
           Eine E-Mail-Adresse wird <strong>nicht</strong> erhoben. Das Programm verschickt keine
@@ -106,6 +113,11 @@ export default function PrivacyScreen() {
         <ul className="sb-legal-list">
           <li>Die Administration des eigenen Unternehmens.</li>
           <li>Andere Mitarbeitende desselben Unternehmens sehen Namen und Zuteilungen zu Schichten — das ist der Zweck eines gemeinsamen Plans.</li>
+          <li>
+            Das Logbuch sieht sonst nur die eigene Administration. Mitarbeitende kommen an den
+            Ausschnitt einer eigenen vergangenen Schicht heran, wenn sie dafür eine Einsicht anfragen
+            und die Administration sie genehmigt.
+          </li>
           <li>Der Betreiber, soweit für Betrieb, Sicherung und Fehlersuche nötig.</li>
         </ul>
         <p>

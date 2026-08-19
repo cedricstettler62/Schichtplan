@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
 
 /**
  * Passwort setzen — für das eigene Konto und für ein fremdes.
@@ -36,7 +37,8 @@ export default function PasswordForm({
   };
 
   const submitPassword = async () => {
-    if (neu.length < 4) { setError("Das Passwort muss mindestens 4 Zeichen haben."); setSaved(false); return; }
+    const passwortFehler = passwortProblem(neu);
+    if (passwortFehler) { setError(passwortFehler); setSaved(false); return; }
     if (neu !== wiederholung) { setError("Die Passwörter stimmen nicht überein."); setSaved(false); return; }
 
     /* Erst melden, wenn der Server zugestimmt hat. Vorher stand hier
@@ -82,16 +84,19 @@ export default function PasswordForm({
       {bestaetigt && (
         <div className="sb-password-expand">
           <div className="sb-form-grid">
-            <label className="sb-field">
-              <span>Neues Passwort</span>
-              <input
-                type="password"
-                value={neu}
-                onChange={(e) => setNeu(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitPassword()}
-                autoComplete="new-password"
-              />
-            </label>
+            <div className="sb-field-wrap">
+              <label className="sb-field">
+                <span>Neues Passwort</span>
+                <input
+                  type="password"
+                  value={neu}
+                  onChange={(e) => setNeu(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitPassword()}
+                  autoComplete="new-password"
+                />
+              </label>
+              <span className="sb-field-hint">{PASSWORD_HINWEIS}</span>
+            </div>
             <label className="sb-field">
               <span>Wiederholen</span>
               <input

@@ -146,7 +146,12 @@ body {
 .sb-saved-note { color: var(--sb-petrol); font-size: 13px; margin: 0; }
 /* Schmales Zahlenfeld (Zuteilungstag) – soll nicht die ganze Zeile füllen. */
 .sb-field-compact { flex: 0 0 auto; }
-.sb-field-compact input { width: 90px; flex: 0 0 90px; }
+/* `.sb-inline-add input` setzt `flex: 1 1 200px`, gedacht für das breite
+   Texteingabefeld daneben. Dieses Eingabefeld steckt aber selbst in einem
+   Flex-Container in Spaltenrichtung (.sb-field) — dort wirkt `flex-basis`
+   auf die Hochachse und würde das Feld auf 200px Höhe aufblähen. Beides
+   hier zurücksetzen, nur die Breite bleibt schmal. */
+.sb-field-compact input { flex: 0 0 auto; width: 90px; }
 .sb-status { color: var(--sb-ink-65); font-size: 13px; margin: 0; }
 
 /* Filters */

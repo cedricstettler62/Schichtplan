@@ -7,6 +7,7 @@ import AdminShiftsTab from "./features/shifts/AdminShiftsTab.jsx";
 import EmployeeShiftsTab from "./features/shifts/EmployeeShiftsTab.jsx";
 import MyShiftsTab from "./features/shifts/MyShiftsTab.jsx";
 import EmployeesTab from "./features/employees/EmployeesTab.jsx";
+import RegistrationsTab from "./features/registrations/RegistrationsTab.jsx";
 import AccountTab from "./features/account/AccountTab.jsx";
 import SettingsTab from "./features/settings/SettingsTab.jsx";
 import LogbookTab from "./features/logbook/LogbookTab.jsx";
@@ -84,16 +85,37 @@ export default function App() {
   const actMitMeldung = (fn, { neuLaden = true } = {}) => lauf(fn, true, neuLaden);
 
   /* --- Session --- */
+  /**
+   * Liefert null bei Erfolg, `{ pending: true }` für ein noch unbestätigtes
+   * Konto (das Login-Formular zeigt dann die grosse Wartemeldung statt eines
+   * Fehlertexts), sonst `{ message }`.
+   */
   const handleLogin = async (code, name, password) => {
     try {
       await api.post("/login", { code, name, password });
     } catch (err) {
-      return err.message;
+      if (!(err instanceof ApiError)) throw err;
+      if (err.data?.pending) return { pending: true };
+      return { message: err.message };
     }
     setActiveTab("overview");
     await refresh();
     return null;
   };
+
+  /* Legt ein Konto in Wartestellung an — meldet niemanden an. Die Bestätigung
+     kommt aus dem Anmeldungen-Tab der Administration. */
+  const handleRegister = async (code, name, password) => {
+    try {
+      await api.post("/register", { code, name, password });
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      return err.message;
+    }
+    return null;
+  };
+
+  const handleApproveRegistration = act((accountId) => api.post(`/accounts/${accountId}/approve`));
 
   const handleLogout = async () => {
     await api.post("/logout").catch(() => {});
@@ -235,7 +257,7 @@ export default function App() {
   if (!state) {
     return (
       <div className="sb-root">
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen onLogin={handleLogin} onRegister={handleRegister} />
         <Footer />
       </div>
     );
@@ -275,7 +297,7 @@ export default function App() {
     return <div className="sb-root"><LoginScreen onLogin={handleLogin} /><Footer /></div>;
   }
 
-  const { qualifications, shifts, settings, accounts, combinableSeries, logbookAccessRequests } = company;
+  const { qualifications, shifts, settings, accounts, combinableSeries, logbookAccessRequests, pendingAccounts } = company;
   const isAdmin = currentUser.role === "admin";
 
   const handleChangePassword = actMitMeldung((password, currentPassword) =>
@@ -287,7 +309,7 @@ export default function App() {
      Tab wären die eigenen Zuteilungen danach nirgends mehr zu sehen — samt
      Hilfegesuch, das nur von dort aus geht. */
   const hatEigeneSchichten = shifts.some((s) => s.enrolled.includes(currentUser.id));
-  const tabs = tabsFor(currentUser.role, hatEigeneSchichten);
+  const tabs = tabsFor(currentUser.role, hatEigeneSchichten, isAdmin ? pendingAccounts.length : 0);
   /* Der aktive Tab kann verschwinden — durch eine Beförderung oder weil die
      letzte eigene Einschreibung zurückgezogen wurde. Sonst stünde eine leere
      Seite da. */
@@ -331,6 +353,14 @@ export default function App() {
               onAddEmployee={handleAddEmployee} onResetPassword={handleResetPassword}
               onSetQualification={handleSetAccountQualification} onDeleteAccount={handleDeleteAccount}
               onPromote={handlePromoteToAdmin}
+            />
+          )}
+
+          {tab === "registrations" && isAdmin && (
+            <RegistrationsTab
+              pendingAccounts={pendingAccounts}
+              onApprove={handleApproveRegistration}
+              onDecline={handleDeleteAccount}
             />
           )}
 

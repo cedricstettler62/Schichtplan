@@ -107,8 +107,13 @@ export default function companiesRoutes(db, config) {
 
   /* --- Ausgesperrte Admins --- */
 
+  /* Ein noch unbestätigtes Selbstregistrierungskonto kommt hier nicht in
+     Frage — weder als Nachfolge noch überhaupt zur Ansicht durch die
+     Verwaltung, solange die eigene Firma es nicht bestätigt hat. */
   const konten = (companyId, rolle) =>
-    db.prepare("SELECT id, name FROM accounts WHERE company_id = ? AND role = ? ORDER BY rowid").all(companyId, rolle);
+    db
+      .prepare("SELECT id, name FROM accounts WHERE company_id = ? AND role = ? AND status = 'active' ORDER BY rowid")
+      .all(companyId, rolle);
 
   /** Die Mitarbeitendenkonten einer Firma — daraus kommt eine Nachfolge. */
   router.get("/:id/employees", (req, res) => res.json(konten(req.params.id, "employee")));
@@ -196,8 +201,9 @@ export default function companiesRoutes(db, config) {
 
     let nachfolge = null;
     if (admins <= 1) {
+      // Ein noch unbestätigtes Konto kommt als Nachfolge nicht in Frage.
       nachfolge = db
-        .prepare("SELECT id, name FROM accounts WHERE id = ? AND company_id = ? AND role = 'employee'")
+        .prepare("SELECT id, name FROM accounts WHERE id = ? AND company_id = ? AND role = 'employee' AND status = 'active'")
         .get(String(req.body?.nachfolgerId || ""), req.params.id);
       if (!nachfolge) {
         return res.status(409).json({

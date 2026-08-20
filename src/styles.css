@@ -46,6 +46,12 @@ body {
 .sb-login-sub { color: var(--sb-ink-65); margin-top: 8px; font-size: 15px; }
 .sb-login-card { max-width: 380px; margin: 0 auto; }
 .sb-login-btn { width: 100%; padding: 11px 16px; }
+/* Grosse, unübersehbare Meldung nach der Selbstregistrierung bzw. bei einem
+   Anmeldeversuch mit einem noch unbestätigten Konto. */
+.sb-pending-card { text-align: center; align-items: center; gap: 14px; padding: 32px 24px; }
+.sb-pending-icon { font-size: 42px; line-height: 1; }
+.sb-pending-title { font-family: var(--sb-font-head); font-size: 21px; font-weight: 700; margin: 0; }
+.sb-pending-text { color: var(--sb-ink-75); font-size: 14.5px; line-height: 1.55; margin: 0; }
 .sb-avatar { width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--sb-font-head); font-weight: 700; font-size: 16px; border: 2px solid; }
 .sb-avatar-admin { border-color: var(--sb-amber); color: var(--sb-amber); background: rgba(226,163,59,0.1); }
 .sb-avatar-employee { border-color: var(--sb-petrol); color: var(--sb-petrol); background: rgba(63,124,116,0.1); }
@@ -287,6 +293,10 @@ body {
 .sb-edit-shift .sb-form-actions { margin-top: 2px; }
 
 .sb-manage-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; padding-top: 14px; border-top: 1px dashed var(--sb-line); }
+
+/* Anmeldungen (Selbstregistrierung) */
+.sb-pending-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; }
+.sb-pending-row .sb-manage-name { flex: 1; min-width: 140px; }
 
 .sb-account-head { display: flex; align-items: center; gap: 14px; }
 

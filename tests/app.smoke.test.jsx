@@ -58,13 +58,63 @@ describe("Anmeldung", () => {
   test("weist einen unbekannten Firmencode ab", async () => {
     const user = await openApp();
     await login(user, { code: "999999", name: "Wer Auch Immer", password: "egal" });
-    expect(await screen.findByText("Unbekannter Firmencode.")).toBeInTheDocument();
+    expect(await screen.findByText("Firmencode, Name oder Passwort ist falsch.")).toBeInTheDocument();
   });
 
   test("weist ein falsches Passwort ab", async () => {
     const user = await openApp();
     await login(user, { ...ADMIN, password: "falsch" });
-    expect(await screen.findByText("Name oder Passwort ist falsch.")).toBeInTheDocument();
+    expect(await screen.findByText("Firmencode, Name oder Passwort ist falsch.")).toBeInTheDocument();
+  });
+});
+
+describe("Selbstregistrierung", () => {
+  /** Füllt das Registrierungsformular aus und legt das Konto an. */
+  const registrieren = async (user, { code = "111111", name, password = "startPw1" }) => {
+    await user.click(screen.getByRole("button", { name: "Noch kein Konto? Jetzt registrieren" }));
+    await user.type(screen.getByPlaceholderText("6 Ziffern"), code);
+    await user.type(screen.getByPlaceholderText("Vor- und Nachname"), name);
+    const [pw, wiederholung] = document.querySelectorAll('input[type="password"]');
+    await user.type(pw, password);
+    await user.type(wiederholung, password);
+    await user.click(screen.getByRole("button", { name: "Konto erstellen" }));
+  };
+
+  test("zeigt danach die grosse Meldung, dass ein Admin zustimmen muss", async () => {
+    const user = await openApp();
+    await registrieren(user, { name: "Neu Hier" });
+
+    expect(await screen.findByText("Dein Konto wartet auf Bestätigung")).toBeInTheDocument();
+    expect(screen.getByText(/muss zuerst ein Admin deines Unternehmens dein Konto bestätigen/)).toBeInTheDocument();
+  });
+
+  test("ein Anmeldeversuch mit dem noch unbestätigten Konto zeigt dieselbe Meldung", async () => {
+    const user = await openApp();
+    await registrieren(user, { name: "Wartet Noch" });
+    await screen.findByText("Dein Konto wartet auf Bestätigung");
+    await user.click(screen.getByRole("button", { name: "Zurück zur Anmeldung" }));
+
+    await login(user, { code: "111111", name: "Wartet Noch", password: "startPw1" });
+    expect(await screen.findByText("Dein Konto wartet auf Bestätigung")).toBeInTheDocument();
+  });
+
+  test("die Administration bestätigt oder lehnt im Tab „Anmeldungen“ ab", async () => {
+    const user = await openApp();
+    await registrieren(user, { name: "Neu Hier" });
+    await screen.findByText("Dein Konto wartet auf Bestätigung");
+    await user.click(screen.getByRole("button", { name: "Zurück zur Anmeldung" }));
+
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: /Anmeldungen/ }));
+
+    expect(await screen.findByText("Neu Hier")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bestätigen" }));
+    await waitFor(() => expect(screen.getByText("Keine offenen Anmeldungen.")).toBeInTheDocument());
+
+    // Bestätigt taucht die Person jetzt normal bei den Mitarbeitenden auf.
+    await user.click(within(nav).getByRole("button", { name: "Mitarbeitende" }));
+    expect(await screen.findByText("Neu Hier")).toBeInTheDocument();
   });
 });
 

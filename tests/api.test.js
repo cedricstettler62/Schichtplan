@@ -46,13 +46,15 @@ describe("Anmeldung", () => {
   test("unbekannter Firmencode", async () => {
     const res = await client().login({ code: "999999", name: "Wer Auch Immer", password: "egal" });
     expect(res.status).toBe(401);
-    expect(res.data.error).toBe("Unbekannter Firmencode.");
+    // Dieselbe Meldung wie bei falschem Namen/Passwort — sie verrät nicht,
+    // welcher der drei Werte falsch war.
+    expect(res.data.error).toBe("Firmencode, Name oder Passwort ist falsch.");
   });
 
   test("falsches Passwort", async () => {
     const res = await client().login({ ...ADMIN, password: "falsch" });
     expect(res.status).toBe(401);
-    expect(res.data.error).toBe("Name oder Passwort ist falsch.");
+    expect(res.data.error).toBe("Firmencode, Name oder Passwort ist falsch.");
   });
 
   test("nach dem Login kommt der eigene Firmenzustand — ohne Passwörter", async () => {
@@ -1110,6 +1112,109 @@ describe("Erstes Passwort", () => {
   });
 });
 
+describe("Selbstregistrierung", () => {
+  const registrieren = (c, form = {}) =>
+    c.post("/api/register", { code: "111111", name: "Neu Hier", password: "startPw1", ...form });
+
+  test("ein registriertes Konto kann sich noch nicht anmelden", async () => {
+    expect((await registrieren(client())).status).toBe(200);
+
+    const versuch = await client().login({ code: "111111", name: "Neu Hier", password: "startPw1" });
+    expect(versuch.status).toBe(403);
+    expect(versuch.data.pending).toBe(true);
+  });
+
+  test("taucht für die Administration unter den Anmeldungen auf, nicht bei den Mitarbeitenden", async () => {
+    await registrieren(client());
+
+    const admin = await asAdmin();
+    const { data } = await admin.get("/api/state");
+    expect(data.company.pendingAccounts.map((a) => a.name)).toContain("Neu Hier");
+    expect(data.company.accounts.map((a) => a.name)).not.toContain("Neu Hier");
+  });
+
+  test("Mitarbeitende sehen keine Anmeldungen", async () => {
+    await registrieren(client());
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.get("/api/state")).data.company.pendingAccounts).toEqual([]);
+  });
+
+  test("nach der Bestätigung kann sich die Person anmelden", async () => {
+    await registrieren(client());
+    const admin = await asAdmin();
+    const pendingId = (await admin.get("/api/state")).data.company.pendingAccounts[0].id;
+
+    expect((await admin.post(`/api/accounts/${pendingId}/approve`)).status).toBe(200);
+    expect((await client().login({ code: "111111", name: "Neu Hier", password: "startPw1" })).status).toBe(200);
+
+    const danach = (await admin.get("/api/state")).data.company;
+    expect(danach.accounts.map((a) => a.name)).toContain("Neu Hier");
+    expect(danach.pendingAccounts).toEqual([]);
+  });
+
+  test("nur die Administration bestätigt eine Anmeldung", async () => {
+    await registrieren(client());
+    const admin = await asAdmin();
+    const pendingId = (await admin.get("/api/state")).data.company.pendingAccounts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.post(`/api/accounts/${pendingId}/approve`)).status).toBe(403);
+  });
+
+  test("Ablehnen löscht das Konto — die schon bestehende Löschroute reicht dafür", async () => {
+    await registrieren(client());
+    const admin = await asAdmin();
+    const pendingId = (await admin.get("/api/state")).data.company.pendingAccounts[0].id;
+
+    expect((await admin.del(`/api/accounts/${pendingId}`)).status).toBe(200);
+    expect((await client().login({ code: "111111", name: "Neu Hier", password: "startPw1" })).status).toBe(401);
+  });
+
+  test("ein zu schwaches Passwort registriert kein Konto", async () => {
+    const res = await registrieren(client(), { password: "abc" });
+    expect(res.status).toBe(400);
+  });
+
+  test("ein unbekannter Firmencode registriert kein Konto", async () => {
+    const res = await registrieren(client(), { code: "999999" });
+    expect(res.status).toBe(400);
+  });
+
+  test("ein zweites Konto mit gleichem Namen und Passwort wäre unerreichbar", async () => {
+    expect((await registrieren(client())).status).toBe(200);
+    expect((await registrieren(client())).status).toBe(409);
+  });
+
+  test("kein Admin-Konto entsteht auf diesem Weg", async () => {
+    await registrieren(client());
+    const admin = await asAdmin();
+    const { data } = await admin.get("/api/state");
+    expect(data.company.pendingAccounts.find((a) => a.name === "Neu Hier").role).toBe("employee");
+  });
+
+  test("eine unbestätigte Person zählt nicht als Nachfolge für ein Admin-Konto", async () => {
+    await registrieren(client());
+    const su = client();
+    await su.login(SUPER);
+    const firmaId = server.db.prepare("SELECT id FROM companies WHERE code = '111111'").get().id;
+
+    // Sie taucht schon in der Auswahlliste nicht auf ...
+    const leute = (await su.get(`/api/companies/${firmaId}/employees`)).data;
+    expect(leute.map((l) => l.name)).not.toContain("Neu Hier");
+
+    // ... und auch ein gezielt mitgeschickter Wert zählt nicht.
+    const pendingId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Neu Hier'").get().id;
+    const maraId = server.db.prepare("SELECT id FROM accounts WHERE name = 'Mara Vogt'").get().id;
+    const res = await su.del(`/api/companies/${firmaId}/admins/${maraId}`, {
+      currentPassword: SUPER.password, nachfolgerId: pendingId,
+    });
+    expect(res.status).toBe(409);
+  });
+});
+
 describe("Überschneidende Schichten", () => {
   /* Wer eine Schicht übernimmt, kann in derselben Zeit keine zweite übernehmen.
      Ausnahmen trägt die Administration beim Anlegen ausdrücklich ein. */
@@ -1795,7 +1900,7 @@ describe("Archivieren und Pausieren", () => {
     // Ein neuer Loginversuch verhält sich wie ein unbekannter Firmencode.
     const loginVersuch = await client().login(ADMIN);
     expect(loginVersuch.status).toBe(401);
-    expect(loginVersuch.data.error).toBe("Unbekannter Firmencode.");
+    expect(loginVersuch.data.error).toBe("Firmencode, Name oder Passwort ist falsch.");
 
     // Logbuch bleibt für die Verwaltung einsehbar.
     expect((await superadmin.get(`/api/companies/${firmaId()}/logbook`)).status).toBe(200);

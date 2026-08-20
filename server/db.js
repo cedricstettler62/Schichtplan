@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS accounts (
   name          TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('admin', 'employee')),
+  /* 'pending' für ein Konto, das sich selbst registriert hat und noch auf die
+     Bestätigung eines Admins wartet — anmelden kann es sich erst als 'active'.
+     Von der Administration angelegte Konten entstehen direkt als 'active'.
+     Admin-Konten sind nie 'pending': Selbstregistrierung legt ausschliesslich
+     Mitarbeitendenkonten an. */
+  status        TEXT NOT NULL DEFAULT 'active',
   /* Zählt bei jeder Passwortänderung um eins hoch. Ein Sitzungs-Cookie
      trägt den Stand mit, der beim Anmelden galt — passt er nicht mehr, ist
      die Sitzung vorbei. So endet mit dem alten Passwort auch alles, was mit
@@ -224,6 +230,7 @@ export function openDb(file) {
   ensureColumn(db, "shifts", "end_date", "TEXT");
   ensureColumn(db, "accounts", "session_epoch", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "accounts", "calendar_token", "TEXT");
+  ensureColumn(db, "accounts", "status", "TEXT NOT NULL DEFAULT 'active'");
   /* NULL = normaler Betrieb. Beide unabhängig voneinander: pausiert sperrt nur
      den Zugang, archiviert zusätzlich die sichtbare Firmenliste — beides lässt
      sich einzeln wieder aufheben, siehe server/routes/companies.js. */
@@ -298,8 +305,11 @@ function gruppiere(rows, key, wert) {
   return map;
 }
 
-/** Konten einer Firma samt Qualifikationen; `spalten` bestimmt, was mitkommt. */
-function readAccounts(db, companyId, spalten) {
+/**
+ * Konten einer Firma samt Qualifikationen; `spalten` bestimmt, was mitkommt.
+ * `status` schränkt auf 'active' oder 'pending' ein — ohne Angabe kommen beide.
+ */
+function readAccounts(db, companyId, spalten, { status = null } = {}) {
   const quals = gruppiere(
     db.prepare(
       `SELECT aq.account_id, aq.qualification_id FROM account_qualifications aq
@@ -309,9 +319,10 @@ function readAccounts(db, companyId, spalten) {
     "account_id",
     (r) => r.qualification_id
   );
+  const args = status ? [companyId, status] : [companyId];
   return db
-    .prepare(`SELECT ${spalten} FROM accounts WHERE company_id = ? ORDER BY rowid`)
-    .all(companyId)
+    .prepare(`SELECT ${spalten} FROM accounts WHERE company_id = ?${status ? " AND status = ?" : ""} ORDER BY rowid`)
+    .all(...args)
     .map((a) => ({ ...a, qualifications: quals.get(a.id) || [] }));
 }
 
@@ -412,7 +423,7 @@ function readAccessRequests(db, companyId, accountId = null) {
  * `anfragenVon` schränkt die Einsichtsanfragen auf ein Konto ein; ohne die
  * Angabe kommen alle mit (für die Administration).
  */
-export function readCompany(db, companyId, { anfragenVon = null } = {}) {
+export function readCompany(db, companyId, { anfragenVon = null, admin = false } = {}) {
   const row = db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId);
   if (!row) return null;
 
@@ -423,7 +434,12 @@ export function readCompany(db, companyId, { anfragenVon = null } = {}) {
     qualifications: db
       .prepare("SELECT id, name FROM qualifications WHERE company_id = ? ORDER BY rowid")
       .all(companyId),
-    accounts: readAccounts(db, companyId, "id, name, role"),
+    accounts: readAccounts(db, companyId, "id, name, role", { status: "active" }),
+    /* Selbst registrierte, noch unbestätigte Konten — ausschliesslich für die
+       Administration, die sie unter „Anmeldungen“ annimmt oder ablehnt. Bis
+       dahin tauchen sie nirgends sonst auf: nicht in der Mitarbeitendenliste,
+       nicht als Nachfolge-Kandidat, nicht in der Zuteilung. */
+    pendingAccounts: admin ? readAccounts(db, companyId, "id, name, role", { status: "pending" }) : [],
     shifts: readShifts(db, companyId, true),
     /* Damit das Bearbeiten-Formular zeigen kann, was bereits freigegeben ist —
        sonst nähme jede Änderung einer Schicht eine alte Freigabe stillschweigend
@@ -437,9 +453,11 @@ export function readCompany(db, companyId, { anfragenVon = null } = {}) {
   };
 }
 
-/** Alle Konten einer Firma inklusive Qualifikationen — für die Zuteilungslogik. */
+/** Alle aktiven Konten einer Firma inklusive Qualifikationen — für die Zuteilungslogik.
+ *  Ein noch unbestätigtes Konto kann sich nicht anmelden und soll deshalb auch
+ *  keine Schicht zugeteilt bekommen. */
 export function readAccountsForLogic(db, companyId) {
-  return readAccounts(db, companyId, "id, role");
+  return readAccounts(db, companyId, "id, role", { status: "active" });
 }
 
 /**

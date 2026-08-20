@@ -2,9 +2,12 @@
    damit die Formulare sie direkt anzeigen können. */
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, data) {
     super(message);
     this.status = status;
+    // Die volle Antwort — für Stellen, die mehr als den Text brauchen (etwa
+    // das Login-Formular, das ein unbestätigtes Konto anders behandelt).
+    this.data = data;
   }
 }
 
@@ -22,7 +25,7 @@ async function request(method, path, body) {
   }
 
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(data?.error || "Es ist ein Fehler aufgetreten.", res.status);
+  if (!res.ok) throw new ApiError(data?.error || "Es ist ein Fehler aufgetreten.", res.status, data);
   return data;
 }
 

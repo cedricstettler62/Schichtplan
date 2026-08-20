@@ -154,6 +154,27 @@ export default function companyRoutes(db, config) {
   });
 
   /**
+   * Bestätigt ein selbst registriertes Konto — erst danach kann sich die
+   * Person anmelden. Ablehnen läuft über die schon bestehende Löschroute
+   * weiter unten: ein abgelehntes Konto ist nichts anderes als ein gelöschtes,
+   * das nie eine Schicht besetzt haben kann.
+   *
+   * Nur ein Mitarbeitendenkonto kann in Wartestellung sein — Admin-Konten
+   * entstehen nie über die Selbstregistrierung, darum gibt es hier auch nichts
+   * zu prüfen, das dem `ziel()`-Schutz vor fremden Admin-Konten entspräche.
+   */
+  router.post("/accounts/:id/approve", requireAdmin, (req, res) => {
+    const target = db
+      .prepare("SELECT id, status FROM accounts WHERE id = ? AND company_id = ? AND role = 'employee'")
+      .get(req.params.id, req.session.companyId);
+    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
+    if (target.status !== "pending") return res.json({ ok: true });
+
+    db.prepare("UPDATE accounts SET status = 'active' WHERE id = ?").run(target.id);
+    res.json({ ok: true });
+  });
+
+  /**
    * Qualifikationen vergibt ausschliesslich die Administration — für die
    * Belegschaft und für sich selbst, nicht für andere Admin-Konten.
    *

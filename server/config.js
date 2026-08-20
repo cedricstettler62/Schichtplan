@@ -5,6 +5,14 @@
 export function loadConfig(env = process.env) {
   return {
     port: Number(env.PORT || 3000),
+    /* Nur auf localhost lauschen: cloudflared erreicht den Server ohnehin nur
+       über http://localhost:PORT (siehe deploy/install.sh), braucht die Bindung
+       an alle Netzwerkschnittstellen also gar nicht. Ohne das wäre der Port im
+       lokalen Netz direkt ansprechbar — und "trust proxy" in app.js würde dann
+       einer selbst gesetzten X-Forwarded-For-Kopfzeile jeder Verbindung glauben,
+       was die IP-Bremse gegen Passwort-Raten (createLoginLimiter) wirkungslos
+       machte: eine neue Kopfzeile, ein neues Kontingent. */
+    host: env.SB_HOST || "127.0.0.1",
     dbPath: env.SB_DB || "data/schichtplan.db",
     sessionSecret: env.SB_SESSION_SECRET || "lokaler-entwicklungsschluessel",
     superAdmin: {

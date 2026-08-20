@@ -38,8 +38,8 @@ if (config.seedDemo && seedDemo(db)) {
 
 startScheduler(db);
 
-createApp(db, config).listen(config.port, () => {
-  console.log(`Schichtboard läuft auf http://localhost:${config.port}`);
+createApp(db, config).listen(config.port, config.host, () => {
+  console.log(`Schichtboard läuft auf http://${config.host}:${config.port}`);
   console.log(`Datenbank: ${config.dbPath}`);
 });
 

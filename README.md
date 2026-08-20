@@ -372,6 +372,7 @@ zufälligen Werten.
 | Variable            | Bedeutung                                             |
 | ------------------- | ----------------------------------------------------- |
 | `PORT`              | Port des Servers, Standard 3000                       |
+| `SB_HOST`           | Bind-Adresse, Standard `127.0.0.1` (nur lokal erreichbar) |
 | `SB_DB`             | Pfad zur Datenbankdatei                               |
 | `SB_SESSION_SECRET` | unterschreibt das Sitzungs-Cookie, geheim und zufällig |
 | `SB_SUPER_*`        | Zugang zur Unternehmensverwaltung                     |

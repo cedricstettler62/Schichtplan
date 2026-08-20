@@ -11,6 +11,8 @@ const TYPE_INFO = {
   help_withdrawn: ["Hilfegesuch zurück", "ink"],
   account_updated: ["Konto geändert", "petrol"],
   password_changed: ["Passwort geändert", "rust"],
+  enrolled: ["Eingeschrieben", "amber"],
+  withdrawn: ["Ausgetragen", "ink"],
 };
 
 function fmtWhen(iso) {

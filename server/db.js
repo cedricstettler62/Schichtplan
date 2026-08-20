@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS logbook_entries (
   shift_label        TEXT NOT NULL,
   type               TEXT NOT NULL CHECK (type IN
                         ('created', 'updated', 'deleted', 'assigned', 'unassigned', 'reassigned',
-                         'help_requested', 'help_withdrawn', 'account_updated', 'password_changed')),
+                         'help_requested', 'help_withdrawn', 'account_updated', 'password_changed',
+                         'enrolled', 'withdrawn')),
   message            TEXT NOT NULL,
   actor_account_id   TEXT REFERENCES accounts(id) ON DELETE SET NULL,
   target_account_id  TEXT REFERENCES accounts(id) ON DELETE SET NULL,
@@ -164,14 +165,15 @@ function dropColumn(db, table, column) {
 }
 
 /**
- * logbook_entries.type bekam mit den Kontoänderungen zwei neue Werte
- * ('account_updated', 'password_changed'). SQLite kann eine CHECK-Bedingung
- * nicht per ALTER TABLE erweitern — anders als bei ensureColumn() reicht ein
- * einfacher Zusatz nicht. Auf einer Datenbank, deren Tabelle die alte,
- * engere Liste noch trägt, wird sie deshalb einmalig neu angelegt und ihr
- * bisheriger Inhalt hinübergeholt; auf einer frisch erzeugten (CREATE TABLE
- * IF NOT EXISTS mit der aktuellen SCHEMA-Fassung) enthält sie die neuen
- * Werte bereits, und diese Funktion tut nichts.
+ * logbook_entries.type bekam mit den Kontoänderungen und dem Ein-/Austragen
+ * neue Werte ('account_updated', 'password_changed', 'enrolled', 'withdrawn').
+ * SQLite kann eine CHECK-Bedingung nicht per ALTER TABLE erweitern — anders
+ * als bei ensureColumn() reicht ein einfacher Zusatz nicht. Auf einer
+ * Datenbank, deren Tabelle die alte, engere Liste noch trägt, wird sie
+ * deshalb einmalig neu angelegt und ihr bisheriger Inhalt hinübergeholt; auf
+ * einer frisch erzeugten (CREATE TABLE IF NOT EXISTS mit der aktuellen
+ * SCHEMA-Fassung) enthält sie die neuen Werte bereits, und diese Funktion
+ * tut nichts.
  */
 function ensureLogbookTypes(db) {
   const row = db
@@ -179,7 +181,7 @@ function ensureLogbookTypes(db) {
     .get();
   // Der jüngste hinzugekommene Wert steht stellvertretend für alle: Enthält die
   // Tabelle ihn, ist sie auf dem aktuellen Stand.
-  if (!row || row.sql.includes("'deleted'")) return;
+  if (!row || row.sql.includes("'withdrawn'")) return;
 
   db.transaction(() => {
     db.exec("ALTER TABLE logbook_entries RENAME TO logbook_entries_alt");

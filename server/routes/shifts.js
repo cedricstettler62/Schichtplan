@@ -16,7 +16,8 @@ import {
 import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
 import {
-  logAssigned, logHelp, logReassigned, logShiftCreated, logShiftDeleted, logShiftUpdated, logUnassigned,
+  logAssigned, logEnrolled, logHelp, logReassigned, logShiftCreated, logShiftDeleted, logShiftUpdated,
+  logUnassigned, logWithdrawn,
 } from "../logbook.js";
 
 /* Dieselbe Liste, die auch das Formular anbietet — zwei Aufzählungen liefen
@@ -309,9 +310,20 @@ export default function shiftRoutes(db) {
     res.json({ updated: betroffen.length, ausgetragen, geaendert });
   });
 
-  /** Sofortige Zuteilung durch die Administration ("Jetzt zuteilen"). */
+  /**
+   * Sofortige Zuteilung durch die Administration ("Jetzt zuteilen").
+   *
+   * Der Button ist im Frontend nur sichtbar, solange Plätze offen sind — das
+   * schützt aber nicht vor einem direkten API-Aufruf. Deshalb hier dieselbe
+   * Prüfung serverseitig: Ist die Schicht schon voll zugeteilt, gibt es nichts
+   * mehr zu verteilen.
+   */
   router.post("/:id/assign", requireAdmin, (req, res) => {
-    if (!ownShift(db, req, req.params.id)) return res.status(404).json({ error: "Schicht nicht gefunden." });
+    const shift = ownShift(db, req, req.params.id);
+    if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+    if (shift.assigned.length >= shift.seats) {
+      return res.status(409).json({ error: "Diese Schicht ist bereits vollständig zugeteilt." });
+    }
     recompute(db, req.session.companyId, [req.params.id]);
     res.json({ ok: true });
   });
@@ -334,7 +346,10 @@ export default function shiftRoutes(db) {
           error: "Diese Schicht ist dir fest zugeteilt. Nur ein Admin kann dich austragen – oder du stellst ein Hilfegesuch.",
         });
       }
-      db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, me);
+      db.transaction(() => {
+        db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, me);
+        logWithdrawn(db, req.session.companyId, shift, req.session.name, me);
+      })();
       recompute(db, req.session.companyId);
       return res.json({ ok: true });
     }
@@ -363,6 +378,8 @@ export default function shiftRoutes(db) {
       }
       if (sofortZuteilen) {
         logAssigned(db, req.session.companyId, shift, req.session.name, me);
+      } else {
+        logEnrolled(db, req.session.companyId, shift, req.session.name, me);
       }
     })();
 

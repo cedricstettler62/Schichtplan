@@ -75,6 +75,21 @@ export function logReassigned(db, companyId, shift, newName, newAccountId, oldNa
   );
 }
 
+/** Einschreiben in die Warteliste — nicht zu verwechseln mit logAssigned: das
+ *  greift, wenn nach bereits gelaufener Auslosung sofort zugeteilt wird. */
+export function logEnrolled(db, companyId, shift, actorName, actorAccountId) {
+  zurSchicht(db, companyId, shift, "enrolled", `${actorName} hat sich eingeschrieben.`, {
+    actorAccountId, targetAccountId: actorAccountId,
+  });
+}
+
+/** Selbstständiges Austragen von der Warteliste vor der Auslosung. */
+export function logWithdrawn(db, companyId, shift, actorName, actorAccountId) {
+  zurSchicht(db, companyId, shift, "withdrawn", `${actorName} hat sich ausgetragen.`, {
+    actorAccountId, targetAccountId: actorAccountId,
+  });
+}
+
 export function logHelp(db, companyId, shift, actorName, actorAccountId, requested) {
   zurSchicht(
     db, companyId, shift, requested ? "help_requested" : "help_withdrawn",

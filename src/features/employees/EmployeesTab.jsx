@@ -1,6 +1,6 @@
 import { useState } from "react";
 import EmployeeManageRow from "./EmployeeManageRow.jsx";
-import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
+import { emailProblem } from "#shared/email.js";
 
 export default function EmployeesTab({
   accounts, qualifications, verifyAdmin,
@@ -8,30 +8,23 @@ export default function EmployeesTab({
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
-  const [passwort, setPasswort] = useState("");
-  const [wiederholung, setWiederholung] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [angelegt, setAngelegt] = useState("");
 
   const employees = accounts.filter((a) => a.role === "employee");
-  /* Gleiche Namen sind erlaubt — zwei Menschen dürfen gleich heissen. Nur muss
-     dann das Passwort ein anderes sein, sonst landet jede Anmeldung beim ersten
-     der beiden Konten und das zweite bleibt unerreichbar. */
-  const namensdopplung =
-    name.trim() && accounts.some((a) => a.name.trim().toLowerCase() === name.trim().toLowerCase());
 
   const submitEmployee = async () => {
     if (!name.trim()) { setError("Bitte einen Namen eingeben."); return; }
-    const passwortFehler = passwortProblem(passwort);
-    if (passwortFehler) { setError(passwortFehler); return; }
-    if (passwort !== wiederholung) { setError("Die beiden Passwörter stimmen nicht überein."); return; }
+    const mailFehler = emailProblem(email, { required: true });
+    if (mailFehler) { setError(mailFehler); return; }
     setError("");
 
-    const meldung = await onAddEmployee({ name: name.trim(), password: passwort });
+    const meldung = await onAddEmployee({ name: name.trim(), email: email.trim() });
     if (meldung) { setError(meldung); return; }
 
     setAngelegt(name.trim());
-    setName(""); setPasswort(""); setWiederholung("");
+    setName(""); setEmail("");
     setFormOpen(false);
   };
 
@@ -53,24 +46,20 @@ export default function EmployeesTab({
             <label className="sb-field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} placeholder="Vor- und Nachname" /></label>
             <div className="sb-field-wrap">
               <label className="sb-field">
-                <span>Erstes Passwort</span>
-                <input type="password" value={passwort} onChange={(e) => setPasswort(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} autoComplete="new-password" />
+                <span>E-Mail-Adresse</span>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} placeholder="name@beispiel.ch" />
               </label>
-              <span className="sb-field-hint">{PASSWORD_HINWEIS}</span>
+              <span className="sb-field-hint">
+                Dorthin geht der Link, mit dem die Person ihr eigenes Passwort einrichtet, und später auch
+                die Benachrichtigung bei einer neuen Zuteilung.
+              </span>
             </div>
-            <label className="sb-field"><span>Wiederholen</span><input type="password" value={wiederholung} onChange={(e) => setWiederholung(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitEmployee()} autoComplete="new-password" /></label>
           </div>
-          {namensdopplung && (
-            <p className="sb-status">
-              Es gibt bereits ein Konto mit diesem Namen. Das ist möglich – vergib aber ein anderes
-              Passwort als dort, sonst ist eines der beiden Konten nicht mehr erreichbar.
-            </p>
-          )}
           {error && <p className="sb-error">{error}</p>}
           <div className="sb-form-actions">
             <button type="button" className="sb-btn sb-btn-ink" onClick={submitEmployee}>Konto anlegen</button>
             <span className="sb-status">
-              Gib Firmencode, Name und dieses Passwort persönlich weiter. Ändern kann die Person es danach selbst.
+              Ein Passwort legst du nicht fest — die Person richtet ihr eigenes über den Link in der Mail ein.
             </span>
           </div>
         </div>
@@ -78,7 +67,7 @@ export default function EmployeesTab({
 
       {angelegt && (
         <div className="sb-card">
-          <p className="sb-saved-note">Konto für {angelegt} angelegt.</p>
+          <p className="sb-saved-note">Konto für {angelegt} angelegt — die Einladungsmail ist unterwegs.</p>
           <div className="sb-form-actions">
             <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => setAngelegt("")}>
               Ausblenden

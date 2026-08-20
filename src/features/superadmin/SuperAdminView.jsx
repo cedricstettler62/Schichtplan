@@ -3,14 +3,15 @@ import Badge from "../../components/Badge.jsx";
 import ArchivedCompanyRow from "./ArchivedCompanyRow.jsx";
 import CompanyRow from "./CompanyRow.jsx";
 import NewCompanyForm from "./NewCompanyForm.jsx";
+import SuperAdminSettingsTab from "./SuperAdminSettingsTab.jsx";
 import SystemPanel from "./SystemPanel.jsx";
 
 /** `companies` sind hier Kurzfassungen: { id, code, name, adminCount, employeeCount }. */
 export default function SuperAdminView({
-  companies, archivedCompanies, superAdminName, onCreateCompany,
+  companies, archivedCompanies, superAdminName, superAdminCode, superAdminEmail, onCreateCompany,
   onArchiveCompany, onRestoreCompany, onPurgeCompany, onPauseCompany, onUnpauseCompany,
   onUpdateCompanyName, onLoadAdmins, onLoadEmployees, onResetAdminPassword, onDeleteAdmin, onLoadLogbook,
-  onDataChanged, onLogout,
+  onDataChanged, onVerifySelf, onChangeOwnCode, onChangeOwnEmail, onChangeOwnPassword, onLogout,
 }) {
   const [tab, setTab] = useState("unternehmen");
   const [formOpen, setFormOpen] = useState(false);
@@ -51,10 +52,27 @@ export default function SuperAdminView({
           >
             Archiviert{archivedCompanies?.length > 0 ? ` (${archivedCompanies.length})` : ""}
           </button>
+          <button
+            type="button"
+            className={`sb-tab-btn ${tab === "einstellungen" ? "sb-tab-btn-active" : ""}`}
+            onClick={() => setTab("einstellungen")}
+          >
+            Einstellungen
+          </button>
         </nav>
       </header>
       <main>
-        {tab === "unternehmen" ? (
+        {tab === "einstellungen" && (
+          <SuperAdminSettingsTab
+            code={superAdminCode}
+            email={superAdminEmail}
+            verifySelf={onVerifySelf}
+            onChangeCode={onChangeOwnCode}
+            onChangeEmail={onChangeOwnEmail}
+            onChangePassword={onChangeOwnPassword}
+          />
+        )}
+        {tab === "unternehmen" && (
           <div className="sb-tab">
             <div className="sb-tab-head">
               <div className="sb-tab-head-text">
@@ -104,7 +122,8 @@ export default function SuperAdminView({
 
             <SystemPanel onDataChanged={onDataChanged} />
           </div>
-        ) : (
+        )}
+        {tab === "archiviert" && (
           <div className="sb-tab">
             <div className="sb-tab-head">
               <div className="sb-tab-head-text">

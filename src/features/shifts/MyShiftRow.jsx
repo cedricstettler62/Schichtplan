@@ -24,6 +24,9 @@ export default function MyShiftRow({
   const zurueckziehen = async () => setError((await onWithdraw(shift.id)) || "");
   const askedForHelp = shift.helpRequests.includes(currentUser.id);
   const freiePlaetze = shift.seats - shift.assigned.length;
+  /* Wer ohne eigene Einschreibung von der Administration zugewiesen wurde,
+     soll das sehen — spätestens beim nächsten Blick auf "Meine Schichten". */
+  const direktZugewiesen = shift.assignmentTypes?.[currentUser.id] === "manual";
 
   return (
     <div className="sb-ticket sb-ticket-expandable">
@@ -33,6 +36,7 @@ export default function MyShiftRow({
           <div className="sb-ticket-top">
             <span className="sb-ticket-name">{shift.name}</span>
             {wartend && <Badge tone="ink">Wartet auf Zuteilung</Badge>}
+            {direktZugewiesen && <Badge tone="amber">Direkt zugewiesen</Badge>}
             {askedForHelp && <Badge tone="amber">Hilfe gesucht</Badge>}
           </div>
           <div className="sb-ticket-meta">
@@ -85,6 +89,11 @@ export default function MyShiftRow({
             </>
           ) : (
             <>
+              {direktZugewiesen && (
+                <p className="sb-status">
+                  Diese Schicht wurde dir direkt von der Verwaltung zugewiesen, ohne eigene Einschreibung.
+                </p>
+              )}
               <p className="sb-status">
                 {askedForHelp
                   ? "Dein Hilfegesuch steht in der Übersicht – jemand mit passender Qualifikation kann übernehmen."

@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { createApp } from "../../server/app.js";
 import { loadConfig } from "../../server/config.js";
-import { DbHandle, seedDemo } from "../../server/db.js";
+import { DbHandle, ensureSuperAdmin, seedDemo } from "../../server/db.js";
 
 export const ADMIN = { code: "111111", name: "Mara Vogt", password: "12345" };
 export const EMPLOYEE = { code: "111111", name: "Lea Brunner", password: "12345" };
@@ -20,6 +20,7 @@ export async function startTestServer({ seed = true, env = {} } = {}) {
 
   const config = loadConfig({ SB_SESSION_SECRET: "test-schluessel", SB_DB: dbPath, ...env });
   const db = new DbHandle(dbPath);
+  ensureSuperAdmin(db, config);
   if (seed) seedDemo(db);
 
   const server = await new Promise((resolve) => {

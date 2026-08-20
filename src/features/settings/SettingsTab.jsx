@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { FAIRNESS_WINDOW_KEYS, FAIRNESS_WINDOW_LABELS } from "#shared/labels.js";
 import PasswordForm from "../../components/PasswordForm.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
 import CalendarSubscriptionCard from "../../components/CalendarSubscriptionCard.jsx";
+import EmailCard from "../../components/EmailCard.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import AppInstallCard from "../../components/AppInstallCard.jsx";
 import SessionCard from "../../components/SessionCard.jsx";
@@ -10,13 +12,16 @@ import SessionCard from "../../components/SessionCard.jsx";
 export default function SettingsTab({
   settings, currentUser, istLetzterAdmin, verifySelf, onDemoteSelf,
   qualifications, onAddQualification, onDeleteQualification, onSetOwnQualification,
-  onChangeAssignmentDay, onChangeOwnPassword, onDeleteOwnAccount, onLogout,
+  onChangeAssignmentDay, onChangeFairnessSettings, onChangeOwnPassword, onChangeOwnEmail, onDeleteOwnAccount, onLogout,
 }) {
   const [value, setValue] = useState(settings.assignmentDay);
   const [saved, setSaved] = useState(false);
   const [newQual, setNewQual] = useState("");
   const [qualError, setQualError] = useState("");
   const [rolleError, setRolleError] = useState("");
+  const [fairnessWindow, setFairnessWindow] = useState(settings.fairnessWindow);
+  const [fairnessThreshold, setFairnessThreshold] = useState(settings.fairnessThresholdShifts);
+  const [fairnessSaved, setFairnessSaved] = useState(false);
 
   const save = async () => {
     const n = Math.min(28, Math.max(1, Number(value) || 1));
@@ -24,6 +29,14 @@ export default function SettingsTab({
     setValue(n);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const saveFairness = async () => {
+    const n = Math.min(50, Math.max(0, Number(fairnessThreshold) || 0));
+    await onChangeFairnessSettings(fairnessWindow, n);
+    setFairnessThreshold(n);
+    setFairnessSaved(true);
+    setTimeout(() => setFairnessSaved(false), 2000);
   };
 
   const addQual = async () => {
@@ -58,6 +71,34 @@ export default function SettingsTab({
           </label>
           <button type="button" className="sb-btn sb-btn-ink" onClick={save}>Speichern</button>
           {saved && <span className="sb-saved-note">Gespeichert.</span>}
+        </div>
+      </div>
+
+      <div className="sb-card">
+        <h3 className="sb-subheading">Stundenausgleich bei der Auslosung</h3>
+        <p className="sb-tab-intro">
+          Bei mehreren qualifizierten Eingeschriebenen bekommt eher, wer in diesem Zeitfenster bisher
+          weniger zugeteilte Schichten hatte — eine gewichtete Auslosung, kein starres Ranking.
+        </p>
+        <div className="sb-inline-add">
+          <label className="sb-field sb-field-compact">
+            <span>Zeitfenster</span>
+            <select value={fairnessWindow} onChange={(e) => setFairnessWindow(e.target.value)}>
+              {FAIRNESS_WINDOW_KEYS.map((key) => (
+                <option key={key} value={key}>{FAIRNESS_WINDOW_LABELS[key]}</option>
+              ))}
+            </select>
+          </label>
+          <label className="sb-field sb-field-compact">
+            <span>Schichten-Unterschied, ab dem gewichtet wird</span>
+            <input
+              type="number" min="0" max="50" value={fairnessThreshold}
+              onChange={(e) => setFairnessThreshold(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && saveFairness()}
+            />
+          </label>
+          <button type="button" className="sb-btn sb-btn-ink" onClick={saveFairness}>Speichern</button>
+          {fairnessSaved && <span className="sb-saved-note">Gespeichert.</span>}
         </div>
       </div>
 
@@ -110,6 +151,13 @@ export default function SettingsTab({
       </div>
 
       <PasswordForm verify={verifySelf} onSubmit={onChangeOwnPassword} />
+
+      <EmailCard
+        accountId={currentUser.id}
+        onChangeEmail={onChangeOwnEmail}
+        required
+        hinweis="Pflicht — damit erreicht dich eine Mail, sobald sich jemand neu anmeldet und auf Bestätigung wartet."
+      />
 
       <div className="sb-card">
         <h3 className="sb-subheading">Meine Daten</h3>

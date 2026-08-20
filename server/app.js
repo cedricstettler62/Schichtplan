@@ -14,6 +14,7 @@ import calendarRoutes from "./routes/calendar.js";
 import companiesRoutes from "./routes/companies.js";
 import companyRoutes from "./routes/company.js";
 import logbookRoutes from "./routes/logbook.js";
+import passwordSetupRoutes from "./routes/passwordSetup.js";
 import shiftRoutes from "./routes/shifts.js";
 
 /**
@@ -35,7 +36,7 @@ export function createApp(db, config) {
   app.set("trust proxy", 1); // hinter cloudflared
   app.use(express.json({ limit: "256kb" }));
   app.use(cookieParser(config.sessionSecret));
-  app.use(attachSession(db, config));
+  app.use(attachSession(db));
 
   /* Der eingespielte Stand, offen abfragbar. Die Oberfläche vergleicht ihn mit
      dem, der beim Laden galt: Weicht er ab, läuft im Fenster eine Fassung von
@@ -45,11 +46,12 @@ export function createApp(db, config) {
   app.use("/api", authRoutes(db, config));
   app.use("/api/admin", adminRoutes(db, config));
   app.use("/api", companyRoutes(db, config));
-  app.use("/api/shifts", shiftRoutes(db));
+  app.use("/api/shifts", shiftRoutes(db, config));
   app.use("/api/logbook", logbookRoutes(db));
   app.use("/api/companies", companiesRoutes(db, config));
   // Ohne Anmeldung erreichbar: das Zeichen in der Adresse ist hier der Zugang.
   app.use("/api", calendarRoutes(db));
+  app.use("/api", passwordSetupRoutes(db));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Unbekannter Endpunkt." }));
 

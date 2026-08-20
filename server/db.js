@@ -38,11 +38,31 @@ CREATE INDEX IF NOT EXISTS idx_logbook_shift ON logbook_entries(shift_id);
 `;
 
 const SCHEMA = `
+/* Eine einzige Zeile (id = 1) — die Verwaltung ist kein Konto unter vielen wie
+   in accounts, sondern der eine Zugang über allen Firmen. Code, Passwort und
+   E-Mail entstehen beim ersten Start aus den Umgebungsvariablen (siehe
+   ensureSuperAdmin unten) und lassen sich danach nur noch über die eigenen
+   Einstellungen ändern — ein Editieren der .env hat ab dann keine Wirkung
+   mehr, genau wie ein Firmen-Admin sein erstes Passwort nur einmal von der
+   Administration bekommt und es danach selbst ändert. */
+CREATE TABLE IF NOT EXISTS super_admin (
+  id            INTEGER PRIMARY KEY CHECK (id = 1),
+  code          TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  email         TEXT
+);
+
 CREATE TABLE IF NOT EXISTS companies (
   id             TEXT PRIMARY KEY,
   code           TEXT NOT NULL UNIQUE,
   name           TEXT NOT NULL,
-  assignment_day INTEGER NOT NULL DEFAULT 7
+  assignment_day INTEGER NOT NULL DEFAULT 7,
+  /* Fairness-Gewichtung der Auslosung, siehe shared/assignment.js (weightedPick):
+     welches Zeitfenster ('month' | '4weeks') die bisherige Belastung misst,
+     und ab welchem Schichten-Unterschied sich die Chancen spürbar verschieben. */
+  fairness_window          TEXT NOT NULL DEFAULT 'month',
+  fairness_threshold_shifts INTEGER NOT NULL DEFAULT 3
 );
 
 CREATE TABLE IF NOT EXISTS accounts (
@@ -57,6 +77,10 @@ CREATE TABLE IF NOT EXISTS accounts (
      Admin-Konten sind nie 'pending': Selbstregistrierung legt ausschliesslich
      Mitarbeitendenkonten an. */
   status        TEXT NOT NULL DEFAULT 'active',
+  /* Optional — nur für Benachrichtigungen (neue Anmeldung wartet, neue
+     Zuteilung mit Kalenderdatei). NULL heisst schlicht: keine hinterlegt,
+     dieses Konto bekommt dann keine Mail. */
+  email         TEXT,
   /* Zählt bei jeder Passwortänderung um eins hoch. Ein Sitzungs-Cookie
      trägt den Stand mit, der beim Anmelden galt — passt er nicht mehr, ist
      die Sitzung vorbei. So endet mit dem alten Passwort auch alles, was mit
@@ -68,6 +92,20 @@ CREATE TABLE IF NOT EXISTS accounts (
   calendar_token TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id);
+
+/* Legt ein Admin ein Konto an, bekommt es ein zufälliges, niemandem bekanntes
+   Passwort — die Person richtet ihr eigenes über den Link aus der
+   Einladungsmail ein (siehe server/passwordSetup.js). Eine Zeile hier ist
+   dieser eine Link: einlösbar bis expires_at, danach wie nie ausgestellt.
+   Eingelöst oder überholt (etwa durch ein von Hand gesetztes Passwort)
+   verschwindet die Zeile wieder, statt als Karteileiche liegen zu bleiben. */
+CREATE TABLE IF NOT EXISTS password_resets (
+  token      TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_password_resets_account ON password_resets(account_id);
 
 CREATE TABLE IF NOT EXISTS qualifications (
   id         TEXT PRIMARY KEY,
@@ -116,6 +154,11 @@ CREATE TABLE IF NOT EXISTS enrollments (
   shift_id   TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   assigned   INTEGER NOT NULL DEFAULT 0,
+  /* Wie eine Zuteilung zustande kam: 'lottery' für Auslosung, sofortige
+     Zuteilung nach gelaufener Auslosung und Übernahme — 'manual' nur für die
+     direkte Zuweisung durch die Administration (siehe assign-manual unten).
+     Ohne Bedeutung, solange assigned = 0. */
+  assignment_type TEXT NOT NULL DEFAULT 'lottery',
   PRIMARY KEY (shift_id, account_id)
 );
 
@@ -231,22 +274,20 @@ export function openDb(file) {
   ensureColumn(db, "accounts", "session_epoch", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "accounts", "calendar_token", "TEXT");
   ensureColumn(db, "accounts", "status", "TEXT NOT NULL DEFAULT 'active'");
+  ensureColumn(db, "accounts", "email", "TEXT");
   /* NULL = normaler Betrieb. Beide unabhängig voneinander: pausiert sperrt nur
      den Zugang, archiviert zusätzlich die sichtbare Firmenliste — beides lässt
      sich einzeln wieder aufheben, siehe server/routes/companies.js. */
   ensureColumn(db, "companies", "paused_at", "TEXT");
   ensureColumn(db, "companies", "archived_at", "TEXT");
+  ensureColumn(db, "companies", "fairness_window", "TEXT NOT NULL DEFAULT 'month'");
+  ensureColumn(db, "companies", "fairness_threshold_shifts", "INTEGER NOT NULL DEFAULT 3");
+  ensureColumn(db, "enrollments", "assignment_type", "TEXT NOT NULL DEFAULT 'lottery'");
   /* SQLite lässt eine per ALTER TABLE nachgerüstete Spalte keine UNIQUE-
      Bedingung tragen (Einschränkung von ALTER TABLE ADD COLUMN) — ein eigener
      Index leistet dasselbe: Jedes Zeichen bleibt genau einem Konto zugeordnet,
      mehrere NULL (Kalender aus) sind dabei ausdrücklich erlaubt. */
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_calendar_token ON accounts(calendar_token)");
-  /* Konten kamen früher mit E-Mail-Adresse und bekamen ihr erstes Passwort
-     über einen Link. Beides ist weg: Adressen werden nirgends mehr gebraucht,
-     und offene Token sollen nicht in einer Datenbank liegen bleiben, in der
-     sie niemand mehr einlösen kann. */
-  dropColumn(db, "accounts", "email");
-  db.exec("DROP TABLE IF EXISTS password_resets");
   /* Rest einer früheren Fassung: Keine Zeile im Programm liest diese Spalte
      noch. Stehen zu lassen hiesse, bei jedem Blick ins Schema neu zu fragen,
      wofür sie gut ist — und die Antwort wäre jedes Mal: für nichts. */
@@ -294,6 +335,30 @@ export class DbHandle {
   }
 }
 
+/**
+ * Legt die eine Zeile der Verwaltung an, falls sie noch fehlt — aus den
+ * Umgebungsvariablen, mit denen der Server gerade gestartet wurde. Danach
+ * lebt der Zugang ausschliesslich in der Datenbank; ein Aufruf, der schon
+ * eine Zeile vorfindet, tut nichts, ändert also auch ein per Oberfläche
+ * geändertes Passwort nicht wieder auf den .env-Wert zurück.
+ *
+ * Gehört an jede Stelle, die eine `super_admin`-Tabelle ohne Gewähr vorfindet:
+ * den Start (server/index.js), die Tests (tests/helpers/server.js) und nach
+ * dem Einspielen einer Sicherung (server/routes/admin.js) — eine sehr alte
+ * Sicherung könnte die Tabelle noch nicht kennen.
+ */
+export function ensureSuperAdmin(db, config) {
+  if (db.prepare("SELECT 1 FROM super_admin WHERE id = 1").get()) return;
+  db.prepare(
+    "INSERT INTO super_admin (id, code, name, password_hash, email) VALUES (1, ?, ?, ?, NULL)"
+  ).run(config.superAdmin.code, config.superAdmin.name, bcrypt.hashSync(config.superAdmin.password, 10));
+}
+
+/** Die eine Zeile der Verwaltung — ohne Gewähr, dass sie existiert, siehe ensureSuperAdmin(). */
+export function readSuperAdmin(db) {
+  return db.prepare("SELECT code, name, password_hash, email FROM super_admin WHERE id = 1").get();
+}
+
 /* --- Lesen --- */
 
 /* Sammelt Zeilen zu Listen je Schlüssel. Damit kommt eine ganze Firma mit
@@ -327,7 +392,7 @@ function readAccounts(db, companyId, spalten, { status = null } = {}) {
 }
 
 /** Die Schicht in der Form, die Frontend und Zuteilungslogik erwarten. */
-function alsSchicht(s, enrolled = [], assigned = [], helpRequests = [], qualificationIds = []) {
+function alsSchicht(s, enrolled = [], assigned = [], helpRequests = [], qualificationIds = [], assignmentTypes = {}) {
   return {
     id: s.id,
     seriesId: s.series_id,
@@ -341,15 +406,26 @@ function alsSchicht(s, enrolled = [], assigned = [], helpRequests = [], qualific
     endDate: s.end_date,
     enrolled,
     assigned,
+    /* Konto-ID auf 'lottery' | 'manual' — nur für Konten in `assigned` gesetzt.
+       Damit kann die Oberfläche eine direkte Zuweisung durch die
+       Administration von einer per Auslosung zustande gekommenen unterscheiden. */
+    assignmentTypes,
     helpRequests,
     assignmentAttempted: !!s.assignment_attempted,
     assignedAt: s.assigned_at,
   };
 }
 
+/** Konto-ID auf assignment_type, nur für tatsächlich zugeteilte Zeilen. */
+function assignmentTypesVon(rows) {
+  const out = {};
+  for (const r of rows) if (r.assigned) out[r.account_id] = r.assignment_type;
+  return out;
+}
+
 /** Eine einzelne Schicht-Zeile — für die Stellen, die genau eine anfassen. */
 export function toShift(db, s) {
-  const e = db.prepare("SELECT account_id, assigned FROM enrollments WHERE shift_id = ?").all(s.id);
+  const e = db.prepare("SELECT account_id, assigned, assignment_type FROM enrollments WHERE shift_id = ?").all(s.id);
   const h = db.prepare("SELECT account_id FROM help_requests WHERE shift_id = ?").all(s.id);
   const q = db.prepare(
     `SELECT sq.qualification_id FROM shift_qualifications sq
@@ -361,14 +437,15 @@ export function toShift(db, s) {
     e.map((r) => r.account_id),
     e.filter((r) => r.assigned).map((r) => r.account_id),
     h.map((r) => r.account_id),
-    q.map((r) => r.qualification_id)
+    q.map((r) => r.qualification_id),
+    assignmentTypesVon(e)
   );
 }
 
 /** Alle Schichten einer Firma — drei Abfragen, unabhängig von der Menge. */
 export function readShifts(db, companyId, sortiert = false) {
   const einschreibungen = db.prepare(
-    `SELECT e.shift_id, e.account_id, e.assigned FROM enrollments e
+    `SELECT e.shift_id, e.account_id, e.assigned, e.assignment_type FROM enrollments e
        JOIN shifts s ON s.id = e.shift_id WHERE s.company_id = ?`
   ).all(companyId);
   const hilfegesuche = db.prepare(
@@ -387,14 +464,23 @@ export function readShifts(db, companyId, sortiert = false) {
 
   const konto = (r) => r.account_id;
   const enrolled = gruppiere(einschreibungen, "shift_id", konto);
-  const assigned = gruppiere(einschreibungen.filter((r) => r.assigned), "shift_id", konto);
+  const zugeteilteZeilen = einschreibungen.filter((r) => r.assigned);
+  const assigned = gruppiere(zugeteilteZeilen, "shift_id", konto);
+  const assignmentTypes = new Map();
+  for (const r of zugeteilteZeilen) {
+    const bisher = assignmentTypes.get(r.shift_id) || {};
+    bisher[r.account_id] = r.assignment_type;
+    assignmentTypes.set(r.shift_id, bisher);
+  }
   const hilfe = gruppiere(hilfegesuche, "shift_id", konto);
   const quals = gruppiere(anforderungen, "shift_id", (r) => r.qualification_id);
 
   return db
     .prepare(`SELECT * FROM shifts WHERE company_id = ?${sortiert ? " ORDER BY date, start_time" : ""}`)
     .all(companyId)
-    .map((s) => alsSchicht(s, enrolled.get(s.id), assigned.get(s.id), hilfe.get(s.id), quals.get(s.id)));
+    .map((s) =>
+      alsSchicht(s, enrolled.get(s.id), assigned.get(s.id), hilfe.get(s.id), quals.get(s.id), assignmentTypes.get(s.id) || {})
+    );
 }
 
 /**
@@ -449,7 +535,11 @@ export function readCompany(db, companyId, { anfragenVon = null, admin = false }
       .all(companyId)
       .map((r) => [r.series_a, r.series_b]),
     logbookAccessRequests: readAccessRequests(db, companyId, anfragenVon),
-    settings: { assignmentDay: row.assignment_day },
+    settings: {
+      assignmentDay: row.assignment_day,
+      fairnessWindow: row.fairness_window,
+      fairnessThresholdShifts: row.fairness_threshold_shifts,
+    },
   };
 }
 
@@ -482,14 +572,14 @@ export function companySummaries(db, { archiviert = false } = {}) {
 
 /* --- Schreiben --- */
 
-export function createCompany(db, { code, name, adminName, adminPassword }) {
+export function createCompany(db, { code, name, adminName, adminPassword, adminEmail = null }) {
   const companyId = uid("c");
   db.transaction(() => {
     db.prepare("INSERT INTO companies (id, code, name, assignment_day) VALUES (?, ?, ?, 7)")
       .run(companyId, code, name);
     db.prepare(
-      "INSERT INTO accounts (id, company_id, name, password_hash, role) VALUES (?, ?, ?, ?, 'admin')"
-    ).run(uid("a"), companyId, adminName, bcrypt.hashSync(adminPassword, 10));
+      "INSERT INTO accounts (id, company_id, name, password_hash, role, email) VALUES (?, ?, ?, ?, 'admin', ?)"
+    ).run(uid("a"), companyId, adminName, bcrypt.hashSync(adminPassword, 10), adminEmail || null);
   })();
   return companyId;
 }

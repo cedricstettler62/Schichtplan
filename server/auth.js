@@ -100,7 +100,7 @@ export function endeAlleSitzungen(db, accountId) {
  * Liest die Sitzung aus dem Cookie und lädt das zugehörige Konto frisch aus der
  * Datenbank. Gelöschte Konten sind damit sofort abgemeldet.
  */
-export function attachSession(db, config) {
+export function attachSession(db) {
   return (req, _res, next) => {
     req.session = null;
     const raw = req.signedCookies?.[COOKIE];
@@ -114,7 +114,14 @@ export function attachSession(db, config) {
     }
 
     if (payload.t === "super") {
-      req.session = { type: "super", name: config.superAdmin.name };
+      // Aus der Datenbank, nicht aus der Konfiguration: Der Name könnte sich
+      // theoretisch geändert haben (Import einer Sicherung von anderswo), und
+      // ein gelöschter Zugang — kommt heute nicht vor, ensureSuperAdmin() legt
+      // die Zeile beim Start immer neu an, falls sie fehlt — soll trotzdem
+      // nicht mit einem Konfigurationswert weiterlaufen.
+      const superAdmin = db.prepare("SELECT name FROM super_admin WHERE id = 1").get();
+      if (!superAdmin) return next();
+      req.session = { type: "super", name: superAdmin.name };
       return next();
     }
 

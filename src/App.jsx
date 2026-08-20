@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import Header, { tabsFor } from "./features/layout/Header.jsx";
 import LoginScreen from "./features/login/LoginScreen.jsx";
+import PasswordSetupScreen from "./features/login/PasswordSetupScreen.jsx";
 import OverviewTab from "./features/overview/OverviewTab.jsx";
 import AdminShiftsTab from "./features/shifts/AdminShiftsTab.jsx";
 import EmployeeShiftsTab from "./features/shifts/EmployeeShiftsTab.jsx";
@@ -34,11 +35,19 @@ function istDatenschutzSeite() {
   return typeof window !== "undefined" && window.location.pathname === "/datenschutz";
 }
 
+/** Das Zeichen aus dem Einladungslink (/passwort-einrichten/:token) — oder null. */
+function passwortEinrichtenToken() {
+  if (typeof window === "undefined") return null;
+  const treffer = /^\/passwort-einrichten\/([^/]+)$/.exec(window.location.pathname);
+  return treffer ? treffer[1] : null;
+}
+
 export default function App() {
   const [state, setState] = useState(null); // null = nicht angemeldet
   const [ready, setReady] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [datenschutzSeite] = useState(istDatenschutzSeite);
+  const [setupToken] = useState(passwortEinrichtenToken);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,9 +60,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Auf der Datenschutzseite gibt es nichts zu laden — sie steht jedem offen.
-    if (!datenschutzSeite) refresh();
-  }, [refresh, datenschutzSeite]);
+    // Auf der Datenschutzseite und dem Einladungslink gibt es nichts zu laden —
+    // beide stehen offen, ganz ohne Anmeldung.
+    if (!datenschutzSeite && !setupToken) refresh();
+  }, [refresh, datenschutzSeite, setupToken]);
 
   // Wird bei jedem Rendern neu bestimmt — ein über Nacht offener Tab rechnet
   // damit mit heute, nicht mit gestern.
@@ -105,9 +115,9 @@ export default function App() {
 
   /* Legt ein Konto in Wartestellung an — meldet niemanden an. Die Bestätigung
      kommt aus dem Anmeldungen-Tab der Administration. */
-  const handleRegister = async (code, name, password) => {
+  const handleRegister = async (code, name, password, email) => {
     try {
-      await api.post("/register", { code, name, password });
+      await api.post("/register", { code, name, password, email });
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
       return err.message;
@@ -144,6 +154,9 @@ export default function App() {
   /* --- Schichten --- */
   const handleCreateShift = actMitMeldung((form) => api.post("/shifts", form));
   const handleForceAssign = act((shiftId) => api.post(`/shifts/${shiftId}/assign`));
+  const handleDirectAssign = actMitMeldung((shiftId, accountId) =>
+    api.post(`/shifts/${shiftId}/assign-manual`, { accountId })
+  );
   /* Eine Überschneidung mit einer anderen Schicht muss die Person erfahren,
      sonst passiert auf Knopfdruck sichtbar nichts. */
   const handleToggleEnroll = actMitMeldung((shiftId) => api.post(`/shifts/${shiftId}/enroll`));
@@ -186,6 +199,9 @@ export default function App() {
 
   const handlePromoteToAdmin = act((accountId) => api.post(`/accounts/${accountId}/promote`));
   const handleChangeAssignmentDay = act((assignmentDay) => api.patch("/settings", { assignmentDay }));
+  const handleChangeFairnessSettings = act((fairnessWindow, fairnessThresholdShifts) =>
+    api.patch("/settings", { fairnessWindow, fairnessThresholdShifts })
+  );
 
   const handleDeleteAccount = async (accountId) => {
     try {
@@ -241,6 +257,23 @@ export default function App() {
   const handlePauseCompany = act((companyId) => api.post(`/companies/${companyId}/pause`));
   const handleUnpauseCompany = act((companyId) => api.post(`/companies/${companyId}/unpause`));
 
+  /* Eigener Zugang der Verwaltung — dieselbe Selbstverwaltung wie bei
+     Mitarbeitenden und Admins, nur über /api/admin statt /api/accounts, weil
+     es dafür keine Konto-Zeile gibt (siehe server/db.js, super_admin). */
+  const verifySuperSelf = async (password) => {
+    try {
+      const res = await api.post("/admin/verify-password", { password });
+      return !!res.ok;
+    } catch {
+      return false;
+    }
+  };
+  const handleChangeSuperCode = actMitMeldung((code) => api.patch("/admin/code", { code }));
+  const handleChangeSuperEmail = actMitMeldung((email) => api.patch("/admin/email", { email }));
+  const handleChangeSuperPassword = actMitMeldung((password, currentPassword) =>
+    api.patch("/admin/password", { password, currentPassword })
+  );
+
   /* --- Rendering --- */
   /* Die Datenschutzerklärung steht vor allem anderen: Sie muss auch ohne
      Anmeldung und ohne geladenen Zustand lesbar sein. */
@@ -248,6 +281,15 @@ export default function App() {
     return (
       <div className="sb-root">
         <PrivacyScreen />
+      </div>
+    );
+  }
+
+  if (setupToken) {
+    return (
+      <div className="sb-root">
+        <PasswordSetupScreen token={setupToken} />
+        <Footer />
       </div>
     );
   }
@@ -271,6 +313,8 @@ export default function App() {
           companies={state.companies}
           archivedCompanies={state.archivedCompanies}
           superAdminName={state.name}
+          superAdminCode={state.code}
+          superAdminEmail={state.email}
           onCreateCompany={handleCreateCompany}
           onArchiveCompany={handleArchiveCompany}
           onRestoreCompany={handleRestoreCompany}
@@ -284,6 +328,10 @@ export default function App() {
           onDeleteAdmin={handleDeleteCompanyAdmin}
           onLoadLogbook={handleLoadCompanyLogbook}
           onDataChanged={refresh}
+          onVerifySelf={verifySuperSelf}
+          onChangeOwnCode={handleChangeSuperCode}
+          onChangeOwnEmail={handleChangeSuperEmail}
+          onChangeOwnPassword={handleChangeSuperPassword}
           onLogout={handleLogout}
         />
         <Footer />
@@ -294,7 +342,7 @@ export default function App() {
   const { company, userId } = state;
   const currentUser = company.accounts.find((a) => a.id === userId);
   if (!currentUser) {
-    return <div className="sb-root"><LoginScreen onLogin={handleLogin} /><Footer /></div>;
+    return <div className="sb-root"><LoginScreen onLogin={handleLogin} onRegister={handleRegister} /><Footer /></div>;
   }
 
   const { qualifications, shifts, settings, accounts, combinableSeries, logbookAccessRequests, pendingAccounts } = company;
@@ -303,6 +351,7 @@ export default function App() {
   const handleChangePassword = actMitMeldung((password, currentPassword) =>
     api.post(`/accounts/${currentUser.id}/password`, { password, currentPassword })
   );
+  const handleChangeEmail = actMitMeldung((email) => api.patch(`/accounts/${currentUser.id}/email`, { email }));
   const handleDemoteSelf = actMitMeldung(() => api.post(`/accounts/${currentUser.id}/demote`));
 
   /* Wer befördert wird, bleibt eingetragen, wo er eingetragen war. Ohne diesen
@@ -336,7 +385,8 @@ export default function App() {
               shifts={shifts} qualifications={qualifications} accounts={accounts} today={today}
               combinableSeries={combinableSeries}
               onCreate={handleCreateShift} onAddQualification={handleAddQualification}
-              onForceAssign={handleForceAssign} onRemoveEnrollment={handleRemoveEnrollment}
+              onForceAssign={handleForceAssign} onDirectAssign={handleDirectAssign}
+              onRemoveEnrollment={handleRemoveEnrollment}
               onUpdateShift={handleUpdateShift}
               onDeleteShift={handleDeleteShift} onDeleteSeries={handleDeleteSeries}
             />
@@ -379,7 +429,9 @@ export default function App() {
               istLetzterAdmin={accounts.filter((a) => a.role === "admin").length <= 1}
               onDemoteSelf={handleDemoteSelf}
               onChangeAssignmentDay={handleChangeAssignmentDay}
+              onChangeFairnessSettings={handleChangeFairnessSettings}
               onChangeOwnPassword={handleChangePassword}
+              onChangeOwnEmail={handleChangeEmail}
               onDeleteOwnAccount={() => handleDeleteAccount(currentUser.id)}
               onLogout={handleLogout}
             />
@@ -396,7 +448,7 @@ export default function App() {
           {tab === "account" && !isAdmin && (
             <AccountTab
               currentUser={currentUser} qualifications={qualifications} verifySelf={verifySelf}
-              onChangePassword={handleChangePassword} onLogout={handleLogout}
+              onChangePassword={handleChangePassword} onChangeEmail={handleChangeEmail} onLogout={handleLogout}
               logbookAccessRequests={logbookAccessRequests}
               onLoadEligibleShifts={handleLoadEligibleShifts}
               onRequestLogbookAccess={handleRequestLogbookAccess}

@@ -9,7 +9,7 @@ import { addDays, fromISO, startOfToday, toISO } from "#shared/dates.js";
 import { REPEAT_KEYS } from "#shared/labels.js";
 
 import { requireAdmin, requireCompany } from "../auth.js";
-import { recompute, releaseSeats } from "../assignment.js";
+import { recomputeAndNotify, releaseSeats } from "../assignment.js";
 import {
   findeKonflikt, konfliktMeldung, merkeKombinierbar, raeumeFreigaben, vergissKombinierbar,
 } from "../conflicts.js";
@@ -19,6 +19,7 @@ import {
   logAssigned, logEnrolled, logHelp, logReassigned, logShiftCreated, logShiftDeleted, logShiftUpdated,
   logUnassigned, logWithdrawn,
 } from "../logbook.js";
+import { notifyAssignments } from "../notifications.js";
 
 /* Dieselbe Liste, die auch das Formular anbietet — zwei Aufzählungen liefen
    sonst auseinander, und eine Wiederholung ohne Beschriftung wäre für niemanden
@@ -90,7 +91,7 @@ function gemeinsameFelder(db, req, nameFehlt) {
   return { form, name, seats, startTime, endTime, qualIds: gewuenscht };
 }
 
-export default function shiftRoutes(db) {
+export default function shiftRoutes(db, config) {
   const router = Router();
   router.use(requireCompany);
 
@@ -155,7 +156,7 @@ export default function shiftRoutes(db) {
       }
     })();
 
-    recompute(db, req.session.companyId);
+    recomputeAndNotify(db, config, req.session.companyId);
     res.json({ created: shifts.length });
   });
 
@@ -306,7 +307,7 @@ export default function shiftRoutes(db) {
       }
     }
 
-    recompute(db, req.session.companyId);
+    recomputeAndNotify(db, config, req.session.companyId);
     res.json({ updated: betroffen.length, ausgetragen, geaendert });
   });
 
@@ -324,7 +325,59 @@ export default function shiftRoutes(db) {
     if (shift.assigned.length >= shift.seats) {
       return res.status(409).json({ error: "Diese Schicht ist bereits vollständig zugeteilt." });
     }
-    recompute(db, req.session.companyId, [req.params.id]);
+    recomputeAndNotify(db, config, req.session.companyId, [req.params.id]);
+    res.json({ ok: true });
+  });
+
+  /**
+   * Direkte Zuweisung durch die Administration — ohne dass die Person sich
+   * vorher eingeschrieben hat. Dieselben Prüfungen wie beim Einschreiben
+   * (Qualifikation, Überschneidung) gelten auch hier: Ein Knopf, den das
+   * Frontend nur für passende Kandidat:innen zeigt, schützt nicht vor einem
+   * direkten API-Aufruf.
+   */
+  router.post("/:id/assign-manual", requireAdmin, (req, res) => {
+    const shift = ownShift(db, req, req.params.id);
+    if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+    if (istVorbei(shift)) {
+      return res.status(409).json({ error: "Diese Schicht ist vorbei — eine Zuweisung geht nur bei kommenden Schichten." });
+    }
+
+    const accountId = String(req.body?.accountId || "");
+    const account = db
+      .prepare("SELECT id, name FROM accounts WHERE id = ? AND company_id = ? AND status = 'active'")
+      .get(accountId, req.session.companyId);
+    if (!account) return res.status(404).json({ error: "Konto nicht gefunden." });
+
+    if (shift.assigned.includes(accountId)) {
+      return res.status(409).json({ error: "Diese Person ist der Schicht bereits zugeteilt." });
+    }
+    if (shift.assigned.length >= shift.seats) {
+      return res.status(409).json({ error: "Diese Schicht ist bereits vollständig besetzt." });
+    }
+
+    const accounts = readAccountsForLogic(db, req.session.companyId);
+    if (!hasQualifications(accounts, accountId, shift.qualificationIds)) {
+      return res.status(403).json({ error: "Dieser Person fehlt eine für diese Schicht nötige Qualifikation." });
+    }
+
+    const konflikt = findeKonflikt(db, req.session.companyId, accountId, shift);
+    if (konflikt) return res.status(409).json({ error: konfliktMeldung(shift, konflikt) });
+
+    db.transaction(() => {
+      db.prepare(
+        "INSERT OR REPLACE INTO enrollments (shift_id, account_id, assigned, assignment_type) VALUES (?, ?, 1, 'manual')"
+      ).run(shift.id, accountId);
+      if (!shift.assignedAt) {
+        db.prepare("UPDATE shifts SET assigned_at = ? WHERE id = ?").run(toISO(startOfToday()), shift.id);
+      }
+      logAssigned(db, req.session.companyId, shift, account.name, accountId, req.session.name, req.session.accountId);
+    })();
+
+    // Direkte Zuteilung, nicht über recompute() — dieselbe Lage wie bei der
+    // sofortigen Zuteilung im Einschreiben und bei der Übernahme.
+    notifyAssignments(db, config, req.session.companyId, new Map([[accountId, [shift.id]]]));
+
     res.json({ ok: true });
   });
 
@@ -350,7 +403,7 @@ export default function shiftRoutes(db) {
         db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, me);
         logWithdrawn(db, req.session.companyId, shift, req.session.name, me);
       })();
-      recompute(db, req.session.companyId);
+      recomputeAndNotify(db, config, req.session.companyId);
       return res.json({ ok: true });
     }
 
@@ -383,7 +436,13 @@ export default function shiftRoutes(db) {
       }
     })();
 
-    recompute(db, req.session.companyId);
+    /* Diese Zuteilung schreibt sich direkt hier oben, nicht über die
+       Auslosung in recompute() — deren Vorher/Nachher-Vergleich sähe sie
+       also nicht als "neu". Wer sofort zugeteilt wurde, bekommt die Mail
+       deshalb an dieser Stelle ausdrücklich. */
+    if (sofortZuteilen) notifyAssignments(db, config, req.session.companyId, new Map([[me, [shift.id]]]));
+
+    recomputeAndNotify(db, config, req.session.companyId);
     res.json({ ok: true });
   });
 
@@ -528,6 +587,10 @@ export default function shiftRoutes(db) {
         logUnassigned(db, req.session.companyId, shift, replacedAccount.name, replaceId, req.session.name, me, "durch Übernahme ersetzt");
       }
     })();
+
+    // Direkte Zuteilung, nicht über recompute() — dieselbe Lage wie bei der
+    // sofortigen Zuteilung im Einschreiben oben.
+    notifyAssignments(db, config, req.session.companyId, new Map([[me, [shift.id]]]));
 
     res.json({ ok: true });
   });

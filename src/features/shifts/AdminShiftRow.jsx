@@ -3,6 +3,7 @@ import Badge from "../../components/Badge.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import DateStub from "../../components/DateStub.jsx";
 import EditShiftForm from "./EditShiftForm.jsx";
+import { hasQualifications } from "#shared/assignment.js";
 
 /*
  * Eine Schicht in der Admin-Ansicht. Aufgeklappt zeigt sie, wer eingeschrieben
@@ -18,7 +19,7 @@ function betroffene(shift, frage) {
     : `${frage} ${shift.assigned.length} zugeteilte Personen verlieren sie.`;
 }
 
-function PersonList({ title, people, emptyText, helpRequests, onRemove }) {
+function PersonList({ title, people, emptyText, helpRequests, assignmentTypes, onRemove }) {
   return (
     <div className="sb-stack">
       <span className="sb-detail-label">{title}</span>
@@ -29,6 +30,10 @@ function PersonList({ title, people, emptyText, helpRequests, onRemove }) {
           {people.map((p) => (
             <div key={p.id} className="sb-person-row">
               <span className="sb-person-name">{p.name}</span>
+              {/* "eingeteilt via Auslosung" bleibt der stille Regelfall — nur die
+                  Ausnahme (direkt zugewiesen, ohne eigene Einschreibung) bekommt
+                  eine eigene Markierung. */}
+              {assignmentTypes?.[p.id] === "manual" && <Badge tone="amber">Direkt zugewiesen</Badge>}
               {helpRequests.includes(p.id) && <Badge tone="rust">sucht Ersatz</Badge>}
               <span className="sb-person-action">
                 <ConfirmDelete
@@ -49,10 +54,13 @@ function PersonList({ title, people, emptyText, helpRequests, onRemove }) {
 }
 export default function AdminShiftRow({
   shift, qualNames, accounts, qualifications, seriesShifts, shifts, combinableSeries,
-  onForceAssign, onRemoveEnrollment, onUpdateShift, onDeleteShift, onDeleteSeries,
+  onForceAssign, onDirectAssign, onRemoveEnrollment, onUpdateShift, onDeleteShift, onDeleteSeries,
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [pickedAccountId, setPickedAccountId] = useState("");
+  const [assignError, setAssignError] = useState("");
   const full = shift.assigned.length >= shift.seats;
 
   const nameOf = (id) => accounts.find((a) => a.id === id)?.name || "Unbekannt";
@@ -60,6 +68,22 @@ export default function AdminShiftRow({
   const waiting = shift.enrolled
     .filter((id) => !shift.assigned.includes(id))
     .map((id) => ({ id, name: nameOf(id) }));
+
+  /* Wer die Schicht überhaupt übernehmen könnte: dieselbe Qualifikationsprüfung
+     wie beim Einschreiben, nur ohne dass eine Einschreibung vorausgesetzt wird.
+     Der Server prüft das ohnehin nochmal — hier geht es nur um die Auswahl. */
+  const zuweisbar = accounts.filter(
+    (a) => !shift.assigned.includes(a.id) && hasQualifications(accounts, a.id, shift.qualificationIds)
+  );
+
+  const zuweisen = async () => {
+    if (!pickedAccountId) return;
+    const meldung = await onDirectAssign(shift.id, pickedAccountId);
+    if (meldung) { setAssignError(meldung); return; }
+    setAssignError("");
+    setPickedAccountId("");
+    setAssigning(false);
+  };
 
   return (
     <div className="sb-ticket sb-ticket-expandable">
@@ -113,6 +137,7 @@ export default function AdminShiftRow({
             people={assigned}
             emptyText="Noch niemand zugeteilt."
             helpRequests={shift.helpRequests}
+            assignmentTypes={shift.assignmentTypes}
             onRemove={(id) => onRemoveEnrollment(shift.id, id)}
           />
           <PersonList
@@ -122,6 +147,43 @@ export default function AdminShiftRow({
             helpRequests={shift.helpRequests}
             onRemove={(id) => onRemoveEnrollment(shift.id, id)}
           />
+
+          {!full && (
+            <div className="sb-stack">
+              {assigning ? (
+                <div className="sb-inline-add">
+                  <select
+                    value={pickedAccountId}
+                    onChange={(e) => setPickedAccountId(e.target.value)}
+                    aria-label="Person auswählen"
+                  >
+                    <option value="">Person wählen …</option>
+                    {zuweisbar.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="sb-btn sb-btn-ink" onClick={zuweisen} disabled={!pickedAccountId}>
+                    Zuweisen
+                  </button>
+                  <button
+                    type="button"
+                    className="sb-btn sb-btn-quiet"
+                    onClick={() => { setAssigning(false); setAssignError(""); setPickedAccountId(""); }}
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={() => setAssigning(true)}>
+                  Person direkt zuweisen
+                </button>
+              )}
+              {assigning && zuweisbar.length === 0 && (
+                <p className="sb-empty">Niemand mit passender Qualifikation ist noch frei für diese Schicht.</p>
+              )}
+              {assignError && <p className="sb-error">{assignError}</p>}
+            </div>
+          )}
 
           {editing ? (
             <EditShiftForm

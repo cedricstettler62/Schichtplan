@@ -8,8 +8,11 @@ import {
   canTakeOver,
   expandShiftDates,
   extendSeriesDates,
+  fairnessWindowRange,
+  hoursByEmployeeInWindow,
   isAssignable,
   runAssignmentPass,
+  weightedPick,
 } from "#shared/assignment.js";
 import { addMonths, fromISO, toISO } from "#shared/dates.js";
 
@@ -226,5 +229,94 @@ describe("Ausschliessende Schichten in der Auslosung", () => {
     const [, neu] = runAssignmentPass([belegt, spaet()], ACCOUNTS, today, 7, [], () => 0, schliesstAus);
 
     expect(neu.assigned).toEqual([]);
+  });
+});
+
+describe("weightedPick", () => {
+  const today = fromISO("2026-03-10");
+
+  test("bei Gleichstand sind die Chancen gleich verteilt", () => {
+    expect(weightedPick(["a", "b"], {}, { random: () => 0 })).toBe("a");
+    expect(weightedPick(["a", "b"], {}, { random: () => 0.9999 })).toBe("b");
+  });
+
+  test("wer schon mehr Stunden im Fenster hat, bekommt einen kleineren Anteil am Zahlenstrahl", () => {
+    // a: 0h, b: 10h, Schwelle 5h -> Gewicht a = 1, Gewicht b = 1/(1+10/5) = 1/3.
+    const hours = { a: 0, b: 10 };
+    expect(weightedPick(["a", "b"], hours, { thresholdHours: 5, random: () => 0 })).toBe("a");
+    // Summe der Gewichte 4/3 — a allein nimmt schon 3/4 der Fläche ein.
+    expect(weightedPick(["a", "b"], hours, { thresholdHours: 5, random: () => 0.7 })).toBe("a");
+    expect(weightedPick(["a", "b"], hours, { thresholdHours: 5, random: () => 0.9 })).toBe("b");
+  });
+
+  test("niemand ist völlig ausgeschlossen, auch bei grossem Unterschied", () => {
+    const hours = { a: 0, b: 1000 };
+    expect(weightedPick(["a", "b"], hours, { thresholdHours: 1, random: () => 0.999999 })).toBe("b");
+  });
+
+  test("eine leere Kandidatenliste liefert nichts", () => {
+    expect(weightedPick([], {})).toBeUndefined();
+  });
+
+  test("attemptAssign: derselbe Zufallswert liefert mit und ohne Gewichtung ein anderes Ergebnis", () => {
+    const s = shift({ seats: 1, enrolled: ["a1", "a2"] });
+    const random = () => 0.7;
+
+    // Ohne Angabe von `fairness` sind die Chancen wie vor der Gewichtung gleich gross.
+    expect(attemptAssign(s, ACCOUNTS, today, 7, false, random).assigned).toEqual(["a2"]);
+
+    // a2 ist im Zeitfenster schon deutlich mehr belastet als a1.
+    const fairness = { hoursByEmployee: { a1: 0, a2: 20 }, thresholdHours: 4 };
+    expect(attemptAssign(s, ACCOUNTS, today, 7, false, random, null, fairness).assigned).toEqual(["a1"]);
+  });
+});
+
+describe("Fairness-Zeitfenster", () => {
+  test("'Aktueller Monat' deckt den ganzen Monat der Schicht ab", () => {
+    expect(fairnessWindowRange("2026-03-15", "month")).toEqual({ startISO: "2026-03-01", endISO: "2026-03-31" });
+  });
+
+  test("'Letzte 4 Wochen' reicht 27 Tage zurück, bis einschliesslich dem Schichttag", () => {
+    expect(fairnessWindowRange("2026-03-15", "4weeks")).toEqual({ startISO: "2026-02-16", endISO: "2026-03-15" });
+  });
+});
+
+describe("hoursByEmployeeInWindow", () => {
+  test("zählt nur zugeteilte Schichten innerhalb des Fensters", () => {
+    const shifts = [
+      shift({ id: "s1", date: "2026-03-05", startTime: "08:00", endTime: "16:00", assigned: ["a1"] }), // 8h, im Fenster
+      shift({ id: "s2", date: "2026-02-05", startTime: "08:00", endTime: "16:00", assigned: ["a1"] }), // ausserhalb
+      shift({ id: "s3", date: "2026-03-10", startTime: "08:00", endTime: "12:00", enrolled: ["a2"] }), // nicht zugeteilt
+    ];
+    expect(hoursByEmployeeInWindow(shifts, "2026-03-01", "2026-03-31")).toEqual({ a1: 8 });
+  });
+});
+
+describe("runAssignmentPass: Fairness-Einstellungen der Firma", () => {
+  const today = fromISO("2026-03-10");
+
+  test("bezieht bereits zugeteilte Schichten im Zeitfenster ein und respektiert die eingestellte Schwelle", () => {
+    const belastet = shift({
+      id: "s0", date: "2026-03-01", startTime: "06:00", endTime: "18:00", // 12h
+      seats: 1, enrolled: ["a1"], assigned: ["a1"], assignmentAttempted: true,
+    });
+    const offen = shift({
+      id: "s1", date: "2026-03-15", startTime: "06:00", endTime: "10:00", // 4h
+      seats: 1, enrolled: ["a1", "a2"],
+    });
+
+    // Schwelle 0 Schichten -> die Gewichtung greift praktisch sofort: a1 (schon
+    // 12h im März) hat kaum noch eine Chance gegen a2 (0h) — bei fast jedem
+    // Zufallswert fällt die Wahl auf a2.
+    const [, ergebnis] = runAssignmentPass(
+      [belastet, offen], ACCOUNTS, today, 7, [], () => 0.01, null, { windowType: "month", thresholdShifts: 0 }
+    );
+    expect(ergebnis.assigned).toEqual(["a2"]);
+  });
+
+  test("ohne eigene Einstellung gilt die Standard-Schwelle von 3 Schichten", () => {
+    const offen = shift({ id: "s1", date: "2026-03-15", startTime: "06:00", endTime: "10:00", enrolled: ["a1"] });
+    const [ergebnis] = runAssignmentPass([offen], ACCOUNTS, today, 7, [], () => 0, null, null);
+    expect(ergebnis.assigned).toEqual(["a1"]);
   });
 });

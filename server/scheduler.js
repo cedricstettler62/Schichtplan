@@ -8,12 +8,12 @@ import { extendSeries, purgeOldShifts, recomputeAll } from "./assignment.js";
 
 const HOUR = 60 * 60 * 1000;
 
-export function startScheduler(db, { intervalMs = 6 * HOUR } = {}) {
+export function startScheduler(db, config, { intervalMs = 6 * HOUR } = {}) {
   const run = () => {
     try {
       purgeOldShifts(db);
       extendSeries(db);
-      recomputeAll(db);
+      recomputeAll(db, config);
     } catch (err) {
       console.error("Zuteilungslauf fehlgeschlagen:", err);
     }

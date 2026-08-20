@@ -8,7 +8,7 @@ import { qualifikationsListe } from "#shared/labels.js";
 
 export default function AdminShiftsTab({
   shifts, qualifications, accounts, combinableSeries, today,
-  onCreate, onAddQualification, onForceAssign, onRemoveEnrollment, onUpdateShift,
+  onCreate, onAddQualification, onForceAssign, onDirectAssign, onRemoveEnrollment, onUpdateShift,
   onDeleteShift, onDeleteSeries,
 }) {
   const [formOpen, setFormOpen] = useState(false);
@@ -77,6 +77,7 @@ export default function AdminShiftsTab({
             shifts={visible}
             combinableSeries={combinableSeries}
             onForceAssign={onForceAssign}
+            onDirectAssign={onDirectAssign}
             onRemoveEnrollment={onRemoveEnrollment}
             onUpdateShift={onUpdateShift}
             onDeleteShift={onDeleteShift}

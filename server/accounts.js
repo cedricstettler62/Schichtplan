@@ -3,7 +3,7 @@
    dürfen nicht still an die nächstbeste eingeschriebene Person weiterwandern,
    sondern sollen sichtbar unter „Noch offene Plätze“ auftauchen. */
 
-import { recompute, releaseSeats } from "./assignment.js";
+import { recomputeAndNotify, releaseSeats } from "./assignment.js";
 import { toShift } from "./db.js";
 import { logUnassigned } from "./logbook.js";
 
@@ -14,7 +14,7 @@ import { logUnassigned } from "./logbook.js";
  * beim letzten Admin-Konto einer Firma ist das Pflicht, sonst stünde sie ohne
  * Verwaltung da.
  */
-export function loescheKonto(db, companyId, target, { actorName, actorAccountId = null, nachfolgerId = null }) {
+export function loescheKonto(db, companyId, target, { actorName, actorAccountId = null, nachfolgerId = null, config }) {
   // Die Zuordnung muss vor dem Löschen gelesen werden, danach hat das Schema
   // sie weggeräumt.
   const frei = db
@@ -39,5 +39,5 @@ export function loescheKonto(db, companyId, target, { actorName, actorAccountId 
   })();
 
   releaseSeats(db, frei);
-  recompute(db, companyId);
+  recomputeAndNotify(db, config, companyId);
 }

@@ -14,9 +14,12 @@ import express from "express";
 
 import { zeitstempel } from "#shared/dates.js";
 
-import { requireSuper } from "../auth.js";
+import { checkPassword, hashPassword, requireSuper } from "../auth.js";
+import { ensureSuperAdmin, readSuperAdmin } from "../db.js";
 import { pruefeDatenbank } from "../dbCheck.js";
 import { readVersion } from "../version.js";
+import { emailProblem } from "#shared/email.js";
+import { passwortProblem } from "#shared/password.js";
 
 const MAX_UPLOAD = 64 * 1024 * 1024;
 
@@ -88,6 +91,8 @@ export default function adminRoutes(db, config) {
       // Der bisherige Stand wandert vorher nach backups/ — nichts geht verloren.
       const sicherung = path.join(sicherungsOrdner(), `vor-import_${zeitstempel()}.db`);
       db.replaceWith(temp, sicherung);
+      // Eine sehr alte Sicherung kennt die super_admin-Tabelle noch nicht.
+      ensureSuperAdmin(db, config);
 
       res.json({
         ok: true,
@@ -100,6 +105,56 @@ export default function adminRoutes(db, config) {
     } finally {
       fs.rmSync(temp, { force: true });
     }
+  });
+
+  /* --- Eigener Zugang der Verwaltung: Firmencode, E-Mail, Passwort ---
+     Dieselbe Selbstverwaltung wie bei Mitarbeitenden und Admins — nur ohne
+     die Konten-Tabelle, denn die Verwaltung ist die eine Zeile in
+     super_admin, siehe server/db.js. */
+
+  /** Bestätigung des eigenen Passworts vor der Passwortänderung. */
+  router.post("/verify-password", (req, res) => {
+    const sa = readSuperAdmin(db);
+    res.json({ ok: checkPassword(String(req.body?.password || ""), sa.password_hash) });
+  });
+
+  router.patch("/password", (req, res) => {
+    const sa = readSuperAdmin(db);
+    if (!checkPassword(String(req.body?.currentPassword || ""), sa.password_hash)) {
+      return res.status(403).json({ error: "Das aktuelle Passwort ist falsch." });
+    }
+    const password = String(req.body?.password || "");
+    const passwortFehler = passwortProblem(password);
+    if (passwortFehler) return res.status(400).json({ error: passwortFehler });
+
+    db.prepare("UPDATE super_admin SET password_hash = ? WHERE id = 1").run(hashPassword(password));
+    res.json({ ok: true });
+  });
+
+  /** Reine Kontaktangabe — anders als bei Mitarbeitenden und Admins optional:
+   *  Die Verwaltung bekommt keine Schicht zugeteilt, für die eine
+   *  Benachrichtigung nötig wäre. */
+  router.patch("/email", (req, res) => {
+    const email = String(req.body?.email || "").trim();
+    const mailFehler = emailProblem(email);
+    if (mailFehler) return res.status(400).json({ error: mailFehler });
+
+    db.prepare("UPDATE super_admin SET email = ? WHERE id = 1").run(email || null);
+    res.json({ ok: true });
+  });
+
+  /** Der Code, mit dem sich die Verwaltung statt eines Firmencodes anmeldet —
+   *  muss sich von jedem vergebenen Firmencode unterscheiden, sonst wüsste
+   *  der Login nicht, wer gemeint ist. */
+  router.patch("/code", (req, res) => {
+    const code = String(req.body?.code || "").trim();
+    if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "Der Firmencode muss 6-stellig sein." });
+
+    const taken = db.prepare("SELECT 1 FROM companies WHERE code = ?").get(code);
+    if (taken) return res.status(409).json({ error: "Dieser Firmencode wird bereits verwendet." });
+
+    db.prepare("UPDATE super_admin SET code = ? WHERE id = 1").run(code);
+    res.json({ ok: true });
   });
 
   /* --- Programm aktualisieren --- */

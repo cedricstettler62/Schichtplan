@@ -3,9 +3,13 @@
    dieselben Funktionen benutzen. */
 
 import { toISO, fromISO, addDays, monthDiff } from "./dates.js";
+import { shiftSpan } from "./overlap.js";
 
 /** Wie weit im Voraus Serien überhaupt erzeugt werden. */
 export const HORIZON_DAYS = 92;
+
+/** Default für die Fairness-Schwelle (siehe weightedPick), sofern die Firma keine eigene eingestellt hat. */
+export const DEFAULT_FAIRNESS_THRESHOLD_SHIFTS = 3;
 
 /**
  * Bringt dieses Konto mit, was die Schicht verlangt?
@@ -20,13 +24,81 @@ export function hasQualifications(accounts, userId, qualIds) {
   return !!acc && noetig.length > 0 && noetig.every((q) => acc.qualifications.includes(q));
 }
 
-function shuffle(arr, random = Math.random) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+/**
+ * Der Zeitraum, über den die Fairness-Gewichtung die bisherige Belastung
+ * misst — bezogen auf das Datum der Schicht, um die gerade ausgelost wird,
+ * nicht auf heute: Wessen Auslosung erst im Folgemonat läuft, soll an der
+ * Belastung *jenes* Monats gemessen werden.
+ */
+export function fairnessWindowRange(shiftDateISO, windowType) {
+  const d = fromISO(shiftDateISO);
+  if (windowType === "4weeks") {
+    return { startISO: toISO(addDays(d, -27)), endISO: shiftDateISO };
   }
-  return a;
+  const anfang = new Date(d.getFullYear(), d.getMonth(), 1);
+  const ende = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return { startISO: toISO(anfang), endISO: toISO(ende) };
+}
+
+/** Dauer einer Schicht in Stunden — dieselbe Über-Mitternacht-Rechnung wie shiftsOverlap(). */
+export function shiftDurationHours(shift) {
+  const { start, end } = shiftSpan(shift);
+  return (end - start) / 60;
+}
+
+/**
+ * Bisherige Arbeitsbelastung je Konto: Summe der Stunden aus Schichten, die im
+ * Zeitfenster liegen und wo das Konto tatsächlich zugeteilt ist (nicht nur
+ * eingeschrieben) — nur was jemand schon leistet, soll den Ausgleich treiben.
+ */
+export function hoursByEmployeeInWindow(shifts, startISO, endISO) {
+  const stunden = {};
+  for (const s of shifts) {
+    if (s.date < startISO || s.date > endISO || s.assigned.length === 0) continue;
+    const dauer = shiftDurationHours(s);
+    for (const id of s.assigned) stunden[id] = (stunden[id] || 0) + dauer;
+  }
+  return stunden;
+}
+
+/**
+ * Zieht gewichtet eine Person aus `candidates`: Wer laut `hoursByEmployee`
+ * bereits mehr Stunden im Zeitfenster hat, kommt seltener dran — aber nie mit
+ * Sicherheit leer aus. Ein starres Ranking (immer die am wenigsten belastete
+ * Person) wäre keine Auslosung mehr, nur noch eine Warteliste nach Stunden.
+ *
+ * `thresholdHours` ist die Stundendifferenz, ab der sich die Chancen spürbar
+ * verschieben: Bei Gleichstand sind die Chancen für alle gleich gross, bei
+ * einem Unterschied von genau `thresholdHours` nur noch halb so gross wie für
+ * die am wenigsten belastete Person, danach nimmt sie mit wachsendem
+ * Unterschied immer weiter (aber nie auf null) ab.
+ */
+export function weightedPick(candidates, hoursByEmployee = {}, { thresholdHours = Infinity, random = Math.random } = {}) {
+  if (candidates.length === 0) return undefined;
+  const schwelle = thresholdHours > 0 ? thresholdHours : Number.EPSILON;
+  const stunden = candidates.map((id) => hoursByEmployee[id] || 0);
+  const minimum = Math.min(...stunden);
+  const gewichte = stunden.map((h) => 1 / (1 + Math.max(0, h - minimum) / schwelle));
+  const summe = gewichte.reduce((a, b) => a + b, 0);
+  const zug = random() * summe;
+  let stand = 0;
+  for (let i = 0; i < candidates.length; i++) {
+    stand += gewichte[i];
+    if (zug < stand) return candidates[i];
+  }
+  return candidates[candidates.length - 1]; // Rundungsrest landet bei der letzten Person
+}
+
+/** `weightedPick()` mehrfach ohne Zurücklegen — für Schichten mit mehreren Plätzen. */
+function weightedSample(candidates, hoursByEmployee, count, options) {
+  const rest = [...candidates];
+  const gezogen = [];
+  while (gezogen.length < count && rest.length > 0) {
+    const wahl = weightedPick(rest, hoursByEmployee, options);
+    gezogen.push(wahl);
+    rest.splice(rest.indexOf(wahl), 1);
+  }
+  return gezogen;
 }
 
 /**
@@ -57,7 +129,9 @@ export function assignmentDateOf(shiftDateISO, assignmentDay) {
  * er zur selben Zeit schon einer anderen zugeteilt ist. Ohne die Angabe wird
  * nur nach Qualifikation ausgewählt — so verhielt sich die Auslosung früher.
  */
-export function attemptAssign(shift, accounts, today, assignmentDay, force = false, random = Math.random, blockiert = null) {
+export function attemptAssign(
+  shift, accounts, today, assignmentDay, force = false, random = Math.random, blockiert = null, fairness = null
+) {
   // Die Auslosung findet genau einmal statt: am Zuteilungstermin der Schicht.
   // Danach besetzt niemand mehr automatisch nach — freie Plätze bekommt, wer
   // sich einschreibt oder übernimmt. Sonst würde die Zuteilung faktisch bei
@@ -68,17 +142,20 @@ export function attemptAssign(shift, accounts, today, assignmentDay, force = fal
   if (shift.assigned.length >= shift.seats) {
     return { ...shift, assignmentAttempted: true };
   }
-  const eligible = shuffle(
-    shift.enrolled.filter(
-      (id) =>
-        !shift.assigned.includes(id) &&
-        hasQualifications(accounts, id, shift.qualificationIds) &&
-        !(blockiert && blockiert(id))
-    ),
-    random
+  const eligible = shift.enrolled.filter(
+    (id) =>
+      !shift.assigned.includes(id) &&
+      hasQualifications(accounts, id, shift.qualificationIds) &&
+      !(blockiert && blockiert(id))
   );
   const needed = shift.seats - shift.assigned.length;
-  const chosen = eligible.slice(0, needed);
+  // Wer bisher weniger Stunden im Zeitfenster hatte, kommt öfter dran — siehe
+  // weightedPick(). Ohne `fairness` (etwa in einem Aufruf ohne Angabe) bleiben
+  // die Chancen gleich gross, wie vor der Gewichtung.
+  const chosen = weightedSample(eligible, fairness?.hoursByEmployee || {}, needed, {
+    thresholdHours: fairness?.thresholdHours ?? Infinity,
+    random,
+  });
   if (chosen.length === 0) {
     return { ...shift, assignmentAttempted: true };
   }
@@ -100,10 +177,29 @@ export function attemptAssign(shift, accounts, today, assignmentDay, force = fal
  * bisherigen Verhalten.
  */
 export function runAssignmentPass(
-  shifts, accounts, today, assignmentDay, forceIds = [], random = Math.random, schliesstAus = null
+  shifts, accounts, today, assignmentDay, forceIds = [], random = Math.random, schliesstAus = null,
+  fairnessConfig = null
 ) {
+  const windowType = fairnessConfig?.windowType || "month";
+  const thresholdShifts = fairnessConfig?.thresholdShifts ?? DEFAULT_FAIRNESS_THRESHOLD_SHIFTS;
+
+  /* Belastung und Schwelle werden je Schicht neu berechnet, gegen den
+     laufenden Bestand `pool` — so zählen auch Zuteilungen mit, die in diesem
+     selben Durchgang schon gefallen sind. Sonst könnte dieselbe Person an
+     einem Auslosungstag mehrere verschiedene Schichten gewinnen, ohne dass
+     die Gewichtung das noch merkt. */
+  const fairnessFor = (shift, pool) => {
+    const { startISO, endISO } = fairnessWindowRange(shift.date, windowType);
+    return {
+      hoursByEmployee: hoursByEmployeeInWindow(pool, startISO, endISO),
+      thresholdHours: thresholdShifts * shiftDurationHours(shift),
+    };
+  };
+
   if (!schliesstAus) {
-    return shifts.map((s) => attemptAssign(s, accounts, today, assignmentDay, forceIds.includes(s.id), random));
+    return shifts.map((s) =>
+      attemptAssign(s, accounts, today, assignmentDay, forceIds.includes(s.id), random, null, fairnessFor(s, shifts))
+    );
   }
 
   const stand = [...shifts];
@@ -114,7 +210,9 @@ export function runAssignmentPass(
     const blockiert = (accountId) =>
       stand.some((andere, j) => j !== i && andere.assigned.includes(accountId) && schliesstAus(diese, andere));
 
-    stand[i] = attemptAssign(diese, accounts, today, assignmentDay, forceIds.includes(diese.id), random, blockiert);
+    stand[i] = attemptAssign(
+      diese, accounts, today, assignmentDay, forceIds.includes(diese.id), random, blockiert, fairnessFor(diese, stand)
+    );
   }
   return stand;
 }

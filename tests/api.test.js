@@ -32,9 +32,21 @@ async function asAdmin() {
   return c;
 }
 
-/** Legt ein Mitarbeitendenkonto samt erstem Passwort an. */
-async function legeMitarbeitendeAn(admin, { name, password }) {
-  const { data } = await admin.post("/api/employees", { name, password });
+/** Eine im Test brauchbare Adresse, deterministisch aus dem Namen. */
+const testMail = (name) => `${name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@beispiel.ch`;
+
+/** Löst den Einladungslink eines frisch angelegten Kontos direkt aus der
+ *  Datenbank ein — im echten Betrieb kommt er per Mail, hier ist das Zeichen
+ *  in password_resets derselbe Link, nur ohne den Umweg über den Posteingang. */
+async function loeseEinladungEin(accountId, password) {
+  const { token } = server.db.prepare("SELECT token FROM password_resets WHERE account_id = ?").get(accountId);
+  return client().post(`/api/password-setup/${token}`, { password });
+}
+
+/** Legt ein Mitarbeitendenkonto an und richtet gleich das gewünschte Passwort ein. */
+async function legeMitarbeitendeAn(admin, { name, password, email }) {
+  const { data } = await admin.post("/api/employees", { name, email: email || testMail(name) });
+  if (password) await loeseEinladungEin(data.id, password);
   return data.id;
 }
 
@@ -710,6 +722,165 @@ describe("Schichten", () => {
   });
 });
 
+describe("Direkte Zuweisung durch die Administration", () => {
+  test("weist eine qualifizierte Person zu, ohne dass sie sich eingeschrieben hat", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 2, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    const leaId = (await admin.get("/api/state")).data.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    const res = await admin.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: leaId });
+    expect(res.status).toBe(200);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.assigned).toEqual([leaId]);
+    expect(shift.assignmentTypes[leaId]).toBe("manual");
+
+    // Sichtbar für die betroffene Person selbst.
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const ihreSicht = (await lea.get("/api/state")).data.company.shifts[0];
+    expect(ihreSicht.assignmentTypes[leaId]).toBe("manual");
+  });
+
+  test("ohne passende Qualifikation keine Zuweisung", async () => {
+    const admin = await asAdmin();
+    const { data: state } = await admin.get("/api/state");
+    const fremd = state.company.qualifications[2].id; // hat im Seed niemand
+    await admin.post("/api/shifts", {
+      name: "Lager", date: heute(), startTime: "08:00", endTime: "16:00",
+      repeat: "once", seats: 1, qualificationIds: [fremd],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    const leaId = state.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    const res = await admin.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: leaId });
+    expect(res.status).toBe(403);
+  });
+
+  test("überschreitet die Platzzahl nicht", async () => {
+    const admin = await asAdmin();
+    const { data: state } = await admin.get("/api/state");
+    const qualId = state.company.qualifications[0].id;
+    const tomId = await legeMitarbeitendeAn(admin, { name: "Tom Klein", password: "geheim123" });
+    await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
+
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    const leaId = state.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    expect((await admin.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: leaId })).status).toBe(200);
+    const res = await admin.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: tomId });
+    expect(res.status).toBe(409);
+  });
+
+  test("dieselbe Person lässt sich nicht doppelt zuweisen", async () => {
+    const admin = await asAdmin();
+    const { data: state } = await admin.get("/api/state");
+    const qualId = state.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 2, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    const leaId = state.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    await admin.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: leaId });
+    const res = await admin.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: leaId });
+    expect(res.status).toBe(409);
+  });
+
+  test("überschneidende Schichten blockieren die Zuweisung genauso wie das Einschreiben", async () => {
+    const admin = await asAdmin();
+    const { data: state } = await admin.get("/api/state");
+    const qualId = state.company.qualifications[0].id;
+    const leaId = state.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    await admin.post("/api/shifts", {
+      name: "Tagdienst", date: heute(), startTime: "08:00", endTime: "16:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shifts = (await admin.get("/api/state")).data.company.shifts;
+    const frueh = shifts.find((s) => s.name === "Frühdienst");
+    const tag = shifts.find((s) => s.name === "Tagdienst");
+
+    expect((await admin.post(`/api/shifts/${frueh.id}/assign-manual`, { accountId: leaId })).status).toBe(200);
+    const res = await admin.post(`/api/shifts/${tag.id}/assign-manual`, { accountId: leaId });
+    expect(res.status).toBe(409);
+  });
+
+  test("Mitarbeitende dürfen niemanden direkt zuweisen", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    const leaId = (await admin.get("/api/state")).data.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: leaId })).status).toBe(403);
+  });
+
+  test("die bestehende Austragen-Funktion macht eine manuelle Zuweisung rückgängig", async () => {
+    const admin = await asAdmin();
+    const { data: state } = await admin.get("/api/state");
+    const qualId = state.company.qualifications[0].id;
+    const leaId = state.company.accounts.find((a) => a.name === "Lea Brunner").id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    await admin.post(`/api/shifts/${shiftId}/assign-manual`, { accountId: leaId });
+    const res = await admin.del(`/api/shifts/${shiftId}/enrollments/${leaId}`);
+    expect(res.status).toBe(200);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.assigned).toEqual([]);
+  });
+});
+
+describe("Fairness-Einstellungen", () => {
+  test("lassen sich unabhängig vom Zuteilungstag speichern und werden zurückgegeben", async () => {
+    const admin = await asAdmin();
+    const res = await admin.patch("/api/settings", { fairnessWindow: "4weeks", fairnessThresholdShifts: 5 });
+    expect(res.status).toBe(200);
+
+    const { settings } = (await admin.get("/api/state")).data.company;
+    expect(settings.fairnessWindow).toBe("4weeks");
+    expect(settings.fairnessThresholdShifts).toBe(5);
+    // Der Zuteilungstag bleibt beim ungenannten Default unangetastet.
+    expect(settings.assignmentDay).toBe(7);
+  });
+
+  test("eine unbekannte Fensterangabe wird abgelehnt", async () => {
+    const admin = await asAdmin();
+    const res = await admin.patch("/api/settings", { fairnessWindow: "letztes-jahr" });
+    expect(res.status).toBe(400);
+  });
+
+  test("eine Schwelle ausserhalb von 0–50 wird abgelehnt", async () => {
+    const admin = await asAdmin();
+    expect((await admin.patch("/api/settings", { fairnessThresholdShifts: -1 })).status).toBe(400);
+    expect((await admin.patch("/api/settings", { fairnessThresholdShifts: 51 })).status).toBe(400);
+  });
+});
+
 describe("Vergangene Schichten", () => {
   /* Anlegen und Bearbeiten weisen die Vergangenheit ab; Einschreiben,
      Hilfegesuch und Übernehmen taten das nicht. Über die API liess sich eine
@@ -850,17 +1021,19 @@ describe("Konten", () => {
 
   test("ein zweites Konto mit gleichem Namen und Passwort wäre unerreichbar", async () => {
     const admin = await asAdmin();
-    await admin.post("/api/employees", { name: "Anna Meier", password: "start123" });
+    const ersteId = (await admin.post("/api/employees", { name: "Anna Meier", email: "anna1@beispiel.ch" })).data.id;
+    const zweiteId = (await admin.post("/api/employees", { name: "Anna Meier", email: "anna2@beispiel.ch" })).data.id;
+    await loeseEinladungEin(ersteId, "start123");
 
     /* Die Anmeldung nimmt das erste Konto, dessen Passwort passt. Stimmen beide
        Angaben überein, käme das zweite nie an die Reihe — die Person käme nicht
        hinein und könnte ihr Passwort deshalb auch nicht ändern. */
-    const doppelt = await admin.post("/api/employees", { name: "Anna Meier", password: "start123" });
+    const doppelt = await loeseEinladungEin(zweiteId, "start123");
     expect(doppelt.status).toBe(409);
     expect(doppelt.data.error).toMatch(/nicht erreichbar/);
 
     // Gleicher Name mit anderem Passwort bleibt erlaubt: Menschen heissen manchmal gleich.
-    const zweite = await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw1" });
+    const zweite = await loeseEinladungEin(zweiteId, "andersPw1");
     expect(zweite.status).toBe(200);
 
     const eine = client();
@@ -868,13 +1041,15 @@ describe("Konten", () => {
     const andere = client();
     await andere.login({ code: "111111", name: "Anna Meier", password: "andersPw1" });
     expect((await eine.get("/api/state")).data.userId).not.toBe((await andere.get("/api/state")).data.userId);
-    expect((await andere.get("/api/state")).data.userId).toBe(zweite.data.id);
+    expect((await andere.get("/api/state")).data.userId).toBe(zweiteId);
   });
 
   test("auch ein neues Passwort darf ein Konto nicht verstecken", async () => {
     const admin = await asAdmin();
-    await admin.post("/api/employees", { name: "Anna Meier", password: "start123" });
-    const zweiteId = (await admin.post("/api/employees", { name: "Anna Meier", password: "andersPw1" })).data.id;
+    const ersteId = (await admin.post("/api/employees", { name: "Anna Meier", email: "anna1@beispiel.ch" })).data.id;
+    const zweiteId = (await admin.post("/api/employees", { name: "Anna Meier", email: "anna2@beispiel.ch" })).data.id;
+    await loeseEinladungEin(ersteId, "start123");
+    await loeseEinladungEin(zweiteId, "andersPw1");
 
     const res = await admin.post(`/api/accounts/${zweiteId}/password`, {
       password: "start123", currentPassword: "12345",
@@ -964,17 +1139,18 @@ describe("Konten", () => {
     expect((await client().login({ ...EMPLOYEE, password: "neuStart1" })).status).toBe(200);
   });
 
-  test("die Administration setzt ein neues Konto später wieder neu", async () => {
+  test("die Administration setzt ein neues Konto von Hand ein, statt auf den Link zu warten", async () => {
     const admin = await asAdmin();
-    const { data } = await admin.post("/api/employees", { name: "Tom Klein", password: "erstesPw1" });
+    const { data } = await admin.post("/api/employees", { name: "Tom Klein", email: "tom@beispiel.ch" });
+    const token = server.db.prepare("SELECT token FROM password_resets WHERE account_id = ?").get(data.id).token;
 
     expect((await admin.post(`/api/accounts/${data.id}/password`, {
       password: "vomAdmin1", currentPassword: "12345",
     })).status).toBe(200);
 
     expect((await client().login({ code: "111111", name: "Tom Klein", password: "vomAdmin1" })).status).toBe(200);
-    // Das erste Passwort gilt danach nicht mehr.
-    expect((await client().login({ code: "111111", name: "Tom Klein", password: "erstesPw1" })).status).toBe(401);
+    // Der Einladungslink ist damit überholt — er lässt sich nicht mehr einlösen.
+    expect((await client().post(`/api/password-setup/${token}`, { password: "andersPw1" })).status).toBe(404);
   });
 
   test("ein fremdes Admin-Konto rührt niemand aus der Firma an", async () => {
@@ -1013,7 +1189,7 @@ describe("Konten", () => {
     const nachher = (await lea.get("/api/state")).data.company.accounts.find((a) => a.id === leaId);
     expect(nachher.role).toBe("employee");
     // Und die Admin-Wege sind für sie zu.
-    expect((await lea.post("/api/employees", { name: "Neu", password: "12345" })).status).toBe(403);
+    expect((await lea.post("/api/employees", { name: "Neu", email: "neu@beispiel.ch" })).status).toBe(403);
   });
 
   test("die letzte Administration behält ihre Rechte", async () => {
@@ -1049,46 +1225,69 @@ describe("Konten", () => {
   });
 });
 
-describe("Erstes Passwort", () => {
-  /* Konten entstehen mit einem Passwort, das die Administration vergibt und
-     persönlich weitergibt. Verschickt wird nichts — es gibt keinen Kanal mehr,
-     auf dem es unterwegs mitlesbar wäre. */
-  test("ein neues Konto meldet sich sofort an", async () => {
+describe("Konto einrichten", () => {
+  /* Ein Admin vergibt beim Anlegen kein Passwort mehr — die Person setzt ihr
+     eigenes über den Link, den sie per Mail bekommt (server/passwordSetup.js).
+     Verschickt wird in den Tests nichts (kein SB_SMTP_HOST), das Zeichen liegt
+     aber in password_resets und lässt sich von dort direkt einlösen. */
+  test("ein neues Konto hat noch kein nutzbares Passwort, bis der Link eingelöst ist", async () => {
     const admin = await asAdmin();
-    const { status, data } = await admin.post("/api/employees", { name: "Tom Klein", password: "startPw1" });
+    const { status, data } = await admin.post("/api/employees", { name: "Tom Klein", email: "tom@beispiel.ch" });
 
     expect(status).toBe(200);
     expect(data.id).toBeTruthy();
+    expect((await admin.get("/api/state")).data.company.accounts.map((a) => a.name)).toContain("Tom Klein");
+
+    const token = server.db.prepare("SELECT token FROM password_resets WHERE account_id = ?").get(data.id).token;
+    const info = await client().get(`/api/password-setup/${token}`);
+    expect(info.status).toBe(200);
+    expect(info.data).toEqual({ name: "Tom Klein", companyName: "Erste Firma AG" });
+
+    expect((await client().post(`/api/password-setup/${token}`, { password: "startPw1" })).status).toBe(200);
     expect((await client().login({ code: "111111", name: "Tom Klein", password: "startPw1" })).status).toBe(200);
   });
 
-  test("ohne Passwort entsteht kein Konto", async () => {
+  test("ohne Namen oder ohne Adresse entsteht kein Konto", async () => {
     const admin = await asAdmin();
 
-    // Sonst stünde ein Konto da, in das niemand hineinkommt.
+    expect((await admin.post("/api/employees", { email: "tom@beispiel.ch" })).status).toBe(400);
     expect((await admin.post("/api/employees", { name: "Tom Klein" })).status).toBe(400);
-    expect((await admin.post("/api/employees", { name: "Tom Klein", password: "abc" })).status).toBe(400);
-    expect((await admin.post("/api/employees", { password: "langGenug" })).status).toBe(400);
 
     expect((await admin.get("/api/state")).data.company.accounts.map((a) => a.name)).not.toContain("Tom Klein");
   });
 
-  test("ein zu schwaches Passwort entsteht kein Konto", async () => {
+  test("ein zu schwaches Passwort löst den Link nicht ein", async () => {
     const admin = await asAdmin();
+    const { data } = await admin.post("/api/employees", { name: "Tom Klein", email: "tom@beispiel.ch" });
+    const token = server.db.prepare("SELECT token FROM password_resets WHERE account_id = ?").get(data.id).token;
 
-    const zuKurz = await admin.post("/api/employees", { name: "Tom Klein", password: "abc123" });
+    const zuKurz = await client().post(`/api/password-setup/${token}`, { password: "abc123" });
     expect(zuKurz.status).toBe(400);
     expect(zuKurz.data.error).toMatch(/8 Zeichen/);
 
-    const nurBuchstaben = await admin.post("/api/employees", { name: "Tom Klein", password: "nurBuchstaben" });
+    const nurBuchstaben = await client().post(`/api/password-setup/${token}`, { password: "nurBuchstaben" });
     expect(nurBuchstaben.status).toBe(400);
     expect(nurBuchstaben.data.error).toMatch(/Zahl oder ein Sonderzeichen/);
 
-    const nurZiffern = await admin.post("/api/employees", { name: "Tom Klein", password: "12345678" });
+    const nurZiffern = await client().post(`/api/password-setup/${token}`, { password: "12345678" });
     expect(nurZiffern.status).toBe(400);
     expect(nurZiffern.data.error).toMatch(/Buchstaben/);
 
-    expect((await admin.get("/api/state")).data.company.accounts.map((a) => a.name)).not.toContain("Tom Klein");
+    // Der Link bleibt bis zu einem gültigen Passwort weiter einlösbar.
+    expect((await client().post(`/api/password-setup/${token}`, { password: "endlichGut1" })).status).toBe(200);
+  });
+
+  test("ein unbekannter oder schon eingelöster Link ist ungültig", async () => {
+    const admin = await asAdmin();
+    const { data } = await admin.post("/api/employees", { name: "Tom Klein", email: "tom@beispiel.ch" });
+    const token = server.db.prepare("SELECT token FROM password_resets WHERE account_id = ?").get(data.id).token;
+
+    expect((await client().get("/api/password-setup/unbekannt")).status).toBe(404);
+    expect((await client().post("/api/password-setup/unbekannt", { password: "startPw1" })).status).toBe(404);
+
+    expect((await client().post(`/api/password-setup/${token}`, { password: "startPw1" })).status).toBe(200);
+    // Ein zweites Mal lässt sich derselbe Link nicht mehr einlösen.
+    expect((await client().post(`/api/password-setup/${token}`, { password: "andersPw1" })).status).toBe(404);
   });
 
   test("ein neues Unternehmen braucht ein Admin-Passwort", async () => {
@@ -1105,7 +1304,8 @@ describe("Erstes Passwort", () => {
     const su = client();
     await su.login(SUPER);
     await su.post("/api/companies", {
-      name: "Zweite Firma AG", code: "222222", adminName: "Neue Chefin", adminPassword: "chefinPw1",
+      name: "Zweite Firma AG", code: "222222", adminName: "Neue Chefin",
+      adminPassword: "chefinPw1", adminEmail: "chefin@beispiel.ch",
     });
 
     expect((await client().login({ code: "222222", name: "Neue Chefin", password: "chefinPw1" })).status).toBe(200);
@@ -1114,7 +1314,9 @@ describe("Erstes Passwort", () => {
 
 describe("Selbstregistrierung", () => {
   const registrieren = (c, form = {}) =>
-    c.post("/api/register", { code: "111111", name: "Neu Hier", password: "startPw1", ...form });
+    c.post("/api/register", {
+      code: "111111", name: "Neu Hier", password: "startPw1", email: "neu@beispiel.ch", ...form,
+    });
 
   test("ein registriertes Konto kann sich noch nicht anmelden", async () => {
     expect((await registrieren(client())).status).toBe(200);
@@ -1183,6 +1385,12 @@ describe("Selbstregistrierung", () => {
     expect(res.status).toBe(400);
   });
 
+  test("ohne E-Mail-Adresse registriert kein Konto", async () => {
+    const res = await registrieren(client(), { email: "" });
+    expect(res.status).toBe(400);
+    expect(res.data.error).toMatch(/E-Mail-Adresse ist nötig/);
+  });
+
   test("ein zweites Konto mit gleichem Namen und Passwort wäre unerreichbar", async () => {
     expect((await registrieren(client())).status).toBe(200);
     expect((await registrieren(client())).status).toBe(409);
@@ -1212,6 +1420,192 @@ describe("Selbstregistrierung", () => {
       currentPassword: SUPER.password, nachfolgerId: pendingId,
     });
     expect(res.status).toBe(409);
+  });
+});
+
+describe("E-Mail und Benachrichtigungen", () => {
+  /* Ohne SB_SMTP_HOST (der Testserver setzt es nicht, siehe helpers/server.js)
+     verschickt server/mail.js nichts, sondern schreibt nur eine Log-Zeile.
+     Diese Tests prüfen deshalb nicht den Versand selbst, sondern dass die
+     Adresse korrekt gespeichert/gelesen wird, für Mitarbeitende und Admins
+     Pflicht ist, und dass die Benachrichtigungs-Hooks die eigentliche Aktion
+     nie zu Fall bringen. Für die Verwaltung (server/routes/admin.js) bleibt
+     sie dagegen optional — eigene Tests dafür im Block "Verwaltung: eigener
+     Zugang". */
+
+  test("ohne Adresse entsteht kein Mitarbeitendenkonto", async () => {
+    const admin = await asAdmin();
+    const res = await admin.post("/api/employees", { name: "Ohne Mail" });
+    expect(res.status).toBe(400);
+    expect(res.data.error).toMatch(/E-Mail-Adresse ist nötig/);
+  });
+
+  test("beim Anlegen eines Mitarbeitendenkontos ist die Adresse Pflicht, aber selbst abrufbar", async () => {
+    const admin = await asAdmin();
+    const { data } = await admin.post("/api/employees", {
+      name: "Tom Klein", email: "tom@beispiel.ch",
+    });
+    await loeseEinladungEin(data.id, "startPw1");
+
+    const tom = client();
+    await tom.login({ code: "111111", name: "Tom Klein", password: "startPw1" });
+    expect((await tom.get(`/api/accounts/${data.id}/email`)).data.email).toBe("tom@beispiel.ch");
+  });
+
+  test("ein ungültiges Format weist Konto-Anlage, Registrierung und Firmengründung ab", async () => {
+    const admin = await asAdmin();
+    expect((await admin.post("/api/employees", {
+      name: "Tom Klein", email: "keine-adresse",
+    })).status).toBe(400);
+
+    expect((await client().post("/api/register", {
+      code: "111111", name: "Neu Hier", password: "startPw1", email: "keine-adresse",
+    })).status).toBe(400);
+
+    const su = client();
+    await su.login(SUPER);
+    expect((await su.post("/api/companies", {
+      name: "Zweite Firma AG", code: "222222", adminName: "Neue Chefin",
+      adminPassword: "chefinPw1", adminEmail: "keine-adresse",
+    })).status).toBe(400);
+  });
+
+  test("die eigene Adresse lässt sich abrufen und ändern, eine fremde nicht — leeren geht nicht mehr", async () => {
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const meineId = (await lea.get("/api/state")).data.userId;
+
+    expect((await lea.get(`/api/accounts/${meineId}/email`)).data.email).toBeNull();
+    expect((await lea.patch(`/api/accounts/${meineId}/email`, { email: "lea@beispiel.ch" })).status).toBe(200);
+    expect((await lea.get(`/api/accounts/${meineId}/email`)).data.email).toBe("lea@beispiel.ch");
+
+    // Pflicht heisst auch: eine bereits gesetzte Adresse lässt sich nicht mehr auf leer zurücksetzen.
+    const geleert = await lea.patch(`/api/accounts/${meineId}/email`, { email: "" });
+    expect(geleert.status).toBe(400);
+    expect((await lea.get(`/api/accounts/${meineId}/email`)).data.email).toBe("lea@beispiel.ch");
+
+    const admin = await asAdmin();
+    const adminId = (await admin.get("/api/state")).data.userId;
+    expect((await lea.get(`/api/accounts/${adminId}/email`)).status).toBe(403);
+    expect((await lea.patch(`/api/accounts/${adminId}/email`, { email: "uebernahme@beispiel.ch" })).status).toBe(403);
+  });
+
+  test("die Adresse steht nirgends im allgemeinen Firmenstand — nur selbst abrufbar", async () => {
+    const admin = await asAdmin();
+    const adminId = (await admin.get("/api/state")).data.userId;
+    await admin.patch(`/api/accounts/${adminId}/email`, { email: "mara@beispiel.ch" });
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const { data } = await lea.get("/api/state");
+    expect(JSON.stringify(data)).not.toContain("mara@beispiel.ch");
+  });
+
+  test("eine Zuteilung mit hinterlegter Adresse schlägt nicht fehl, obwohl kein SMTP konfiguriert ist", async () => {
+    const admin = await asAdmin();
+    const leaId = (await admin.get("/api/state")).data.company.accounts.find((a) => a.name === "Lea Brunner").id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.patch(`/api/accounts/${leaId}/email`, { email: "lea@beispiel.ch" });
+
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    // Sofortige Zuteilung beim Einschreiben — derselbe Pfad, der die Mail
+    // ausserhalb von recompute() auslöst.
+    const res = await lea.post(`/api/shifts/${shiftId}/enroll`);
+    expect(res.status).toBe(200);
+    expect((await lea.get("/api/state")).data.company.shifts[0].assigned).toContain(leaId);
+  });
+
+  test("eine neue Registrierung mit hinterlegter Admin-Adresse schlägt nicht fehl", async () => {
+    const admin = await asAdmin();
+    const adminId = (await admin.get("/api/state")).data.userId;
+    await admin.patch(`/api/accounts/${adminId}/email`, { email: "mara@beispiel.ch" });
+
+    const res = await client().post("/api/register", {
+      code: "111111", name: "Neu Hier", password: "startPw1", email: "neu@beispiel.ch",
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("Verwaltung: eigener Zugang", () => {
+  /* Firmencode, Passwort und E-Mail der Verwaltung entstehen beim ersten
+     Start aus SB_SUPER_CODE/-PASSWORD (siehe ensureSuperAdmin in
+     server/db.js) und leben danach in der super_admin-Tabelle — genau wie ein
+     Firmen-Admin sein erstes Passwort einmalig bekommt und es danach selbst
+     ändert. */
+
+  const alsSuper = async () => { const c = client(); await c.login(SUPER); return c; };
+
+  test("die E-Mail-Adresse der Verwaltung ist optional und steht im eigenen Zustand", async () => {
+    const su = await alsSuper();
+    expect((await su.get("/api/state")).data.email).toBeNull();
+
+    expect((await su.patch("/api/admin/email", { email: "kira@beispiel.ch" })).status).toBe(200);
+    expect((await su.get("/api/state")).data.email).toBe("kira@beispiel.ch");
+
+    // Anders als bei Mitarbeitenden und Admins bleibt sie leerbar.
+    expect((await su.patch("/api/admin/email", { email: "" })).status).toBe(200);
+    expect((await su.get("/api/state")).data.email).toBeNull();
+
+    expect((await su.patch("/api/admin/email", { email: "keine-adresse" })).status).toBe(400);
+  });
+
+  test("der eigene Firmencode lässt sich ändern und gilt sofort für den Login", async () => {
+    const su = await alsSuper();
+    expect((await su.get("/api/state")).data.code).toBe(SUPER.code);
+
+    expect((await su.patch("/api/admin/code", { code: "555555" })).status).toBe(200);
+    expect((await client().login({ ...SUPER, code: "555555" })).status).toBe(200);
+    // Der alte Code führt danach nirgends mehr hin.
+    expect((await client().login(SUPER)).status).toBe(401);
+  });
+
+  test("der neue Code darf keinen bestehenden Firmencode doppeln", async () => {
+    const su = await alsSuper();
+    const res = await su.patch("/api/admin/code", { code: "111111" });
+    expect(res.status).toBe(409);
+  });
+
+  test("ein ungültiges Format weist die Codeänderung ab", async () => {
+    const su = await alsSuper();
+    expect((await su.patch("/api/admin/code", { code: "abc" })).status).toBe(400);
+  });
+
+  test("das eigene Passwort ändert sich wie bei Mitarbeitenden und Admins", async () => {
+    const su = await alsSuper();
+
+    expect((await su.post("/api/admin/verify-password", { password: "falsch" })).data.ok).toBe(false);
+    expect((await su.post("/api/admin/verify-password", { password: SUPER.password })).data.ok).toBe(true);
+
+    const falsch = await su.patch("/api/admin/password", { password: "neuesPw1", currentPassword: "falsch" });
+    expect(falsch.status).toBe(403);
+
+    const res = await su.patch("/api/admin/password", { password: "neuesPw1", currentPassword: SUPER.password });
+    expect(res.status).toBe(200);
+
+    expect((await client().login({ ...SUPER, password: "neuesPw1" })).status).toBe(200);
+    expect((await client().login(SUPER)).status).toBe(401);
+  });
+
+  test("ein zu schwaches neues Passwort wird abgewiesen", async () => {
+    const su = await alsSuper();
+    const res = await su.patch("/api/admin/password", { password: "abc", currentPassword: SUPER.password });
+    expect(res.status).toBe(400);
+  });
+
+  test("nur die Verwaltung selbst kommt an diese Wege", async () => {
+    const admin = await asAdmin();
+    expect((await admin.patch("/api/admin/email", { email: "x@beispiel.ch" })).status).toBe(403);
+    expect((await admin.patch("/api/admin/code", { code: "444444" })).status).toBe(403);
+    expect((await admin.patch("/api/admin/password", { password: "neuesPw1", currentPassword: "x" })).status).toBe(403);
   });
 });
 
@@ -2157,7 +2551,7 @@ describe("Admin-Konten löschen", () => {
     const lea = client();
     await lea.login(EMPLOYEE);
     expect((await lea.get("/api/state")).data.company.accounts.find((a) => a.name === "Lea Brunner").role).toBe("admin");
-    expect((await lea.post("/api/employees", { name: "Neue Person", password: "startPw1" })).status).toBe(200);
+    expect((await lea.post("/api/employees", { name: "Neue Person", email: "neu@beispiel.ch" })).status).toBe(200);
   });
 
   test("eine Nachfolge aus einer fremden Firma zählt nicht", async () => {
@@ -2195,7 +2589,7 @@ describe("Verwaltung", () => {
 
     const daten = {
       name: "Zweite Firma AG", code: "222222",
-      adminName: "Neue Chefin", adminPassword: "chefinPw1",
+      adminName: "Neue Chefin", adminPassword: "chefinPw1", adminEmail: "chefin@beispiel.ch",
     };
     expect((await su.post("/api/companies", daten)).status).toBe(200);
 
@@ -2265,7 +2659,7 @@ describe("Wartung", () => {
 
     await su.post("/api/companies", {
       name: "Kommt Wieder Weg AG", code: "555555",
-      adminName: "Chefin", adminPassword: "chefinPw1",
+      adminName: "Chefin", adminPassword: "chefinPw1", adminEmail: "chefin@beispiel.ch",
     });
     expect((await su.get("/api/admin/info")).data.db.companies).toBe(2);
 

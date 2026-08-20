@@ -2,7 +2,7 @@
 
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
-import { DbHandle, seedDemo } from "./db.js";
+import { DbHandle, ensureSuperAdmin, seedDemo } from "./db.js";
 import { startScheduler } from "./scheduler.js";
 
 /**
@@ -31,12 +31,13 @@ const config = loadConfig();
 warneVorBeispielwerten(config);
 // Griff statt roher Datenbank: so lässt sich im Betrieb eine Sicherung einspielen.
 const db = new DbHandle(config.dbPath);
+ensureSuperAdmin(db, config);
 
 if (config.seedDemo && seedDemo(db)) {
   console.log("Demo-Firma angelegt: Firmencode 111111, Mara Vogt / Lea Brunner, Passwort 12345");
 }
 
-startScheduler(db);
+startScheduler(db, config);
 
 createApp(db, config).listen(config.port, config.host, () => {
   console.log(`Schichtboard läuft auf http://${config.host}:${config.port}`);

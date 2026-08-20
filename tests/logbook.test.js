@@ -32,6 +32,13 @@ async function asLea() {
   return l;
 }
 
+/** Löst den Einladungslink eines frisch angelegten Kontos direkt aus der
+ *  Datenbank ein — siehe server/passwordSetup.js. */
+async function loeseEinladungEin(accountId, password) {
+  const { token } = server.db.prepare("SELECT token FROM password_resets WHERE account_id = ?").get(accountId);
+  return c().post(`/api/password-setup/${token}`, { password });
+}
+
 /** Setzt das Datum einer Schicht direkt in der Datenbank — die API lässt das nicht zu. */
 function backdate(shiftId, date) {
   server.db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(date, shiftId);
@@ -75,9 +82,10 @@ describe("Logbuch", () => {
     });
 
     const tomId = (
-      await admin.post("/api/employees", { name: "Tom Klein", password: "geheim123" })
+      await admin.post("/api/employees", { name: "Tom Klein", email: "tom@beispiel.ch" })
     ).data.id;
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
+    await loeseEinladungEin(tomId, "geheim123");
 
     const lea = await asLea();
     await lea.post(`/api/shifts/${shiftId}/enroll`);
@@ -111,9 +119,10 @@ describe("Logbuch", () => {
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
     const leaId = (
-      await admin.post("/api/employees", { name: "Nina Frei", password: "geheim123" })
+      await admin.post("/api/employees", { name: "Nina Frei", email: "nina@beispiel.ch" })
     ).data.id;
     await admin.patch(`/api/accounts/${leaId}/qualifications`, { qualificationId: qualId, value: true });
+    await loeseEinladungEin(leaId, "geheim123");
 
     const nina = c();
     await nina.login({ code: "111111", name: "Nina Frei", password: "geheim123" });
@@ -171,7 +180,7 @@ describe("Logbuch", () => {
     const admin = await asAdmin();
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     const tomId = (
-      await admin.post("/api/employees", { name: "Tom Klein", password: "geheim123" })
+      await admin.post("/api/employees", { name: "Tom Klein", email: "tom@beispiel.ch" })
     ).data.id;
 
     await admin.patch(`/api/accounts/${tomId}/qualifications`, { qualificationId: qualId, value: true });
@@ -248,7 +257,8 @@ describe("Logbuch", () => {
     await lea.post("/api/logbook/requests", { shiftId, note: "Vertraulicher Grund." });
 
     // Ein zweites Mitarbeitendenkonto sieht die Anfrage samt Notiz nicht.
-    await admin.post("/api/employees", { name: "Tom Klein", password: "tomsPasswort1" });
+    const tomId = (await admin.post("/api/employees", { name: "Tom Klein", email: "tom@beispiel.ch" })).data.id;
+    await loeseEinladungEin(tomId, "tomsPasswort1");
     const tom = c();
     await tom.login({ code: ADMIN.code, name: "Tom Klein", password: "tomsPasswort1" });
 

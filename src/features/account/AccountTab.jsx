@@ -4,6 +4,7 @@ import Badge from "../../components/Badge.jsx";
 import PasswordForm from "../../components/PasswordForm.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
 import CalendarSubscriptionCard from "../../components/CalendarSubscriptionCard.jsx";
+import EmailCard from "../../components/EmailCard.jsx";
 import AppInstallCard from "../../components/AppInstallCard.jsx";
 import SessionCard from "../../components/SessionCard.jsx";
 import LogbookEntryRow from "../logbook/LogbookEntryRow.jsx";
@@ -118,7 +119,7 @@ function LogbookAccessCard({ myRequests, onLoadEligibleShifts, onRequestAccess, 
 }
 
 export default function AccountTab({
-  currentUser, qualifications, verifySelf, onChangePassword, onLogout,
+  currentUser, qualifications, verifySelf, onChangePassword, onChangeEmail, onLogout,
   logbookAccessRequests, onLoadEligibleShifts, onRequestLogbookAccess, onLoadShiftLogbook,
 }) {
   const meine = qualifications.filter((q) => currentUser.qualifications.includes(q.id));
@@ -154,6 +155,13 @@ export default function AccountTab({
       />
 
       <PasswordForm verify={verifySelf} onSubmit={onChangePassword} />
+
+      <EmailCard
+        accountId={currentUser.id}
+        onChangeEmail={onChangeEmail}
+        required
+        hinweis="Pflicht — dorthin geht die Kalenderdatei (ICS), sobald dir eine Schicht zugeteilt wird."
+      />
 
       <div className="sb-card">
         <h3 className="sb-subheading">Meine Daten</h3>

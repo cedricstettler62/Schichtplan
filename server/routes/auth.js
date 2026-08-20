@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import { emailProblem } from "#shared/email.js";
 import { passwortProblem } from "#shared/password.js";
 
 import {
@@ -14,8 +15,9 @@ import {
   setAccountSession,
   setSession,
 } from "../auth.js";
-import { companySummaries, readCompany } from "../db.js";
+import { companySummaries, readCompany, readSuperAdmin } from "../db.js";
 import { uid } from "../ids.js";
+import { notifyPendingRegistration } from "../notifications.js";
 
 /* Ein einziger Wortlaut für jeden Grund, aus dem eine Anmeldung scheitert —
    falscher Code, falscher Name, falsches Passwort. Getrennte Meldungen ("Name
@@ -37,10 +39,11 @@ export default function authRoutes(db, config) {
       return res.status(429).json({ error: "Zu viele Versuche. Bitte später erneut probieren." });
     }
 
-    if (safeEqual(code, config.superAdmin.code)) {
+    const superAdmin = readSuperAdmin(db);
+    if (safeEqual(code, superAdmin.code)) {
       const ok =
-        name === config.superAdmin.name.trim().toLowerCase() &&
-        safeEqual(password, config.superAdmin.password);
+        name === superAdmin.name.trim().toLowerCase() &&
+        checkPassword(password, superAdmin.password_hash);
       if (!ok) {
         limiter.fail(key);
         return res.status(401).json({ error: LOGIN_FEHLER });
@@ -102,6 +105,7 @@ export default function authRoutes(db, config) {
     const code = String(req.body?.code || "").trim();
     const name = String(req.body?.name || "").trim();
     const password = String(req.body?.password || "");
+    const email = String(req.body?.email || "").trim();
     const key = req.ip || "unbekannt";
 
     if (!limiter.check(key)) {
@@ -112,6 +116,8 @@ export default function authRoutes(db, config) {
     if (!name) return res.status(400).json({ error: "Bitte einen Namen eingeben." });
     const passwortFehler = passwortProblem(password);
     if (passwortFehler) return res.status(400).json({ error: passwortFehler });
+    const mailFehler = emailProblem(email, { required: true });
+    if (mailFehler) return res.status(400).json({ error: mailFehler });
 
     const company = db.prepare("SELECT id, paused_at, archived_at FROM companies WHERE code = ?").get(code);
     if (!company || company.archived_at) {
@@ -133,8 +139,12 @@ export default function authRoutes(db, config) {
     }
 
     db.prepare(
-      "INSERT INTO accounts (id, company_id, name, password_hash, role, status) VALUES (?, ?, ?, ?, 'employee', 'pending')"
-    ).run(uid("a"), company.id, name, hashPassword(password));
+      "INSERT INTO accounts (id, company_id, name, password_hash, role, status, email) VALUES (?, ?, ?, ?, 'employee', 'pending', ?)"
+    ).run(uid("a"), company.id, name, hashPassword(password), email || null);
+
+    // Ohne hinterlegte Admin-Mailadresse bleibt es beim Hinweis in der
+    // Oberfläche selbst — kein Fehler, nur keine Mail.
+    notifyPendingRegistration(db, config, company.id, name);
 
     limiter.reset(key);
     res.json({ ok: true });
@@ -152,9 +162,12 @@ export default function authRoutes(db, config) {
     refreshSession(req, res, config);
 
     if (req.session?.type === "super") {
+      const superAdmin = readSuperAdmin(db);
       return res.json({
         type: "super",
-        name: config.superAdmin.name,
+        name: req.session.name,
+        code: superAdmin.code,
+        email: superAdmin.email || null,
         companies: companySummaries(db),
         archivedCompanies: companySummaries(db, { archiviert: true }),
       });

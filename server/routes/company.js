@@ -7,6 +7,8 @@ import crypto from "node:crypto";
 import { Router } from "express";
 
 import { startOfToday, toISO } from "#shared/dates.js";
+import { emailProblem } from "#shared/email.js";
+import { FAIRNESS_WINDOW_KEYS } from "#shared/labels.js";
 import { passwortProblem } from "#shared/password.js";
 
 import { loescheKonto } from "../accounts.js";
@@ -19,10 +21,18 @@ import {
   requireCompany,
   setAccountSession,
 } from "../auth.js";
-import { recompute } from "../assignment.js";
+import { recomputeAndNotify } from "../assignment.js";
 import { logAccountChanged, logPasswordChanged } from "../logbook.js";
+import { notifyAccountCreated } from "../notifications.js";
 import { dateiname, personalData } from "../personalData.js";
 import { uid } from "../ids.js";
+import { erstelleSetupToken, verwirfSetupTokens } from "../passwordSetup.js";
+
+/** Die vollständige, einfügbare Adresse zum Einladungslink — ein Mailprogramm
+ *  liegt ausserhalb des Browsers und kommt mit einem relativen Pfad nicht zurecht. */
+function passwortEinrichtenUrl(req, token) {
+  return `${req.protocol}://${req.get("host")}/passwort-einrichten/${token}`;
+}
 
 /** Die vollständige, einfügbare Adresse — ein Kalenderprogramm liegt ausserhalb
  *  des Browsers und kommt mit einem relativen Pfad nicht zurecht. */
@@ -122,33 +132,42 @@ export default function companyRoutes(db, config) {
     // Verknüpfungen und vergangene Schichten räumt das Schema selbst auf.
     db.prepare("DELETE FROM qualifications WHERE id = ? AND company_id = ?")
       .run(req.params.id, req.session.companyId);
-    recompute(db, req.session.companyId);
+    recomputeAndNotify(db, config, req.session.companyId);
     res.json({ ok: true });
   });
 
   /* --- Konten --- */
 
   /**
-   * Legt ein Konto samt erstem Passwort an. Die Administration gibt es
-   * persönlich weiter und die Person ändert es danach selbst — schriftlich
-   * verschickt läge es dauerhaft irgendwo herum.
+   * Legt ein Konto an. Ein Passwort gibt die Administration dabei nicht mehr
+   * vor: Das Konto bekommt eines, das niemand kennt, und die Person setzt ihr
+   * eigenes über den Link, den sie per Mail bekommt — schriftlich weitergegeben
+   * läge ein erstes Passwort dauerhaft irgendwo herum.
    */
   router.post("/employees", requireAdmin, (req, res) => {
     const name = String(req.body?.name || "").trim();
-    const password = String(req.body?.password || "");
+    const email = String(req.body?.email || "").trim();
     if (!name) return res.status(400).json({ error: "Ein Name ist nötig." });
-    const passwortFehler = passwortProblem(password);
-    if (passwortFehler) return res.status(400).json({ error: passwortFehler });
-    if (kontoWaereUnerreichbar(db, req.session.companyId, name, password)) {
-      return res.status(409).json({
-        error: "Dieses Konto wäre nicht erreichbar: Es gibt bereits ein Konto mit diesem Namen und diesem Passwort. Bitte ein anderes Passwort vergeben.",
-      });
-    }
+    const mailFehler = emailProblem(email, { required: true });
+    if (mailFehler) return res.status(400).json({ error: mailFehler });
 
     const id = uid("a");
+    // Zufällig und niemandem bekannt — nicht einmal der Administration, die das
+    // Konto anlegt. Anmelden kann sich die Person erst, nachdem sie über den
+    // Einladungslink ihr eigenes gesetzt hat.
+    const zufallsPasswort = crypto.randomBytes(32).toString("hex");
     db.prepare(
-      "INSERT INTO accounts (id, company_id, name, password_hash, role) VALUES (?, ?, ?, ?, 'employee')"
-    ).run(id, req.session.companyId, name, hashPassword(password));
+      "INSERT INTO accounts (id, company_id, name, password_hash, role, email) VALUES (?, ?, ?, ?, 'employee', ?)"
+    ).run(id, req.session.companyId, name, hashPassword(zufallsPasswort), email);
+
+    const token = erstelleSetupToken(db, id);
+    const company = db.prepare("SELECT name FROM companies WHERE id = ?").get(req.session.companyId);
+    notifyAccountCreated(config, {
+      to: email,
+      name,
+      companyName: company?.name,
+      url: passwortEinrichtenUrl(req, token),
+    });
 
     res.json({ id });
   });
@@ -203,7 +222,7 @@ export default function companyRoutes(db, config) {
       message: `Qualifikation „${qual.name}“ ${req.body?.value ? "vergeben" : "entzogen"}, durch ${req.session.name}.`,
       actorAccountId: req.session.accountId,
     });
-    recompute(db, req.session.companyId);
+    recomputeAndNotify(db, config, req.session.companyId);
     res.json({ ok: true });
   });
 
@@ -277,6 +296,9 @@ export default function companyRoutes(db, config) {
     }
 
     db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(hashPassword(password), target.id);
+    // Ein von Hand gesetztes Passwort überholt einen noch offenen Einladungslink —
+    // sonst könnte er später ein zweites, unbeobachtetes Mal eingelöst werden.
+    verwirfSetupTokens(db, target.id);
 
     /* Mit dem alten Passwort endet jede Anmeldung, die damit zustande kam —
        sonst liefe das Telefon eines Ausgesperrten unbehelligt weiter, und ein
@@ -339,6 +361,29 @@ export default function companyRoutes(db, config) {
     res.json({ url: kalenderUrl(req, token) });
   });
 
+  /**
+   * Die eigene E-Mail-Adresse — rein persönlich wie das Kalenderabo, deshalb
+   * ohne die sonstige Admin-Ausnahme. Sie steht für niemand anderen bereit:
+   * nicht in der Mitarbeitendenliste, nicht im übrigen Firmenstand.
+   */
+  router.get("/accounts/:id/email", requireCompany, (req, res) => {
+    const target = ziel(req, res, "selbst");
+    if (!target) return;
+    const row = db.prepare("SELECT email FROM accounts WHERE id = ?").get(target.id);
+    res.json({ email: row.email || null });
+  });
+
+  router.patch("/accounts/:id/email", requireCompany, (req, res) => {
+    const target = ziel(req, res, "selbst");
+    if (!target) return;
+    const email = String(req.body?.email || "").trim();
+    const mailFehler = emailProblem(email, { required: true });
+    if (mailFehler) return res.status(400).json({ error: mailFehler });
+
+    db.prepare("UPDATE accounts SET email = ? WHERE id = ?").run(email, target.id);
+    res.json({ ok: true });
+  });
+
   router.delete("/accounts/:id", requireCompany, (req, res) => {
     /* Ein fremdes Admin-Konto löscht niemand aus der Firma heraus — das ist die
        härteste Form des Entmachtens, und sie war bisher als einzige offen. */
@@ -355,6 +400,7 @@ export default function companyRoutes(db, config) {
     loescheKonto(db, req.session.companyId, target, {
       actorName: req.session.name,
       actorAccountId: req.session.accountId,
+      config,
     });
     res.json({ ok: true, self: isSelf });
   });
@@ -362,12 +408,40 @@ export default function companyRoutes(db, config) {
   /* --- Einstellungen --- */
 
   router.patch("/settings", requireAdmin, (req, res) => {
-    const day = Number(req.body?.assignmentDay);
-    if (!Number.isInteger(day) || day < 1 || day > 28) {
-      return res.status(400).json({ error: "Zuteilungstag muss zwischen 1 und 28 liegen." });
+    // Jedes Feld ist optional, damit Zuteilungstag und Fairness-Einstellungen
+    // sich unabhängig voneinander speichern lassen — zwei getrennte Karten im
+    // Formular, ein gemeinsamer Endpunkt.
+    const updates = [];
+    const params = [];
+
+    if (req.body?.assignmentDay !== undefined) {
+      const day = Number(req.body.assignmentDay);
+      if (!Number.isInteger(day) || day < 1 || day > 28) {
+        return res.status(400).json({ error: "Zuteilungstag muss zwischen 1 und 28 liegen." });
+      }
+      updates.push("assignment_day = ?");
+      params.push(day);
     }
-    db.prepare("UPDATE companies SET assignment_day = ? WHERE id = ?").run(day, req.session.companyId);
-    recompute(db, req.session.companyId);
+    if (req.body?.fairnessWindow !== undefined) {
+      const fenster = String(req.body.fairnessWindow);
+      if (!FAIRNESS_WINDOW_KEYS.includes(fenster)) {
+        return res.status(400).json({ error: "Unbekanntes Zeitfenster für den Stundenausgleich." });
+      }
+      updates.push("fairness_window = ?");
+      params.push(fenster);
+    }
+    if (req.body?.fairnessThresholdShifts !== undefined) {
+      const schwelle = Number(req.body.fairnessThresholdShifts);
+      if (!Number.isInteger(schwelle) || schwelle < 0 || schwelle > 50) {
+        return res.status(400).json({ error: "Die Fairness-Schwelle muss zwischen 0 und 50 liegen." });
+      }
+      updates.push("fairness_threshold_shifts = ?");
+      params.push(schwelle);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: "Keine Einstellung übergeben." });
+
+    db.prepare(`UPDATE companies SET ${updates.join(", ")} WHERE id = ?`).run(...params, req.session.companyId);
+    recomputeAndNotify(db, config, req.session.companyId);
     res.json({ ok: true });
   });
 

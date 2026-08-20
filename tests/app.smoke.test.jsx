@@ -70,10 +70,11 @@ describe("Anmeldung", () => {
 
 describe("Selbstregistrierung", () => {
   /** Füllt das Registrierungsformular aus und legt das Konto an. */
-  const registrieren = async (user, { code = "111111", name, password = "startPw1" }) => {
+  const registrieren = async (user, { code = "111111", name, email, password = "startPw1" }) => {
     await user.click(screen.getByRole("button", { name: "Noch kein Konto? Jetzt registrieren" }));
     await user.type(screen.getByPlaceholderText("6 Ziffern"), code);
     await user.type(screen.getByPlaceholderText("Vor- und Nachname"), name);
+    await user.type(screen.getByLabelText("E-Mail-Adresse"), email || `${name.toLowerCase().replace(/\s+/g, ".")}@beispiel.ch`);
     const [pw, wiederholung] = document.querySelectorAll('input[type="password"]');
     await user.type(pw, password);
     await user.type(wiederholung, password);
@@ -542,6 +543,7 @@ describe("Super-Admin", () => {
     await user.type(screen.getByPlaceholderText("z. B. Muster GmbH"), "Zweite Firma AG");
     await user.type(screen.getByPlaceholderText("6 Ziffern"), "111111");
     await user.type(screen.getByLabelText("Name"), "Neue Chefin");
+    await user.type(screen.getByLabelText("E-Mail-Adresse"), "chefin@beispiel.ch");
     await user.type(screen.getByLabelText("Erstes Passwort"), "chefinPw1");
     await user.type(screen.getByLabelText("Wiederholen"), "chefinPw1");
     await user.click(screen.getByRole("button", { name: "Unternehmen anlegen" }));

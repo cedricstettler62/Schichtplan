@@ -8,6 +8,7 @@ import { raeumeFreigaben } from "./conflicts.js";
 import { readAccountsForLogic, readShifts } from "./db.js";
 import { uid } from "./ids.js";
 import { logAssigned } from "./logbook.js";
+import { notifyAssignments } from "./notifications.js";
 
 /**
  * Wann sich zwei Schichten gegenseitig ausschliessen: wenn sie sich zeitlich
@@ -33,10 +34,25 @@ function assignmentDayOf(db, companyId) {
   return row ? row.assignment_day : 7;
 }
 
+/** Die Fairness-Einstellungen der Firma für runAssignmentPass() — siehe shared/assignment.js. */
+function fairnessConfigOf(db, companyId) {
+  const row = db
+    .prepare("SELECT fairness_window, fairness_threshold_shifts FROM companies WHERE id = ?")
+    .get(companyId);
+  return row ? { windowType: row.fairness_window, thresholdShifts: row.fairness_threshold_shifts } : null;
+}
+
 /**
  * Führt einen Zuteilungslauf für eine Firma aus und schreibt nur das zurück,
  * was sich tatsächlich geändert hat. `today` kommt pro Aufruf frisch — anders
  * als im Browser, wo ein lange offener Tab mit gestern rechnete.
+ *
+ * Gibt zurück, wer in diesem Durchlauf neu zugeteilt wurde: eine Map von
+ * Konto-ID auf die Liste ihrer frisch zugeteilten Schicht-IDs. Zuteilungen,
+ * die eine Route selbst direkt schreibt (sofortige Zuteilung beim
+ * Einschreiben, Übernehmen), laufen nicht durch diese Schleife und stehen
+ * hier folglich nicht drin — siehe die entsprechenden Benachrichtigungen in
+ * server/routes/shifts.js.
  */
 export function recompute(db, companyId, forceIds = []) {
   const today = startOfToday();
@@ -44,7 +60,7 @@ export function recompute(db, companyId, forceIds = []) {
   const accounts = readAccountsForLogic(db, companyId);
   const after = runAssignmentPass(
     before, accounts, today, assignmentDayOf(db, companyId), forceIds,
-    Math.random, ausschlussRegel(db, companyId)
+    Math.random, ausschlussRegel(db, companyId), fairnessConfigOf(db, companyId)
   );
 
   const setShift = db.prepare("UPDATE shifts SET assignment_attempted = ?, assigned_at = ? WHERE id = ?");
@@ -55,6 +71,7 @@ export function recompute(db, companyId, forceIds = []) {
   const namen = new Map(
     db.prepare("SELECT id, name FROM accounts WHERE company_id = ?").all(companyId).map((a) => [a.id, a.name])
   );
+  const neuZugeteilt = new Map();
 
   db.transaction(() => {
     after.forEach((shift, i) => {
@@ -66,6 +83,7 @@ export function recompute(db, companyId, forceIds = []) {
         if (!old.assigned.includes(accountId)) {
           setAssigned.run(shift.id, accountId);
           logAssigned(db, companyId, shift, namen.get(accountId) || "Unbekannt", accountId);
+          neuZugeteilt.set(accountId, [...(neuZugeteilt.get(accountId) || []), shift.id]);
         }
       }
       /* Mit der Auslosung hat die Warteliste ihren Zweck erfüllt: Wer keine
@@ -75,11 +93,21 @@ export function recompute(db, companyId, forceIds = []) {
       if (shift.assignmentAttempted && !old.assignmentAttempted) warteliste.run(shift.id);
     });
   })();
+
+  return neuZugeteilt;
+}
+
+/** Wie recompute(), verschickt danach aber auch die Zuteilungs-Mails —
+ *  der Weg, den jede Route mit Zugriff auf `config` nehmen sollte. */
+export function recomputeAndNotify(db, config, companyId, forceIds = []) {
+  const neuZugeteilt = recompute(db, companyId, forceIds);
+  notifyAssignments(db, config, companyId, neuZugeteilt);
+  return neuZugeteilt;
 }
 
 /** Zuteilungslauf über alle Firmen — vom Scheduler einmal täglich benutzt. */
-export function recomputeAll(db) {
-  for (const { id } of db.prepare("SELECT id FROM companies").all()) recompute(db, id);
+export function recomputeAll(db, config) {
+  for (const { id } of db.prepare("SELECT id FROM companies").all()) recomputeAndNotify(db, config, id);
 }
 
 /**

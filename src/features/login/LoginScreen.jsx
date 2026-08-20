@@ -1,12 +1,13 @@
 import { useState } from "react";
+import { emailProblem } from "#shared/email.js";
 import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
 
 /**
  * `onLogin(code, name, password)` liefert bei Erfolg null, bei einem
  * unbestätigten Konto `{ pending: true }`, sonst `{ message }`.
- * `onRegister(code, name, password)` liefert null bei Erfolg, sonst eine
- * Fehlermeldung — das neue Konto entsteht dabei als 'pending' und meldet sich
- * nicht selbst an.
+ * `onRegister(code, name, password, email)` liefert null bei Erfolg, sonst
+ * eine Fehlermeldung — das neue Konto entsteht dabei als 'pending' und meldet
+ * sich nicht selbst an. `email` ist optional.
  */
 export default function LoginScreen({ onLogin, onRegister }) {
   const [mode, setMode] = useState("login"); // "login" | "register" | "pending"
@@ -98,6 +99,7 @@ function AnmeldeForm({ onLogin, onWechsel, onPending }) {
 function RegistrierungsForm({ onRegister, onFertig, onAbbrechen }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [wiederholung, setWiederholung] = useState("");
   const [error, setError] = useState("");
@@ -109,9 +111,11 @@ function RegistrierungsForm({ onRegister, onFertig, onAbbrechen }) {
     const passwortFehler = passwortProblem(password);
     if (passwortFehler) { setError(passwortFehler); return; }
     if (password !== wiederholung) { setError("Die beiden Passwörter stimmen nicht überein."); return; }
+    const mailFehler = emailProblem(email, { required: true });
+    if (mailFehler) { setError(mailFehler); return; }
 
     setBusy(true);
-    const meldung = await onRegister(code.trim(), name.trim(), password);
+    const meldung = await onRegister(code.trim(), name.trim(), password, email.trim());
     setBusy(false);
 
     if (meldung) { setError(meldung); return; }
@@ -138,6 +142,10 @@ function RegistrierungsForm({ onRegister, onFertig, onAbbrechen }) {
         <label className="sb-field">
           <span>Name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={handleKey} placeholder="Vor- und Nachname" autoComplete="username" />
+        </label>
+        <label className="sb-field">
+          <span>E-Mail-Adresse</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={handleKey} placeholder="name@beispiel.ch" autoComplete="email" />
         </label>
         <div className="sb-field-wrap">
           <label className="sb-field">

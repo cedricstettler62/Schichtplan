@@ -2,10 +2,11 @@
 
 import { Router } from "express";
 
-import { endeAlleSitzungen, hashPassword, kontoWaereUnerreichbar, requireSuper, safeEqual } from "../auth.js";
+import { checkPassword, endeAlleSitzungen, hashPassword, kontoWaereUnerreichbar, requireSuper } from "../auth.js";
 import { loescheKonto } from "../accounts.js";
-import { createCompany } from "../db.js";
+import { createCompany, readSuperAdmin } from "../db.js";
 import { logPasswordChanged, readLogbook } from "../logbook.js";
+import { emailProblem } from "#shared/email.js";
 import { passwortProblem } from "#shared/password.js";
 
 export default function companiesRoutes(db, config) {
@@ -17,6 +18,7 @@ export default function companiesRoutes(db, config) {
     const name = String(req.body?.name || "").trim();
     const adminName = String(req.body?.adminName || "").trim();
     const adminPassword = String(req.body?.adminPassword || "");
+    const adminEmail = String(req.body?.adminEmail || "").trim();
 
     if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "Der Firmencode muss 6-stellig sein." });
     if (!name || !adminName) {
@@ -24,14 +26,16 @@ export default function companiesRoutes(db, config) {
     }
     const passwortFehler = passwortProblem(adminPassword);
     if (passwortFehler) return res.status(400).json({ error: passwortFehler });
+    const mailFehler = emailProblem(adminEmail, { required: true });
+    if (mailFehler) return res.status(400).json({ error: mailFehler });
 
     const taken = db.prepare("SELECT 1 FROM companies WHERE code = ?").get(code);
-    if (taken || code === config.superAdmin.code) {
+    if (taken || code === readSuperAdmin(db).code) {
       return res.status(409).json({ error: "Dieser Firmencode wird bereits verwendet." });
     }
 
     // Das erste Passwort setzt die Verwaltung und gibt es persönlich weiter.
-    const id = createCompany(db, { code, name, adminName, adminPassword });
+    const id = createCompany(db, { code, name, adminName, adminPassword, adminEmail });
     res.json({ id });
   });
 
@@ -145,7 +149,7 @@ export default function companiesRoutes(db, config) {
       .get(req.params.accountId, req.params.id);
     if (!target) return res.status(404).json({ error: "Admin-Konto nicht gefunden." });
 
-    if (!safeEqual(String(req.body?.currentPassword || ""), config.superAdmin.password)) {
+    if (!checkPassword(String(req.body?.currentPassword || ""), readSuperAdmin(db).password_hash)) {
       return res.status(403).json({ error: "Das Passwort der Verwaltung ist falsch." });
     }
 
@@ -168,7 +172,7 @@ export default function companiesRoutes(db, config) {
     // Wer und wann, nie das Passwort selbst — das Logbuch ist kein Tresor dafür.
     logPasswordChanged(db, req.params.id, {
       accountName: target.name, accountId: target.id,
-      actorName: config.superAdmin.name, actorAccountId: null, selbst: false,
+      actorName: req.session.name, actorAccountId: null, selbst: false,
     });
     res.json({ ok: true });
   });
@@ -191,7 +195,7 @@ export default function companiesRoutes(db, config) {
     if (!target) return res.status(404).json({ error: "Admin-Konto nicht gefunden." });
 
     // Wie beim Zurücksetzen: Ein offen liegender Browser soll nicht reichen.
-    if (!safeEqual(String(req.body?.currentPassword || ""), config.superAdmin.password)) {
+    if (!checkPassword(String(req.body?.currentPassword || ""), readSuperAdmin(db).password_hash)) {
       return res.status(403).json({ error: "Das Passwort der Verwaltung ist falsch." });
     }
 
@@ -214,8 +218,9 @@ export default function companiesRoutes(db, config) {
     }
 
     loescheKonto(db, req.params.id, target, {
-      actorName: config.superAdmin.name,
+      actorName: req.session.name,
       nachfolgerId: nachfolge?.id,
+      config,
     });
 
     res.json({ ok: true, nachfolge: nachfolge ? nachfolge.name : null });

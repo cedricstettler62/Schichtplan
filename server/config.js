@@ -24,5 +24,16 @@ export function loadConfig(env = process.env) {
     seedDemo: env.SB_SEED_DEMO === "1",
     // Hinter cloudflared läuft alles über HTTPS.
     secureCookie: env.SB_SECURE_COOKIE === "1",
+    /* Ohne SB_SMTP_HOST bleibt mail.host leer — server/mail.js verschickt dann
+       nichts, sondern schreibt nur eine Log-Zeile. Benachrichtigungen sind ein
+       Zusatz, kein Betriebsvoraussetzung. */
+    mail: {
+      host: env.SB_SMTP_HOST || "",
+      port: Number(env.SB_SMTP_PORT || 587),
+      secure: env.SB_SMTP_SECURE === "1",
+      user: env.SB_SMTP_USER || "",
+      password: env.SB_SMTP_PASSWORD || "",
+      from: env.SB_MAIL_FROM || env.SB_SMTP_USER || "",
+    },
   };
 }

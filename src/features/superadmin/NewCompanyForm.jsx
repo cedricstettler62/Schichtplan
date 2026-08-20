@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { emailProblem } from "#shared/email.js";
 import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
 
 export default function NewCompanyForm({ onCreate }) {
   const [companyName, setCompanyName] = useState("");
   const [code, setCode] = useState("");
   const [adminName, setAdminName] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [wiederholung, setWiederholung] = useState("");
   const [error, setError] = useState("");
@@ -17,17 +19,20 @@ export default function NewCompanyForm({ onCreate }) {
     const passwortFehler = passwortProblem(adminPassword);
     if (passwortFehler) { setError(passwortFehler); return; }
     if (adminPassword !== wiederholung) { setError("Die beiden Passwörter stimmen nicht überein."); return; }
+    const mailFehler = emailProblem(adminEmail, { required: true });
+    if (mailFehler) { setError(mailFehler); return; }
     setError("");
 
     const message = await onCreate({
       name: companyName.trim(),
       code: trimmedCode,
       adminName: adminName.trim(),
+      adminEmail: adminEmail.trim(),
       adminPassword,
     });
     if (message) { setError(message); return; }
 
-    setCompanyName(""); setCode(""); setAdminName(""); setAdminPassword(""); setWiederholung("");
+    setCompanyName(""); setCode(""); setAdminName(""); setAdminEmail(""); setAdminPassword(""); setWiederholung("");
   };
 
   return (
@@ -50,6 +55,10 @@ export default function NewCompanyForm({ onCreate }) {
         <span className="sb-detail-label">Erstes Admin-Konto</span>
         <div className="sb-form-grid">
           <label className="sb-field"><span>Name</span><input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Vor- und Nachname" /></label>
+          <label className="sb-field">
+            <span>E-Mail-Adresse</span>
+            <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="name@beispiel.ch" />
+          </label>
           <div className="sb-field-wrap">
             <label className="sb-field">
               <span>Erstes Passwort</span>

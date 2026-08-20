@@ -72,8 +72,17 @@ export const downloadPersonalData = (accountId) =>
 /** Kalenderabo (iCal): aktueller Stand — aus, oder die Adresse zum Kopieren. */
 export const calendarStatus = (accountId) => api.get(`/accounts/${accountId}/calendar-token`);
 
+/** Die eigene, für Benachrichtigungen hinterlegte E-Mail-Adresse — oder null. */
+export const emailStatus = (accountId) => api.get(`/accounts/${accountId}/email`);
+
 /** Schaltet das eigene Kalenderabo ein oder erzeugt eine neue Adresse. */
 export const renewCalendarToken = (accountId) => api.post(`/accounts/${accountId}/calendar-token`);
+
+/** Name und Firma zum Einladungslink — vor der Eingabe eines Passworts zur Begrüssung. */
+export const passwordSetupInfo = (token) => api.get(`/password-setup/${token}`);
+
+/** Löst den Einladungslink ein: setzt das erste eigene Passwort. */
+export const submitPasswordSetup = (token, password) => api.post(`/password-setup/${token}`, { password });
 
 /** Schickt eine Sicherungsdatei an den Server, der sie einspielt. */
 export async function uploadDatabase(file) {

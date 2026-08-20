@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Avatar from "../../components/Avatar.jsx";
 import Badge from "../../components/Badge.jsx";
-import Toggle from "../../components/Toggle.jsx";
+import { QualToggles } from "../../components/Toggle.jsx";
 import PasswordForm from "../../components/PasswordForm.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
@@ -32,20 +32,12 @@ export default function EmployeeManageRow({ account, qualifications, verifyAdmin
 
           <div className="sb-manage-section">
             <span className="sb-detail-label">Qualifikationen</span>
-            {qualifications.length === 0 ? (
-              <p className="sb-empty">Noch keine Qualifikationen angelegt – das geht unter „Einstellungen“.</p>
-            ) : (
-              <div className="sb-toggle-list">
-                {qualifications.map((q) => (
-                  <Toggle
-                    key={q.id}
-                    label={q.name}
-                    checked={account.qualifications.includes(q.id)}
-                    onChange={(val) => onSetQualification(account.id, q.id, val)}
-                  />
-                ))}
-              </div>
-            )}
+            <QualToggles
+              qualifications={qualifications}
+              gewaehlt={account.qualifications}
+              onSet={(qualId, wert) => onSetQualification(account.id, qualId, wert)}
+              leerText="Noch keine Qualifikationen angelegt – das geht unter „Einstellungen“."
+            />
           </div>
 
           <div className="sb-manage-section">

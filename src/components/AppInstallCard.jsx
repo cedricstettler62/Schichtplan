@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Karte from "./Karte.jsx";
 
 /**
  * Legt die Anwendung als eigenes Programm auf den Rechner.
@@ -68,8 +69,7 @@ export default function AppInstallCard() {
   };
 
   return (
-    <div className="sb-card">
-      <h3 className="sb-subheading">Als Programm einrichten</h3>
+    <Karte titel="Als Programm einrichten">
       {installiert ? (
         <p className="sb-empty">
           Schichtboard ist auf diesem Gerät eingerichtet. Du findest es im Startmenü.
@@ -97,6 +97,6 @@ export default function AppInstallCard() {
           )}
         </>
       )}
-    </div>
+    </Karte>
   );
 }

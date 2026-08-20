@@ -1,11 +1,12 @@
 import { useState } from "react";
 import Badge from "../../components/Badge.jsx";
 import Chip from "../../components/Chip.jsx";
-import QualFilterChips from "../../components/QualFilterChips.jsx";
+import QualChips from "../../components/QualChips.jsx";
 import DateStub from "../../components/DateStub.jsx";
+import TabHead from "../../components/TabHead.jsx";
 import { fromISO, isFutureOrToday, monthDiff } from "#shared/dates.js";
 import { hasQualifications } from "#shared/assignment.js";
-import { qualifikationsListe, qualifikationsNamen } from "#shared/labels.js";
+import { fehltFuerSchicht, qualifikationsListe } from "#shared/labels.js";
 
 export default function EmployeeShiftsTab({ shifts, qualifications, accounts, currentUser, today, onToggleEnroll }) {
   const [onlyMatching, setOnlyMatching] = useState(false);
@@ -24,22 +25,14 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
     return true;
   }).sort((a, b) => a.date.localeCompare(b.date));
 
-  /* Sagt, was genau fehlt: Bei mehreren Anforderungen hilft „dir fehlt eine
-     Qualifikation“ niemandem weiter. */
-  const fehlendeNamen = (s) =>
-    qualifikationsNamen(
-      qualifications,
-      (s.qualificationIds || []).filter((id) => !currentUser.qualifications.includes(id))
-    ).join(", ");
-
   const handleClick = async (s, qualified, enrolled) => {
     if (!qualified && !enrolled) {
-      const fehlt = fehlendeNamen(s);
       setEnrollError({
         shiftId: s.id,
-        message: fehlt
-          ? `Dafür fehlt dir: ${fehlt}. Wende dich an einen Admin, wenn das nicht stimmt.`
-          : "Für diese Schicht ist keine Qualifikation hinterlegt — sie lässt sich deshalb nicht übernehmen.",
+        message: fehltFuerSchicht(
+          qualifications, s.qualificationIds, currentUser.qualifications,
+          "Wende dich an einen Admin, wenn das nicht stimmt."
+        ),
       });
       return;
     }
@@ -51,18 +44,13 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
 
   return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Schichten</h2>
-          <p className="sb-tab-intro">Offene Schichten ab dem nächsten Monat. Einschreiben genügt – zugeteilt wird automatisch.</p>
-        </div>
-      </div>
+      <TabHead titel="Schichten" intro="Offene Schichten ab dem nächsten Monat. Einschreiben genügt – zugeteilt wird automatisch." />
       <div className="sb-filter-row">
         <div className="sb-chip-row">
           <Chip active={onlyMatching} onClick={() => setOnlyMatching((v) => !v)}>Passende Qualifikationen</Chip>
           <Chip active={onlyEnrolled} onClick={() => setOnlyEnrolled((v) => !v)}>Bereits eingeschrieben</Chip>
         </div>
-        <QualFilterChips qualifications={qualifications} gewaehlt={qualFilter} setGewaehlt={setQualFilter} />
+        <QualChips qualifications={qualifications} gewaehlt={qualFilter} onChange={setQualFilter} />
       </div>
 
       <div className="sb-shift-list">

@@ -31,6 +31,16 @@ export function shortMonth(iso) { const d = fromISO(iso); return d.toLocaleDateS
 
 export function shortWeekday(iso) { const d = fromISO(iso); return d.toLocaleDateString("de-DE", { weekday: "short" }); }
 
+/**
+ * Ein Zeitstempel aus der Datenbank für die Anzeige: „19. Aug. 2026, 14:35“,
+ * ohne Uhrzeit „19. Aug. 2026“. Fehlt der Wert, steht ein Strich — sonst
+ * stünde dort „Invalid Date“.
+ */
+export function fmtZeitpunkt(iso, { mitUhrzeit = true } = {}) {
+  if (!iso) return "–";
+  return new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", ...(mitUhrzeit && { timeStyle: "short" }) });
+}
+
 export function monthDiff(from, to) { return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()); }
 
 export function isFutureOrToday(iso, today) { return iso >= toISO(today); }

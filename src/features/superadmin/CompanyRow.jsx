@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import LogbookLoader from "../../components/LogbookLoader.jsx";
+import { useKurzeMeldung } from "../../hooks.js";
 import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
 
 const MENU = [
@@ -9,6 +10,28 @@ const MENU = [
   ["delete-admin", "Admin-Konto löschen"],
   ["logbook", "Logbuch"],
 ];
+
+/** Auswahl eines Kontos aus einer Liste — dreimal dasselbe Feld: zurücksetzen,
+    löschen, Nachfolge bestimmen. */
+function KontoAuswahl({ label, wert, onChange, konten }) {
+  return (
+    <label className="sb-field">
+      <span>{label}</span>
+      <select value={wert} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Bitte wählen</option>
+        {konten.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+    </label>
+  );
+}
+
+/** Beide Admin-Bereiche brauchen dieselbe Vorbedingung: Die Liste muss da und
+    darf nicht leer sein. */
+function MitAdmins({ admins, children }) {
+  if (admins === null) return <p className="sb-status">Admin-Konten werden geladen …</p>;
+  if (admins.length === 0) return <p className="sb-empty">Dieses Unternehmen hat kein Admin-Konto.</p>;
+  return children;
+}
 
 /**
  * Aufklappen zeigt zunächst nur eine kompakte Übersicht mit einer Knopfreihe.
@@ -23,7 +46,7 @@ export default function CompanyRow({
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState(null); // null = nur Übersicht + Menü
   const [name, setName] = useState(company.name);
-  const [saved, setSaved] = useState(false);
+  const [saved, zeigeGespeichert, verbergeGespeichert] = useKurzeMeldung(1500);
   const [nameError, setNameError] = useState("");
 
   const [admins, setAdmins] = useState(null); // null = noch nicht geladen
@@ -38,7 +61,7 @@ export default function CompanyRow({
   const [wiederholung, setWiederholung] = useState("");
   const [superPw, setSuperPw] = useState("");
   const [resetError, setResetError] = useState("");
-  const [resetSaved, setResetSaved] = useState(false);
+  const [resetSaved, zeigeResetGespeichert] = useKurzeMeldung(2500);
   const wähleAbschnitt = (key) => setSection((s) => (s === key ? null : key));
 
   /* Erst laden, wenn ein Bereich es tatsächlich braucht: Die Übersicht zeigt
@@ -61,10 +84,9 @@ export default function CompanyRow({
     const trimmed = name.trim();
     if (!trimmed) return;
     const meldung = await onUpdateName(company.id, trimmed);
-    if (meldung) { setNameError(meldung); setSaved(false); return; }
+    if (meldung) { setNameError(meldung); verbergeGespeichert(); return; }
     setNameError("");
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+    zeigeGespeichert();
   };
 
   const submitReset = async () => {
@@ -77,9 +99,8 @@ export default function CompanyRow({
     if (meldung) { setResetError(meldung); return; }
 
     setResetError("");
-    setResetSaved(true);
     setNeu(""); setWiederholung(""); setSuperPw("");
-    setTimeout(() => setResetSaved(false), 2500);
+    zeigeResetGespeichert();
   };
 
   /* Beim letzten Admin-Konto muss jemand übernehmen — sonst stünde die Firma
@@ -149,7 +170,6 @@ export default function CompanyRow({
             <ConfirmDelete
               onConfirm={() => onArchive(company.id)}
               label="Unternehmen löschen"
-              confirmLabel="Ja, löschen"
               question={`„${company.name}“ löschen? Der Zugang wird sofort gesperrt. Logbuch und aufbewahrungspflichtige Daten bleiben unter „Archiviert“ einsehbar.`}
               variant="button"
               small
@@ -178,19 +198,14 @@ export default function CompanyRow({
                 Für den Fall, dass sich die Administration dieses Unternehmens ausgesperrt hat.
                 Gib das neue Passwort persönlich weiter.
               </p>
-              {admins === null ? (
-                <p className="sb-status">Admin-Konten werden geladen …</p>
-              ) : admins.length === 0 ? (
-                <p className="sb-empty">Dieses Unternehmen hat kein Admin-Konto.</p>
-              ) : (
+              <MitAdmins admins={admins}>
                 <div className="sb-form-grid">
-                  <label className="sb-field">
-                    <span>Admin-Konto</span>
-                    <select value={adminId} onChange={(e) => { setAdminId(e.target.value); setResetError(""); }}>
-                      <option value="">Bitte wählen</option>
-                      {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
-                  </label>
+                  <KontoAuswahl
+                    label="Admin-Konto"
+                    wert={adminId}
+                    onChange={(id) => { setAdminId(id); setResetError(""); }}
+                    konten={admins || []}
+                  />
                   <div className="sb-field-wrap">
                     <label className="sb-field">
                       <span>Neues Passwort</span>
@@ -216,7 +231,7 @@ export default function CompanyRow({
                     <button type="button" className="sb-btn sb-btn-ink" onClick={submitReset}>Passwort setzen</button>
                   </div>
                 </div>
-              )}
+              </MitAdmins>
               {resetError && <p className="sb-error">{resetError}</p>}
               {resetSaved && <p className="sb-saved-note">Neues Passwort gesetzt.</p>}
             </div>
@@ -229,11 +244,7 @@ export default function CompanyRow({
                 Innerhalb der Firma kann das niemand: Admins entmachten einander nicht. Ist jemand
                 ausgeschieden und das Konto bleibt stehen, entfernt es die Verwaltung.
               </p>
-              {admins === null ? (
-                <p className="sb-status">Admin-Konten werden geladen …</p>
-              ) : admins.length === 0 ? (
-                <p className="sb-empty">Dieses Unternehmen hat kein Admin-Konto.</p>
-              ) : (
+              <MitAdmins admins={admins}>
                 <>
                   {letztes && (
                     <p className="sb-status">
@@ -242,21 +253,19 @@ export default function CompanyRow({
                     </p>
                   )}
                   <div className="sb-form-grid">
-                    <label className="sb-field">
-                      <span>Zu löschendes Admin-Konto</span>
-                      <select value={loeschId} onChange={(e) => { setLoeschId(e.target.value); setLoeschError(""); }}>
-                        <option value="">Bitte wählen</option>
-                        {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                      </select>
-                    </label>
+                    <KontoAuswahl
+                      label="Zu löschendes Admin-Konto"
+                      wert={loeschId}
+                      onChange={(id) => { setLoeschId(id); setLoeschError(""); }}
+                      konten={admins || []}
+                    />
                     {letztes && (
-                      <label className="sb-field">
-                        <span>Nachfolge</span>
-                        <select value={nachfolgerId} onChange={(e) => { setNachfolgerId(e.target.value); setLoeschError(""); }}>
-                          <option value="">Bitte wählen</option>
-                          {employees.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                        </select>
-                      </label>
+                      <KontoAuswahl
+                        label="Nachfolge"
+                        wert={nachfolgerId}
+                        onChange={(id) => { setNachfolgerId(id); setLoeschError(""); }}
+                        konten={employees}
+                      />
                     )}
                     <label className="sb-field">
                       <span>Verwaltungs-Passwort zur Bestätigung</span>
@@ -271,7 +280,6 @@ export default function CompanyRow({
                       <ConfirmDelete
                         onConfirm={adminLoeschen}
                         label="Jetzt löschen"
-                        confirmLabel="Ja, löschen"
                         question="Dieses Admin-Konto endgültig löschen? Zuteilungen daraus werden frei."
                         variant="button"
                       />
@@ -284,7 +292,7 @@ export default function CompanyRow({
                     </p>
                   )}
                 </>
-              )}
+              </MitAdmins>
               {loeschError && <p className="sb-error">{loeschError}</p>}
             </div>
           )}

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, downloadDatabase, uploadDatabase } from "../../api.js";
+import { fmtZeitpunkt } from "#shared/dates.js";
+import Karte from "../../components/Karte.jsx";
 
 /*
  * Wartung für die Verwaltung: Sicherung herunterladen, Sicherung einspielen,
@@ -14,11 +16,6 @@ function lesbareGroesse(bytes) {
   return bytes < 1024 * 1024
     ? `${(bytes / 1024).toFixed(0)} kB`
     : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function lesbaresDatum(iso) {
-  if (!iso) return "–";
-  return new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
 }
 
 export default function SystemPanel({ onDataChanged }) {
@@ -102,15 +99,10 @@ export default function SystemPanel({ onDataChanged }) {
   if (!info) return null;
 
   return (
-    <div className="sb-card">
-      <h3 className="sb-subheading">Wartung</h3>
-      <p className="sb-tab-intro">
-        Sicherung herunterladen, eine Sicherung einspielen und das Programm auf den neuesten Stand bringen.
-      </p>
-
+    <Karte titel="Wartung" intro="Sicherung herunterladen, eine Sicherung einspielen und das Programm auf den neuesten Stand bringen.">
       <div className="sb-detail-grid">
         <div><span className="sb-detail-label">Version</span><span className="sb-mono">{info.version.commit}</span></div>
-        <div><span className="sb-detail-label">Stand vom</span>{lesbaresDatum(info.version.date)}</div>
+        <div><span className="sb-detail-label">Stand vom</span>{fmtZeitpunkt(info.version.date)}</div>
         <div><span className="sb-detail-label">Datenbank</span>{lesbareGroesse(info.db.groesse)}</div>
         <div><span className="sb-detail-label">Inhalt</span>{info.db.companies} Unternehmen · {info.db.accounts} Konten · {info.db.shifts} Schichten</div>
       </div>
@@ -151,19 +143,19 @@ export default function SystemPanel({ onDataChanged }) {
 
       {haengt && (
         <p className="sb-error">
-          Die Update-Anforderung liegt seit {lesbaresDatum(stand.startedAt)} unbearbeitet.
+          Die Update-Anforderung liegt seit {fmtZeitpunkt(stand.startedAt)} unbearbeitet.
           Auf dem Server prüfen: <span className="sb-mono">systemctl status schichtplan-update.path</span>
         </p>
       )}
 
       {stand && !haengt && !nachfrage && (
         <p className={stand.state === "fehler" ? "sb-error" : "sb-saved-note"}>
-          Letztes Update: {stand.message || stand.state} ({lesbaresDatum(stand.finishedAt)})
+          Letztes Update: {stand.message || stand.state} ({fmtZeitpunkt(stand.finishedAt)})
         </p>
       )}
 
       {meldung && <p className="sb-saved-note">{meldung}</p>}
       {fehler && <p className="sb-error">{fehler}</p>}
-    </div>
+    </Karte>
   );
 }

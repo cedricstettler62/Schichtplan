@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
+import { useKurzeMeldung } from "../hooks.js";
 
 /**
  * Passwort setzen — für das eigene Konto und für ein fremdes.
@@ -24,7 +25,7 @@ export default function PasswordForm({
   const [neu, setNeu] = useState("");
   const [wiederholung, setWiederholung] = useState("");
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [saved, zeigeGespeichert, verbergeGespeichert] = useKurzeMeldung(2500);
 
   const submitVerify = async () => {
     if (!(await verify(eigenes))) {
@@ -38,20 +39,19 @@ export default function PasswordForm({
 
   const submitPassword = async () => {
     const passwortFehler = passwortProblem(neu);
-    if (passwortFehler) { setError(passwortFehler); setSaved(false); return; }
-    if (neu !== wiederholung) { setError("Die Passwörter stimmen nicht überein."); setSaved(false); return; }
+    if (passwortFehler) { setError(passwortFehler); verbergeGespeichert(); return; }
+    if (neu !== wiederholung) { setError("Die Passwörter stimmen nicht überein."); verbergeGespeichert(); return; }
 
     /* Erst melden, wenn der Server zugestimmt hat. Vorher stand hier
        „gespeichert“, egal was zurückkam — ein abgelehnter oder gar nicht
        angekommener Wechsel sah aus wie ein erfolgreicher, und beim nächsten
        Anmelden galt dann das alte Passwort. */
     const meldung = await onSubmit(neu, eigenes);
-    if (meldung) { setError(meldung); setSaved(false); return; }
+    if (meldung) { setError(meldung); verbergeGespeichert(); return; }
 
     setError("");
     setNeu(""); setWiederholung(""); setEigenes(""); setBestaetigt(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    zeigeGespeichert();
   };
 
   return (

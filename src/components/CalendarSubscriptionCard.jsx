@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { calendarStatus, renewCalendarToken } from "../api.js";
+import { useKurzeMeldung } from "../hooks.js";
+import Karte from "./Karte.jsx";
 
 /**
  * Kalenderabo (iCal): zugeteilte Schichten als Termine in Google-, Apple-
@@ -11,7 +13,7 @@ export default function CalendarSubscriptionCard({ accountId }) {
   const [geladen, setGeladen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [kopiert, setKopiert] = useState(false);
+  const [kopiert, zeigeKopiert] = useKurzeMeldung();
 
   useEffect(() => {
     let aktiv = true;
@@ -37,21 +39,14 @@ export default function CalendarSubscriptionCard({ accountId }) {
   const kopieren = async () => {
     try {
       await navigator.clipboard.writeText(url);
-      setKopiert(true);
-      setTimeout(() => setKopiert(false), 2000);
+      zeigeKopiert();
     } catch {
       // Kein Zwischenspeicher-Zugriff — die Adresse steht im Feld und lässt sich von Hand markieren.
     }
   };
 
   return (
-    <div className="sb-card">
-      <h3 className="sb-subheading">Kalenderabo</h3>
-      <p className="sb-tab-intro">
-        Trägt deine zugeteilten Schichten als Termine in deinen Kalender ein – Google, Apple oder
-        Outlook holen sie sich von selbst und bleiben damit aktuell.
-      </p>
-
+    <Karte titel="Kalenderabo" intro="Trägt deine zugeteilten Schichten als Termine in deinen Kalender ein – Google, Apple oder Outlook holen sie sich von selbst und bleiben damit aktuell.">
       {geladen && url && (
         <div className="sb-inline-add">
           <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label="Kalenderadresse" />
@@ -73,6 +68,6 @@ export default function CalendarSubscriptionCard({ accountId }) {
         </p>
       )}
       {error && <p className="sb-error">{error}</p>}
-    </div>
+    </Karte>
   );
 }

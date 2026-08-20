@@ -1,5 +1,6 @@
 import { useState } from "react";
-import QualFilterChips from "../../components/QualFilterChips.jsx";
+import QualChips from "../../components/QualChips.jsx";
+import TabHead, { NeuKnopf } from "../../components/TabHead.jsx";
 import AdminShiftRow from "./AdminShiftRow.jsx";
 import NewShiftForm from "./NewShiftForm.jsx";
 import { addDays, fromISO, isFutureOrToday, monthDiff } from "#shared/dates.js";
@@ -29,15 +30,9 @@ export default function AdminShiftsTab({
 
   return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Schichten</h2>
-          <p className="sb-tab-intro">Alle Schichten der nächsten {HORIZON_DAYS} Tage. Aufklappen zeigt, wer eingeschrieben und zugeteilt ist.</p>
-        </div>
-        <button type="button" className={`sb-btn ${formOpen ? "sb-btn-quiet" : "sb-btn-amber"}`} onClick={() => setFormOpen((o) => !o)}>
-          {formOpen ? "Abbrechen" : "Neue Schicht"}
-        </button>
-      </div>
+      <TabHead titel="Schichten" intro={`Alle Schichten der nächsten ${HORIZON_DAYS} Tage. Aufklappen zeigt, wer eingeschrieben und zugeteilt ist.`}>
+        <NeuKnopf offen={formOpen} onClick={() => setFormOpen((o) => !o)} label="Neue Schicht" />
+      </TabHead>
       {formOpen && (
         <NewShiftForm
           qualifications={qualifications}
@@ -60,7 +55,7 @@ export default function AdminShiftsTab({
           <option value="open">Nur mit freien Plätzen</option>
           <option value="future">Erst ab übernächstem Monat</option>
         </select>
-        <QualFilterChips qualifications={qualifications} gewaehlt={qualFilter} setGewaehlt={setQualFilter} />
+        <QualChips qualifications={qualifications} gewaehlt={qualFilter} onChange={setQualFilter} />
       </div>
 
       <div className="sb-shift-list">

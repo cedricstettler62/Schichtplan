@@ -390,6 +390,21 @@ Oberfläche einmal komplett durchgeklickt gegen einen laufenden Server, und
 Manifest samt Symbolen — ein vertippter Dateiname fiele sonst erst auf, wenn
 jemand die Installation probiert.
 
+### Ein Test über 5 Sekunden ist ein Befund
+
+Abgebrochen wird erst nach 10 Sekunden (`testTimeout` in
+[vite.config.js](vite.config.js)), aber das ist die Notbremse und nicht der
+Zielwert. Die längsten Oberflächentests brauchen drei bis vier Sekunden; wer
+darüber hinausgeht, gehört angesehen — nicht durch ein höheres Timeout
+weggeräumt.
+
+Vitest schreibt die Dauer hinter jeden Test, langsame hebt es farbig hervor.
+Meist ist es die Suite unter paralleler Last. Genauso sieht es aber aus, wenn
+ein Bereich der Anwendung wirklich langsam geworden ist: eine Schleife, die zu
+oft läuft, ein Nachladen, das auf sich warten lässt. Den Unterschied zeigt ein
+einzelner Lauf der betroffenen Datei — bleibt sie auch allein langsam, liegt es
+am Code und nicht an der Last.
+
 ## Technik
 
 React + Vite · Express · SQLite (better-sqlite3) · bcrypt · Vitest · systemd + cloudflared.

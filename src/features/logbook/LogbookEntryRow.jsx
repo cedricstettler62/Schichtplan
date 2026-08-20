@@ -1,4 +1,5 @@
 import Badge from "../../components/Badge.jsx";
+import { fmtZeitpunkt } from "#shared/dates.js";
 
 const TYPE_INFO = {
   created: ["Angelegt", "petrol"],
@@ -15,10 +16,6 @@ const TYPE_INFO = {
   withdrawn: ["Ausgetragen", "ink"],
 };
 
-function fmtWhen(iso) {
-  return new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
-}
-
 export default function LogbookEntryRow({ entry }) {
   const [label, tone] = TYPE_INFO[entry.type] || [entry.type, "ink"];
   return (
@@ -26,7 +23,7 @@ export default function LogbookEntryRow({ entry }) {
       <div className="sb-log-row-head">
         <Badge tone={tone}>{label}</Badge>
         <span className="sb-log-row-shift">{entry.shiftLabel}</span>
-        <span className="sb-log-row-when sb-mono">{fmtWhen(entry.createdAt)}</span>
+        <span className="sb-log-row-when sb-mono">{fmtZeitpunkt(entry.createdAt)}</span>
       </div>
       <p className="sb-log-row-msg">{entry.message}</p>
     </div>

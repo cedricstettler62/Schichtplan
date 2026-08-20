@@ -5,6 +5,7 @@ import CompanyRow from "./CompanyRow.jsx";
 import NewCompanyForm from "./NewCompanyForm.jsx";
 import SuperAdminSettingsTab from "./SuperAdminSettingsTab.jsx";
 import SystemPanel from "./SystemPanel.jsx";
+import TabHead, { NeuKnopf } from "../../components/TabHead.jsx";
 
 /** `companies` sind hier Kurzfassungen: { id, code, name, adminCount, employeeCount }. */
 export default function SuperAdminView({
@@ -16,6 +17,8 @@ export default function SuperAdminView({
   const [tab, setTab] = useState("unternehmen");
   const [formOpen, setFormOpen] = useState(false);
   const [angelegt, setAngelegt] = useState(null);
+  // Einmal normalisiert: Vor dem ersten Laden gibt es die Liste noch nicht.
+  const archiviert = archivedCompanies || [];
 
   const createCompany = async (data) => {
     const res = await onCreateCompany(data);
@@ -38,27 +41,22 @@ export default function SuperAdminView({
           </div>
         </div>
         <nav className="sb-tabs">
-          <button
-            type="button"
-            className={`sb-tab-btn ${tab === "unternehmen" ? "sb-tab-btn-active" : ""}`}
-            onClick={() => setTab("unternehmen")}
-          >
-            Unternehmen
-          </button>
-          <button
-            type="button"
-            className={`sb-tab-btn ${tab === "archiviert" ? "sb-tab-btn-active" : ""}`}
-            onClick={() => setTab("archiviert")}
-          >
-            Archiviert{archivedCompanies?.length > 0 ? ` (${archivedCompanies.length})` : ""}
-          </button>
-          <button
-            type="button"
-            className={`sb-tab-btn ${tab === "einstellungen" ? "sb-tab-btn-active" : ""}`}
-            onClick={() => setTab("einstellungen")}
-          >
-            Einstellungen
-          </button>
+          {[
+            ["unternehmen", "Unternehmen"],
+            /* Die Zahl am Reiter erspart das Öffnen, nur um zu sehen, ob dort
+               überhaupt etwas liegt — wie bei „Anmeldungen“ im Header. */
+            ["archiviert", `Archiviert${archiviert.length > 0 ? ` (${archiviert.length})` : ""}`],
+            ["einstellungen", "Einstellungen"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`sb-tab-btn ${tab === key ? "sb-tab-btn-active" : ""}`}
+              onClick={() => setTab(key)}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
       </header>
       <main>
@@ -74,15 +72,9 @@ export default function SuperAdminView({
         )}
         {tab === "unternehmen" && (
           <div className="sb-tab">
-            <div className="sb-tab-head">
-              <div className="sb-tab-head-text">
-                <h2 className="sb-tab-head-title">Unternehmen</h2>
-                <p className="sb-tab-intro">Alle Unternehmen im System, jeweils identifiziert durch ihren sechsstelligen Firmencode.</p>
-              </div>
-              <button type="button" className={`sb-btn ${formOpen ? "sb-btn-quiet" : "sb-btn-amber"}`} onClick={() => setFormOpen((o) => !o)}>
-                {formOpen ? "Abbrechen" : "Neues Unternehmen"}
-              </button>
-            </div>
+            <TabHead titel="Unternehmen" intro="Alle Unternehmen im System, jeweils identifiziert durch ihren sechsstelligen Firmencode.">
+              <NeuKnopf offen={formOpen} onClick={() => setFormOpen((o) => !o)} label="Neues Unternehmen" />
+            </TabHead>
             {formOpen && <NewCompanyForm onCreate={createCompany} />}
 
             {angelegt && (
@@ -125,22 +117,12 @@ export default function SuperAdminView({
         )}
         {tab === "archiviert" && (
           <div className="sb-tab">
-            <div className="sb-tab-head">
-              <div className="sb-tab-head-text">
-                <h2 className="sb-tab-head-title">Archivierte Unternehmen</h2>
-                <p className="sb-tab-intro">
-                  Der Zugang ist gesperrt, ihre Daten bleiben aber erhalten — Logbuch und andere
-                  aufbewahrungspflichtige Angaben lassen sich hier weiter einsehen.
-                </p>
-              </div>
-            </div>
+            <TabHead titel="Archivierte Unternehmen" intro="Der Zugang ist gesperrt, ihre Daten bleiben aber erhalten — Logbuch und andere aufbewahrungspflichtige Angaben lassen sich hier weiter einsehen." />
 
             <div className="sb-card">
               <div className="sb-manage-list">
-                {(!archivedCompanies || archivedCompanies.length === 0) && (
-                  <p className="sb-empty">Kein archiviertes Unternehmen.</p>
-                )}
-                {archivedCompanies?.map((c) => (
+                {archiviert.length === 0 && <p className="sb-empty">Kein archiviertes Unternehmen.</p>}
+                {archiviert.map((c) => (
                   <ArchivedCompanyRow
                     key={c.id}
                     company={c}

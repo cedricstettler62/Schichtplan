@@ -207,7 +207,6 @@ export default function AdminShiftRow({
             <ConfirmDelete
               onConfirm={() => onDeleteShift(shift.id)}
               label="Schicht löschen"
-              confirmLabel="Ja, löschen"
               question={betroffene(shift, "Diese Schicht löschen?")}
               variant="button"
               small

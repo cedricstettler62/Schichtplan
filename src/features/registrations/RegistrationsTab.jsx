@@ -1,4 +1,5 @@
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
+import TabHead from "../../components/TabHead.jsx";
 
 /**
  * Wartende Selbstregistrierungen — bis eine Administration hier zustimmt,
@@ -8,14 +9,7 @@ import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 export default function RegistrationsTab({ pendingAccounts, onApprove, onDecline }) {
   return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Anmeldungen</h2>
-          <p className="sb-tab-intro">
-            Wer sich selbst ein Konto erstellt hat, steht hier, bis du zustimmst oder ablehnst.
-          </p>
-        </div>
-      </div>
+      <TabHead titel="Anmeldungen" intro="Wer sich selbst ein Konto erstellt hat, steht hier, bis du zustimmst oder ablehnst." />
 
       <div className="sb-card">
         <div className="sb-manage-list">

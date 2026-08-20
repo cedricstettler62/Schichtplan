@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import LogbookEntryRow from "./LogbookEntryRow.jsx";
+import TabHead from "../../components/TabHead.jsx";
 
 export default function LogbookTab({ onLoad }) {
   const [entries, setEntries] = useState(null); // null = wird geladen
@@ -18,14 +19,7 @@ export default function LogbookTab({ onLoad }) {
 
   return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Logbuch</h2>
-          <p className="sb-tab-intro">
-            Anlegen, Ändern, Zu- und Umteilungen sowie Hilfegesuche — unveränderlich protokolliert.
-          </p>
-        </div>
-      </div>
+      <TabHead titel="Logbuch" intro="Anlegen, Ändern, Zu- und Umteilungen sowie Hilfegesuche — unveränderlich protokolliert." />
 
       <div className="sb-card">
         <label className="sb-field">

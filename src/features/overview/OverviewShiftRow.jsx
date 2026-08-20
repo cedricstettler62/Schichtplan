@@ -1,17 +1,13 @@
 import { useState } from "react";
 import DateStub from "../../components/DateStub.jsx";
 import { hasQualifications } from "#shared/assignment.js";
-import { qualifikationsListe, qualifikationsNamen } from "#shared/labels.js";
+import { fehltFuerSchicht, qualifikationsListe } from "#shared/labels.js";
 
 /** Sagt konkret, warum eine Übernahme nicht geht – »nicht möglich« allein hilft
  *  niemandem, und bei mehreren Anforderungen erst recht nicht. */
-function blockedReason(currentUser, shift, qualified, fehlend) {
+function blockedReason(currentUser, shift, qualified, qualifications) {
   if (shift.assigned.includes(currentUser.id)) return "Du bist dieser Schicht bereits zugeteilt.";
-  if (!qualified) {
-    return fehlend.length
-      ? `Dafür fehlt dir: ${fehlend.join(", ")}.`
-      : "Für diese Schicht ist keine Qualifikation hinterlegt — sie lässt sich deshalb nicht übernehmen.";
-  }
+  if (!qualified) return fehltFuerSchicht(qualifications, shift.qualificationIds, currentUser.qualifications);
   return "Eine Übernahme ist hier nicht möglich.";
 }
 
@@ -24,10 +20,6 @@ export default function OverviewShiftRow({ shift, qualifications, accounts, curr
   };
   const qualNames = qualifikationsListe(qualifications, shift.qualificationIds);
   const qualified = hasQualifications(accounts, currentUser.id, shift.qualificationIds);
-  const fehlend = qualifikationsNamen(
-    qualifications,
-    (shift.qualificationIds || []).filter((id) => !currentUser.qualifications.includes(id))
-  );
   const canTake = qualified && !shift.assigned.includes(currentUser.id);
   const freeSeats = shift.seats - shift.assigned.length;
   // Bei einem Hilfegesuch ist die Schicht zwar voll besetzt — genau das zu
@@ -75,7 +67,7 @@ export default function OverviewShiftRow({ shift, qualifications, accounts, curr
               </button>
             ) : null
           )}
-          {!canTake && <p className="sb-empty">{blockedReason(currentUser, shift, qualified, fehlend)}</p>}
+          {!canTake && <p className="sb-empty">{blockedReason(currentUser, shift, qualified, qualifications)}</p>}
           {error && <p className="sb-error">{error}</p>}
         </div>
       )}

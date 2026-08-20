@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { useKurzeMeldung } from "../../hooks.js";
 import { FAIRNESS_WINDOW_KEYS, FAIRNESS_WINDOW_LABELS } from "#shared/labels.js";
 import PasswordForm from "../../components/PasswordForm.jsx";
-import Toggle from "../../components/Toggle.jsx";
+import { QualToggles } from "../../components/Toggle.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
 import CalendarSubscriptionCard from "../../components/CalendarSubscriptionCard.jsx";
 import EmailCard from "../../components/EmailCard.jsx";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
+import Karte from "../../components/Karte.jsx";
 import AppInstallCard from "../../components/AppInstallCard.jsx";
 import SessionCard from "../../components/SessionCard.jsx";
+import TabHead from "../../components/TabHead.jsx";
 
 export default function SettingsTab({
   settings, currentUser, istLetzterAdmin, verifySelf, onDemoteSelf,
@@ -15,28 +18,26 @@ export default function SettingsTab({
   onChangeAssignmentDay, onChangeFairnessSettings, onChangeOwnPassword, onChangeOwnEmail, onDeleteOwnAccount, onLogout,
 }) {
   const [value, setValue] = useState(settings.assignmentDay);
-  const [saved, setSaved] = useState(false);
   const [newQual, setNewQual] = useState("");
   const [qualError, setQualError] = useState("");
   const [rolleError, setRolleError] = useState("");
   const [fairnessWindow, setFairnessWindow] = useState(settings.fairnessWindow);
   const [fairnessThreshold, setFairnessThreshold] = useState(settings.fairnessThresholdShifts);
-  const [fairnessSaved, setFairnessSaved] = useState(false);
+  const [saved, zeigeGespeichert] = useKurzeMeldung();
+  const [fairnessSaved, zeigeFairnessGespeichert] = useKurzeMeldung();
 
   const save = async () => {
     const n = Math.min(28, Math.max(1, Number(value) || 1));
     await onChangeAssignmentDay(n);
     setValue(n);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    zeigeGespeichert();
   };
 
   const saveFairness = async () => {
     const n = Math.min(50, Math.max(0, Number(fairnessThreshold) || 0));
     await onChangeFairnessSettings(fairnessWindow, n);
     setFairnessThreshold(n);
-    setFairnessSaved(true);
-    setTimeout(() => setFairnessSaved(false), 2000);
+    zeigeFairnessGespeichert();
   };
 
   const addQual = async () => {
@@ -54,16 +55,9 @@ export default function SettingsTab({
 
   return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Einstellungen</h2>
-          <p className="sb-tab-intro">Regeln für dieses Unternehmen und dein eigenes Admin-Konto.</p>
-        </div>
-      </div>
+      <TabHead titel="Einstellungen" intro="Regeln für dieses Unternehmen und dein eigenes Admin-Konto." />
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Zuteilungstag</h3>
-        <p className="sb-tab-intro">An diesem Tag jedes Monats werden alle Schichten des Folgemonats automatisch zugeteilt, sobald jemand eingeschrieben ist.</p>
+      <Karte titel="Zuteilungstag" intro="An diesem Tag jedes Monats werden alle Schichten des Folgemonats automatisch zugeteilt, sobald jemand eingeschrieben ist.">
         <div className="sb-inline-add">
           <label className="sb-field sb-field-compact">
             <span>Tag im Monat (1–28)</span>
@@ -72,14 +66,12 @@ export default function SettingsTab({
           <button type="button" className="sb-btn sb-btn-ink" onClick={save}>Speichern</button>
           {saved && <span className="sb-saved-note">Gespeichert.</span>}
         </div>
-      </div>
+      </Karte>
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Stundenausgleich bei der Auslosung</h3>
-        <p className="sb-tab-intro">
-          Bei mehreren qualifizierten Eingeschriebenen bekommt eher, wer in diesem Zeitfenster bisher
-          weniger zugeteilte Schichten hatte — eine gewichtete Auslosung, kein starres Ranking.
-        </p>
+      <Karte
+        titel="Stundenausgleich bei der Auslosung"
+        intro="Bei mehreren qualifizierten Eingeschriebenen bekommt eher, wer in diesem Zeitfenster bisher weniger zugeteilte Schichten hatte — eine gewichtete Auslosung, kein starres Ranking."
+      >
         <div className="sb-inline-add">
           <label className="sb-field sb-field-compact">
             <span>Zeitfenster</span>
@@ -100,11 +92,9 @@ export default function SettingsTab({
           <button type="button" className="sb-btn sb-btn-ink" onClick={saveFairness}>Speichern</button>
           {fairnessSaved && <span className="sb-saved-note">Gespeichert.</span>}
         </div>
-      </div>
+      </Karte>
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Qualifikationen</h3>
-        <p className="sb-tab-intro">Gelten nur für dieses Unternehmen. Eine Schicht kann nur übernehmen, wer die passende Qualifikation hat.</p>
+      <Karte titel="Qualifikationen" intro="Gelten nur für dieses Unternehmen. Eine Schicht kann nur übernehmen, wer die passende Qualifikation hat.">
         <div className="sb-chip-row">
           {qualifications.length === 0 && <p className="sb-empty">Noch keine Qualifikationen angelegt.</p>}
           {qualifications.map((q) => (
@@ -123,32 +113,19 @@ export default function SettingsTab({
           <input value={newQual} onChange={(e) => setNewQual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addQual()} placeholder="z. B. Kassenschulung" />
           <button type="button" className="sb-btn sb-btn-ink" onClick={addQual}>Hinzufügen</button>
         </div>
-      </div>
+      </Karte>
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Meine Qualifikationen</h3>
-        {/* Die eigene Ausnahme von „Qualifikationen vergibt die Administration“:
-            Wer selbst eine Schicht übernehmen will, käme sonst an keine — die
-            Mitarbeitendenliste führt nur Mitarbeitendenkonten. */}
-        <p className="sb-tab-intro">
-          Bestimmt, welche Schichten du selbst übernehmen kannst. Für alle anderen vergibst du
-          Qualifikationen unter <em>Mitarbeitende</em>.
-        </p>
-        {qualifications.length === 0 ? (
-          <p className="sb-empty">Lege zuerst oben eine Qualifikation an.</p>
-        ) : (
-          <div className="sb-toggle-list">
-            {qualifications.map((q) => (
-              <Toggle
-                key={q.id}
-                label={q.name}
-                checked={currentUser.qualifications.includes(q.id)}
-                onChange={(val) => onSetOwnQualification(q.id, val)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Die eigene Ausnahme von „Qualifikationen vergibt die Administration“:
+          Wer selbst eine Schicht übernehmen will, käme sonst an keine — die
+          Mitarbeitendenliste führt nur Mitarbeitendenkonten. */}
+      <Karte titel="Meine Qualifikationen" intro={<>Bestimmt, welche Schichten du selbst übernehmen kannst. Für alle anderen vergibst du Qualifikationen unter <em>Mitarbeitende</em>.</>}>
+        <QualToggles
+          qualifications={qualifications}
+          gewaehlt={currentUser.qualifications}
+          onSet={onSetOwnQualification}
+          leerText="Lege zuerst oben eine Qualifikation an."
+        />
+      </Karte>
 
       <PasswordForm verify={verifySelf} onSubmit={onChangeOwnPassword} />
 
@@ -159,15 +136,13 @@ export default function SettingsTab({
         hinweis="Pflicht — damit erreicht dich eine Mail, sobald sich jemand neu anmeldet und auf Bestätigung wartet."
       />
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Meine Daten</h3>
+      <Karte titel="Meine Daten">
         <DataExportButton accountId={currentUser.id} />
-      </div>
+      </Karte>
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Adminrechte abgeben</h3>
-        {/* Nur die eigenen: Ein Admin stuft keinen anderen herunter, das wäre
-            dasselbe Entmachten wie ein fremdes Passwort zu setzen. */}
+      {/* Nur die eigenen: Ein Admin stuft keinen anderen herunter, das wäre
+          dasselbe Entmachten wie ein fremdes Passwort zu setzen. */}
+      <Karte titel="Adminrechte abgeben">
         {istLetzterAdmin ? (
           <p className="sb-empty">
             Du bist die einzige Administration – befördere zuerst jemanden, der übernimmt.
@@ -190,10 +165,9 @@ export default function SettingsTab({
             {rolleError && <p className="sb-error">{rolleError}</p>}
           </>
         )}
-      </div>
+      </Karte>
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Konto löschen</h3>
+      <Karte titel="Konto löschen">
         {!istLetzterAdmin ? (
           <>
             <p className="sb-tab-intro">Löscht dein eigenes Admin-Konto endgültig. Du wirst dabei abgemeldet.</p>
@@ -212,7 +186,7 @@ export default function SettingsTab({
             eine Nachfolge bestimmt.
           </p>
         )}
-      </div>
+      </Karte>
 
       <CalendarSubscriptionCard accountId={currentUser.id} />
       <AppInstallCard />

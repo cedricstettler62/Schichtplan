@@ -7,7 +7,7 @@ import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
  * unbestätigten Konto `{ pending: true }`, sonst `{ message }`.
  * `onRegister(code, name, password, email)` liefert null bei Erfolg, sonst
  * eine Fehlermeldung — das neue Konto entsteht dabei als 'pending' und meldet
- * sich nicht selbst an. `email` ist optional.
+ * sich nicht selbst an.
  */
 export default function LoginScreen({ onLogin, onRegister }) {
   const [mode, setMode] = useState("login"); // "login" | "register" | "pending"
@@ -36,6 +36,33 @@ export default function LoginScreen({ onLogin, onRegister }) {
   );
 }
 
+/* Anmelden und Registrieren fragen dieselben ersten beiden Angaben ab. Zwei
+   Fassungen davon liefen mit dem nächsten Feinschliff auseinander — etwa wenn
+   der Code hier auf sechs Ziffern beschnitten würde und dort nicht. */
+function CodeUndName({ code, setCode, name, setName, onEnter }) {
+  const handleKey = (e) => { if (e.key === "Enter") onEnter(); };
+  return (
+    <>
+      <label className="sb-field">
+        <span>Firmencode</span>
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          onKeyDown={handleKey}
+          placeholder="6 Ziffern"
+          inputMode="numeric"
+          autoComplete="off"
+          className="sb-mono"
+        />
+      </label>
+      <label className="sb-field">
+        <span>Name</span>
+        <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={handleKey} placeholder="Vor- und Nachname" autoComplete="username" />
+      </label>
+    </>
+  );
+}
+
 function AnmeldeForm({ onLogin, onWechsel, onPending }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -56,30 +83,13 @@ function AnmeldeForm({ onLogin, onWechsel, onPending }) {
     setError(result.message || "");
   };
 
-  const handleKey = (e) => { if (e.key === "Enter") submit(); };
-
   return (
     <div className="sb-card sb-login-card">
       <div className="sb-form-grid sb-form-grid-1col">
-        <label className="sb-field">
-          <span>Firmencode</span>
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            onKeyDown={handleKey}
-            placeholder="6 Ziffern"
-            inputMode="numeric"
-            autoComplete="off"
-            className="sb-mono"
-          />
-        </label>
-        <label className="sb-field">
-          <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={handleKey} placeholder="Vor- und Nachname" autoComplete="username" />
-        </label>
+        <CodeUndName code={code} setCode={setCode} name={name} setName={setName} onEnter={submit} />
         <label className="sb-field">
           <span>Passwort</span>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={handleKey} autoComplete="current-password" />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} autoComplete="current-password" />
         </label>
       </div>
       {error && <p className="sb-error">{error}</p>}
@@ -127,22 +137,7 @@ function RegistrierungsForm({ onRegister, onFertig, onAbbrechen }) {
   return (
     <div className="sb-card sb-login-card">
       <div className="sb-form-grid sb-form-grid-1col">
-        <label className="sb-field">
-          <span>Firmencode</span>
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            onKeyDown={handleKey}
-            placeholder="6 Ziffern"
-            inputMode="numeric"
-            autoComplete="off"
-            className="sb-mono"
-          />
-        </label>
-        <label className="sb-field">
-          <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={handleKey} placeholder="Vor- und Nachname" autoComplete="username" />
-        </label>
+        <CodeUndName code={code} setCode={setCode} name={name} setName={setName} onEnter={submit} />
         <label className="sb-field">
           <span>E-Mail-Adresse</span>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={handleKey} placeholder="name@beispiel.ch" autoComplete="email" />

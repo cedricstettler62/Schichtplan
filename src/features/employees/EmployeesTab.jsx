@@ -1,5 +1,7 @@
 import { useState } from "react";
 import EmployeeManageRow from "./EmployeeManageRow.jsx";
+import TabHead, { NeuKnopf } from "../../components/TabHead.jsx";
+import Karte from "../../components/Karte.jsx";
 import { emailProblem } from "#shared/email.js";
 
 export default function EmployeesTab({
@@ -30,15 +32,13 @@ export default function EmployeesTab({
 
   return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Mitarbeitende</h2>
-          <p className="sb-tab-intro">Konten anlegen, Qualifikationen vergeben und Zugänge verwalten.</p>
-        </div>
-        <button type="button" className={`sb-btn ${formOpen ? "sb-btn-quiet" : "sb-btn-amber"}`} onClick={() => { setFormOpen((o) => !o); setAngelegt(""); }}>
-          {formOpen ? "Abbrechen" : "Neues Konto"}
-        </button>
-      </div>
+      <TabHead titel="Mitarbeitende" intro="Konten anlegen, Qualifikationen vergeben und Zugänge verwalten.">
+        <NeuKnopf
+          offen={formOpen}
+          onClick={() => { setFormOpen((o) => !o); setAngelegt(""); }}
+          label="Neues Konto"
+        />
+      </TabHead>
       {formOpen && (
         <div className="sb-card">
           <span className="sb-detail-label">Neues Mitarbeitendenkonto</span>
@@ -76,8 +76,7 @@ export default function EmployeesTab({
         </div>
       )}
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Alle Mitarbeitenden</h3>
+      <Karte titel="Alle Mitarbeitenden">
         <div className="sb-manage-list">
           {employees.length === 0 && <p className="sb-empty">Noch keine Mitarbeitenden angelegt.</p>}
           {employees.map((a) => (
@@ -93,7 +92,7 @@ export default function EmployeesTab({
             />
           ))}
         </div>
-      </div>
+      </Karte>
     </div>
   );
 }

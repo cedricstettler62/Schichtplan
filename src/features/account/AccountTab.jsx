@@ -5,9 +5,11 @@ import PasswordForm from "../../components/PasswordForm.jsx";
 import DataExportButton from "../../components/DataExportButton.jsx";
 import CalendarSubscriptionCard from "../../components/CalendarSubscriptionCard.jsx";
 import EmailCard from "../../components/EmailCard.jsx";
+import Karte from "../../components/Karte.jsx";
 import AppInstallCard from "../../components/AppInstallCard.jsx";
 import SessionCard from "../../components/SessionCard.jsx";
 import LogbookEntryRow from "../logbook/LogbookEntryRow.jsx";
+import { useKurzeMeldung } from "../../hooks.js";
 import { fmtDate } from "#shared/dates.js";
 
 const STATUS_LABEL = { pending: "Angefragt", approved: "Genehmigt", declined: "Abgelehnt" };
@@ -19,8 +21,12 @@ function LogbookAccessCard({ myRequests, onLoadEligibleShifts, onRequestAccess, 
   const [shiftId, setShiftId] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
-  const [sent, setSent] = useState(false);
+  const [sent, zeigeGesendet] = useKurzeMeldung(2500);
   const [openEntries, setOpenEntries] = useState({}); // requestId -> Einträge | null (lädt noch)
+
+  /* Aufgeklappt ist, wofür ein Schlüssel dasteht — auch mit dem Wert null,
+     solange die Einträge noch unterwegs sind. */
+  const istOffen = (id) => Object.hasOwn(openEntries, id);
 
   useEffect(() => {
     let abgebrochen = false;
@@ -33,15 +39,14 @@ function LogbookAccessCard({ myRequests, onLoadEligibleShifts, onRequestAccess, 
     const meldung = await onRequestAccess(shiftId, note.trim());
     if (meldung) { setError(meldung); return; }
     setError("");
-    setSent(true);
     setShiftId("");
     setNote("");
-    setTimeout(() => setSent(false), 2500);
+    zeigeGesendet();
   };
 
   const toggleEntries = async (request) => {
     if (request.status !== "approved") return;
-    if (Object.prototype.hasOwnProperty.call(openEntries, request.id)) {
+    if (istOffen(request.id)) {
       setOpenEntries((o) => { const n = { ...o }; delete n[request.id]; return n; });
       return;
     }
@@ -51,12 +56,7 @@ function LogbookAccessCard({ myRequests, onLoadEligibleShifts, onRequestAccess, 
   };
 
   return (
-    <div className="sb-card">
-      <h3 className="sb-subheading">Logbuch-Einsicht anfragen</h3>
-      <p className="sb-tab-intro">
-        Für Schichten, für die du in der Vergangenheit eingetragen warst — egal ob du sie am Ende
-        übernommen hast —, kannst du die Administration um Einsicht ins Logbuch bitten.
-      </p>
+    <Karte titel="Logbuch-Einsicht anfragen" intro="Für Schichten, für die du in der Vergangenheit eingetragen warst — egal ob du sie am Ende übernommen hast —, kannst du die Administration um Einsicht ins Logbuch bitten.">
       {shifts === null ? (
         <p className="sb-status">Schichten werden geladen …</p>
       ) : shifts.length === 0 ? (
@@ -92,12 +92,12 @@ function LogbookAccessCard({ myRequests, onLoadEligibleShifts, onRequestAccess, 
                 type="button"
                 className="sb-manage-row-head"
                 onClick={() => toggleEntries(r)}
-                aria-expanded={Object.prototype.hasOwnProperty.call(openEntries, r.id)}
+                aria-expanded={istOffen(r.id)}
               >
                 <span className="sb-manage-name">{r.shiftLabel}</span>
                 <Badge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>
               </button>
-              {Object.prototype.hasOwnProperty.call(openEntries, r.id) && (
+              {istOffen(r.id) && (
                 <div className="sb-manage-row-body">
                   {openEntries[r.id] === null ? (
                     <p className="sb-status">Wird geladen …</p>
@@ -114,7 +114,7 @@ function LogbookAccessCard({ myRequests, onLoadEligibleShifts, onRequestAccess, 
           ))}
         </div>
       )}
-    </div>
+    </Karte>
   );
 }
 
@@ -163,10 +163,9 @@ export default function AccountTab({
         hinweis="Pflicht — dorthin geht die Kalenderdatei (ICS), sobald dir eine Schicht zugeteilt wird."
       />
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Meine Daten</h3>
+      <Karte titel="Meine Daten">
         <DataExportButton accountId={currentUser.id} />
-      </div>
+      </Karte>
 
       <CalendarSubscriptionCard accountId={currentUser.id} />
       <AppInstallCard />

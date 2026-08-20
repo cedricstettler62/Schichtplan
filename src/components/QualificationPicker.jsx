@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Chip from "./Chip.jsx";
+import QualChips from "./QualChips.jsx";
 
 /**
  * Welche Qualifikationen eine Schicht verlangt. Mehrere sind möglich, und
@@ -17,9 +17,6 @@ import Chip from "./Chip.jsx";
 export default function QualificationPicker({ qualifications, gewaehlt, onChange, onAddQualification }) {
   const [offen, setOffen] = useState(false);
   const [neu, setNeu] = useState("");
-
-  const umschalten = (id) =>
-    onChange(gewaehlt.includes(id) ? gewaehlt.filter((x) => x !== id) : [...gewaehlt, id]);
 
   /* Gibt es die Qualifikation schon (nur anders geschrieben), wird sie bloss
      ausgewählt — sonst stünde sie zweimal in der Liste. */
@@ -40,13 +37,12 @@ export default function QualificationPicker({ qualifications, gewaehlt, onChange
         {qualifications.length === 0 ? (
           <p className="sb-empty">Noch keine Qualifikation angelegt.</p>
         ) : (
-          <div className="sb-chip-row" role="group" aria-label="Erforderliche Qualifikationen">
-            {qualifications.map((q) => (
-              <Chip key={q.id} active={gewaehlt.includes(q.id)} onClick={() => umschalten(q.id)}>
-                {q.name}
-              </Chip>
-            ))}
-          </div>
+          <QualChips
+            qualifications={qualifications}
+            gewaehlt={gewaehlt}
+            onChange={onChange}
+            label="Erforderliche Qualifikationen"
+          />
         )}
       </div>
       <span className="sb-field-hint">

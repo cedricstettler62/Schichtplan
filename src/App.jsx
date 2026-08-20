@@ -296,14 +296,14 @@ export default function App() {
 
   if (!ready) return <div className="sb-root" />;
 
-  if (!state) {
-    return (
-      <div className="sb-root">
-        <LoginScreen onLogin={handleLogin} onRegister={handleRegister} />
-        <Footer />
-      </div>
-    );
-  }
+  const anmeldung = (
+    <div className="sb-root">
+      <LoginScreen onLogin={handleLogin} onRegister={handleRegister} />
+      <Footer />
+    </div>
+  );
+
+  if (!state) return anmeldung;
 
   if (state.type === "super") {
     return (
@@ -341,9 +341,9 @@ export default function App() {
 
   const { company, userId } = state;
   const currentUser = company.accounts.find((a) => a.id === userId);
-  if (!currentUser) {
-    return <div className="sb-root"><LoginScreen onLogin={handleLogin} onRegister={handleRegister} /><Footer /></div>;
-  }
+  // Das eigene Konto ist aus der Firma verschwunden — dann ist die Sitzung leer
+  // und es bleibt nur die Anmeldung.
+  if (!currentUser) return anmeldung;
 
   const { qualifications, shifts, settings, accounts, combinableSeries, logbookAccessRequests, pendingAccounts } = company;
   const isAdmin = currentUser.role === "admin";

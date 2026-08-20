@@ -1,4 +1,5 @@
 import CollapsibleBar from "../../components/CollapsibleBar.jsx";
+import TabHead from "../../components/TabHead.jsx";
 import OverviewShiftRow from "./OverviewShiftRow.jsx";
 import LogbookRequestRow from "./LogbookRequestRow.jsx";
 import { isFutureOrToday } from "#shared/dates.js";
@@ -19,12 +20,7 @@ export default function OverviewTab({
 
   return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Übersicht</h2>
-          <p className="sb-tab-intro">Was gerade offen ist und wo jemand Unterstützung sucht – für alle sichtbar.</p>
-        </div>
-      </div>
+      <TabHead titel="Übersicht" intro="Was gerade offen ist und wo jemand Unterstützung sucht – für alle sichtbar." />
       <CollapsibleBar
         title="Noch offene Plätze"
         count={openShifts.length}

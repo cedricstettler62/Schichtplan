@@ -1,5 +1,8 @@
 import { useState } from "react";
 import PasswordForm from "../../components/PasswordForm.jsx";
+import TabHead from "../../components/TabHead.jsx";
+import Karte from "../../components/Karte.jsx";
+import { useKurzeMeldung } from "../../hooks.js";
 import { emailProblem } from "#shared/email.js";
 
 /**
@@ -8,83 +11,76 @@ import { emailProblem } from "#shared/email.js";
  * Passwort — dieselbe Selbstverwaltung wie bei Mitarbeitenden und Admins,
  * nur ohne Konten-Liste, denn es gibt nur diesen einen Zugang.
  */
-export default function SuperAdminSettingsTab({ code, email, verifySelf, onChangeCode, onChangeEmail, onChangePassword }) {
-  const [codeValue, setCodeValue] = useState(code || "");
-  const [codeError, setCodeError] = useState("");
-  const [codeSaved, setCodeSaved] = useState(false);
 
-  const [emailValue, setEmailValue] = useState(email || "");
-  const [emailError, setEmailError] = useState("");
-  const [emailSaved, setEmailSaved] = useState(false);
+/**
+ * Ein einzelnes Feld mit Speichern-Knopf.
+ *
+ * `pruefen` liefert die Beanstandung an der Eingabe oder nichts, `onSpeichern`
+ * die Meldung des Servers oder null. Gespeichert wird der getrimmte Wert; die
+ * Bestätigung verschwindet nach ein paar Sekunden von selbst.
+ */
+function FeldKarte({ titel, intro, wert, setWert, pruefen, onSpeichern, ...inputProps }) {
+  const [error, setError] = useState("");
+  const [gespeichert, zeigen, verbergen] = useKurzeMeldung();
 
-  const submitCode = async () => {
-    const trimmed = codeValue.trim();
-    if (!/^\d{6}$/.test(trimmed)) { setCodeError("Bitte einen 6-stelligen Firmencode eingeben."); return; }
-    const meldung = await onChangeCode(trimmed);
-    if (meldung) { setCodeError(meldung); setCodeSaved(false); return; }
-    setCodeError("");
-    setCodeSaved(true);
-    setTimeout(() => setCodeSaved(false), 2000);
-  };
-
-  const submitEmail = async () => {
-    const problem = emailProblem(emailValue);
-    if (problem) { setEmailError(problem); return; }
-    const meldung = await onChangeEmail(emailValue.trim());
-    if (meldung) { setEmailError(meldung); setEmailSaved(false); return; }
-    setEmailError("");
-    setEmailSaved(true);
-    setTimeout(() => setEmailSaved(false), 2000);
+  const submit = async () => {
+    const problem = pruefen(wert);
+    if (problem) { setError(problem); verbergen(); return; }
+    const meldung = await onSpeichern(wert.trim());
+    if (meldung) { setError(meldung); verbergen(); return; }
+    setError("");
+    zeigen();
   };
 
   return (
+    <Karte titel={titel} intro={intro}>
+      <div className="sb-inline-add">
+        <input
+          value={wert}
+          onChange={(e) => setWert(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          {...inputProps}
+        />
+        <button type="button" className="sb-btn sb-btn-ink" onClick={submit}>Speichern</button>
+      </div>
+      {gespeichert && <p className="sb-saved-note">Gespeichert.</p>}
+      {error && <p className="sb-error">{error}</p>}
+    </Karte>
+  );
+}
+
+export default function SuperAdminSettingsTab({ code, email, verifySelf, onChangeCode, onChangeEmail, onChangePassword }) {
+  const [codeValue, setCodeValue] = useState(code || "");
+  const [emailValue, setEmailValue] = useState(email || "");
+
+  return (
     <div className="sb-tab">
-      <div className="sb-tab-head">
-        <div className="sb-tab-head-text">
-          <h2 className="sb-tab-head-title">Einstellungen</h2>
-          <p className="sb-tab-intro">Zugang und Kontaktangabe der Verwaltung.</p>
-        </div>
-      </div>
+      <TabHead titel="Einstellungen" intro="Zugang und Kontaktangabe der Verwaltung." />
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">Firmencode</h3>
-        <p className="sb-tab-intro">
-          Der Code, mit dem du dich statt eines Firmencodes anmeldest. Muss sich von jedem
-          vergebenen Firmencode unterscheiden.
-        </p>
-        <div className="sb-inline-add">
-          <input
-            value={codeValue}
-            onChange={(e) => setCodeValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            onKeyDown={(e) => e.key === "Enter" && submitCode()}
-            placeholder="6 Ziffern"
-            inputMode="numeric"
-            className="sb-mono"
-            aria-label="Firmencode der Verwaltung"
-          />
-          <button type="button" className="sb-btn sb-btn-ink" onClick={submitCode}>Speichern</button>
-        </div>
-        {codeSaved && <p className="sb-saved-note">Gespeichert.</p>}
-        {codeError && <p className="sb-error">{codeError}</p>}
-      </div>
+      <FeldKarte
+        titel="Firmencode"
+        intro="Der Code, mit dem du dich statt eines Firmencodes anmeldest. Muss sich von jedem vergebenen Firmencode unterscheiden."
+        wert={codeValue}
+        setWert={(v) => setCodeValue(v.replace(/\D/g, "").slice(0, 6))}
+        pruefen={(v) => (/^\d{6}$/.test(v.trim()) ? "" : "Bitte einen 6-stelligen Firmencode eingeben.")}
+        onSpeichern={onChangeCode}
+        placeholder="6 Ziffern"
+        inputMode="numeric"
+        className="sb-mono"
+        aria-label="Firmencode der Verwaltung"
+      />
 
-      <div className="sb-card">
-        <h3 className="sb-subheading">E-Mail-Adresse</h3>
-        <p className="sb-tab-intro">Rein optional, als Kontaktangabe — die Verwaltung bekommt selbst keine Schicht zugeteilt.</p>
-        <div className="sb-inline-add">
-          <input
-            type="email"
-            value={emailValue}
-            onChange={(e) => setEmailValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submitEmail()}
-            placeholder="name@beispiel.ch"
-            aria-label="E-Mail-Adresse der Verwaltung"
-          />
-          <button type="button" className="sb-btn sb-btn-ink" onClick={submitEmail}>Speichern</button>
-        </div>
-        {emailSaved && <p className="sb-saved-note">Gespeichert.</p>}
-        {emailError && <p className="sb-error">{emailError}</p>}
-      </div>
+      <FeldKarte
+        titel="E-Mail-Adresse"
+        intro="Rein optional, als Kontaktangabe — die Verwaltung bekommt selbst keine Schicht zugeteilt."
+        wert={emailValue}
+        setWert={setEmailValue}
+        pruefen={(v) => emailProblem(v)}
+        onSpeichern={onChangeEmail}
+        type="email"
+        placeholder="name@beispiel.ch"
+        aria-label="E-Mail-Adresse der Verwaltung"
+      />
 
       <PasswordForm verify={verifySelf} onSubmit={onChangePassword} />
     </div>

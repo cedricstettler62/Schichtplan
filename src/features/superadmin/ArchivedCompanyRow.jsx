@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
 import LogbookLoader from "../../components/LogbookLoader.jsx";
-
-function fmtDatum(iso) {
-  if (!iso) return "–";
-  return new Date(iso).toLocaleDateString("de-DE", { dateStyle: "medium" });
-}
+import { fmtZeitpunkt } from "#shared/dates.js";
 
 /**
  * Ein archiviertes Unternehmen: der Zugang ist gesperrt, seine Daten stehen
@@ -32,7 +28,7 @@ export default function ArchivedCompanyRow({ company, onRestore, onPurge, onLoad
       <button type="button" className="sb-manage-row-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <span className="sb-manage-name">{company.name}</span>
         <span className="sb-manage-meta sb-mono">{company.code}</span>
-        <span className="sb-manage-summary">archiviert am {fmtDatum(company.archivedAt)}</span>
+        <span className="sb-manage-summary">archiviert am {fmtZeitpunkt(company.archivedAt, { mitUhrzeit: false })}</span>
         <span className="sb-bar-caret">{open ? "▾" : "▸"}</span>
       </button>
       {open && (

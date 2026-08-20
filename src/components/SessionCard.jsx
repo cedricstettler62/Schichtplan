@@ -1,3 +1,5 @@
+import Karte from "./Karte.jsx";
+
 /**
  * Die Anmeldung dieses Geräts.
  *
@@ -9,18 +11,15 @@
  */
 export default function SessionCard({ onLogout }) {
   return (
-    <div className="sb-card">
-      <h3 className="sb-subheading">Anmeldung</h3>
-      <p className="sb-tab-intro">
-        Dieses Gerät bleibt angemeldet, bis du dich hier abmeldest. Wird dein Passwort geändert,
-        endet die Anmeldung überall – auch auf allen anderen Geräten. Auf einem fremden Rechner
-        also besser abmelden.
-      </p>
+    <Karte
+      titel="Anmeldung"
+      intro="Dieses Gerät bleibt angemeldet, bis du dich hier abmeldest. Wird dein Passwort geändert, endet die Anmeldung überall – auch auf allen anderen Geräten. Auf einem fremden Rechner also besser abmelden."
+    >
       <div className="sb-form-actions">
         <button type="button" className="sb-btn sb-btn-quiet" onClick={onLogout}>
           Auf diesem Gerät abmelden
         </button>
       </div>
-    </div>
+    </Karte>
   );
 }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { emailProblem } from "#shared/email.js";
 import { emailStatus } from "../api.js";
+import { useKurzeMeldung } from "../hooks.js";
+import Karte from "./Karte.jsx";
 
 /**
  * Die eigene E-Mail-Adresse — für Benachrichtigungen. `required` macht sie
@@ -15,7 +17,7 @@ export default function EmailCard({ accountId, onChangeEmail, hinweis, required 
   const [geladen, setGeladen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [saved, zeigeGespeichert] = useKurzeMeldung();
 
   useEffect(() => {
     let aktiv = true;
@@ -35,14 +37,11 @@ export default function EmailCard({ accountId, onChangeEmail, hinweis, required 
     setBusy(false);
     if (meldung) { setError(meldung); return; }
     setGespeichert(email.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    zeigeGespeichert();
   };
 
   return (
-    <div className="sb-card">
-      <h3 className="sb-subheading">E-Mail-Adresse</h3>
-      <p className="sb-tab-intro">{hinweis}</p>
+    <Karte titel="E-Mail-Adresse" intro={hinweis}>
       <div className="sb-inline-add">
         <input
           type="email"
@@ -60,6 +59,6 @@ export default function EmailCard({ accountId, onChangeEmail, hinweis, required 
       {saved && <p className="sb-saved-note">Gespeichert.</p>}
       {error && <p className="sb-error">{error}</p>}
       {geladen && !gespeichert && !saved && <p className="sb-status">Noch keine hinterlegt.</p>}
-    </div>
+    </Karte>
   );
 }

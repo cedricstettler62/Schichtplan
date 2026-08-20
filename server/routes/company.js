@@ -9,6 +9,7 @@ import { Router } from "express";
 import { startOfToday, toISO } from "#shared/dates.js";
 import { passwortProblem } from "#shared/password.js";
 
+import { loescheKonto } from "../accounts.js";
 import {
   checkPassword,
   endeAlleSitzungen,
@@ -18,33 +19,10 @@ import {
   requireCompany,
   setAccountSession,
 } from "../auth.js";
-import { recompute, releaseSeats } from "../assignment.js";
-import { toShift } from "../db.js";
-import { logAccountChanged, logPasswordChanged, logUnassigned } from "../logbook.js";
+import { recompute } from "../assignment.js";
+import { logAccountChanged, logPasswordChanged } from "../logbook.js";
 import { dateiname, personalData } from "../personalData.js";
 import { uid } from "../ids.js";
-
-/** Konto aus *dieser* Firma holen — sonst 404, egal ob es anderswo existiert. */
-function ownAccount(db, req, id) {
-  return db
-    .prepare("SELECT id, company_id, name, role FROM accounts WHERE id = ? AND company_id = ?")
-    .get(id, req.session.companyId);
-}
-
-/**
- * Darf die angemeldete Person in dieses Konto eingreifen?
- *
- * Das eigene immer. Fremde nur als Admin und nur, wenn es kein Admin-Konto ist:
- * Sonst könnte ein Admin die anderen entmachten und die Firma übernehmen. Wer
- * ein Admin-Konto braucht — löschen, Passwort, Rolle —, geht über die
- * Verwaltung. Dieselbe Grenze gilt für Passwort, Qualifikationen, Rolle und
- * Löschen; eine mildere Handlung schwächer zu schützen als eine härtere wäre
- * die falsche Reihenfolge.
- */
-function darfEingreifen(req, target) {
-  if (target.id === req.session.accountId) return true;
-  return req.session.role === "admin" && target.role !== "admin";
-}
 
 /** Die vollständige, einfügbare Adresse — ein Kalenderprogramm liegt ausserhalb
  *  des Browsers und kommt mit einem relativen Pfad nicht zurecht. */
@@ -64,6 +42,43 @@ export default function companyRoutes(db, config) {
   // die Verwaltung) nicht abfangen.
   const router = Router();
 
+  /**
+   * Das Konto zu :id aus *dieser* Firma — oder schon die fertige Fehlerantwort
+   * (dann null). `regel` sagt, wer hineinreichen darf:
+   *
+   *   "eingriff" — das eigene immer, ein fremdes nur als Admin und nur, wenn es
+   *                kein Admin-Konto ist. Sonst könnte ein Admin die anderen
+   *                entmachten und die Firma übernehmen; wer an ein Admin-Konto
+   *                muss (löschen, Passwort, Rolle), geht über die Verwaltung.
+   *                Dieselbe Grenze gilt für Passwort, Qualifikationen, Rolle
+   *                und Löschen — eine mildere Handlung schwächer zu schützen
+   *                als eine härtere wäre die falsche Reihenfolge.
+   *   "selbst"   — ausschliesslich das eigene. Für rein Persönliches wie das
+   *                Kalenderabo: ein fremdes Zeichen zu erzeugen hülfe niemandem.
+   *   "auskunft" — das eigene, oder als Admin jedes Konto der Firma.
+   */
+  const ziel = (req, res, regel, verb = "ändert") => {
+    const target = db
+      .prepare("SELECT id, company_id, name, role FROM accounts WHERE id = ? AND company_id = ?")
+      .get(req.params.id, req.session.companyId);
+    if (!target) {
+      res.status(404).json({ error: "Konto nicht gefunden." });
+      return null;
+    }
+    const selbst = target.id === req.session.accountId;
+    const admin = req.session.role === "admin";
+
+    if (regel === "eingriff" && !selbst && !(admin && target.role !== "admin")) {
+      res.status(403).json({ error: `Ein fremdes Admin-Konto ${verb} nur die Verwaltung.` });
+      return null;
+    }
+    if ((regel === "selbst" && !selbst) || (regel === "auskunft" && !selbst && !admin)) {
+      res.status(403).json({ error: "Nicht erlaubt." });
+      return null;
+    }
+    return target;
+  };
+
   /* --- Qualifikationen --- */
 
   router.post("/qualifications", requireAdmin, (req, res) => {
@@ -82,13 +97,16 @@ export default function companyRoutes(db, config) {
   });
 
   router.delete("/qualifications/:id", requireAdmin, (req, res) => {
-    /* Das Schema setzt shifts.qualification_id beim Löschen auf NULL — und eine
-       Schicht ohne Qualifikation lässt sich weder einschreiben noch übernehmen.
-       Sie wäre also für immer unbesetzbar. Deshalb hier abfangen, solange noch
+    /* Mit der Qualifikation verschwindet auch ihr Eintrag an jeder Schicht. Eine
+       Schicht, die sie als Einzige verlangte, stünde danach ohne Anforderung da
+       und liesse sich weder einschreiben noch übernehmen; bei mehreren fiele
+       stillschweigend eine Bedingung weg. Deshalb hier abfangen, solange noch
        kommende Schichten die Qualifikation verlangen. */
     const { n } = db
       .prepare(
-        "SELECT COUNT(*) AS n FROM shifts WHERE company_id = ? AND qualification_id = ? AND date >= ?"
+        `SELECT COUNT(*) AS n FROM shifts s
+           JOIN shift_qualifications sq ON sq.shift_id = s.id
+          WHERE s.company_id = ? AND sq.qualification_id = ? AND s.date >= ?`
       )
       .get(req.session.companyId, req.params.id, toISO(startOfToday()));
 
@@ -144,11 +162,8 @@ export default function companyRoutes(db, config) {
    * der Administration beschreiben. Von beidem kann nur eines stimmen.
    */
   router.patch("/accounts/:id/qualifications", requireAdmin, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-    if (!darfEingreifen(req, target)) {
-      return res.status(403).json({ error: "Ein fremdes Admin-Konto ändert nur die Verwaltung." });
-    }
+    const target = ziel(req, res, "eingriff");
+    if (!target) return;
 
     const qual = db
       .prepare("SELECT id, name FROM qualifications WHERE id = ? AND company_id = ?")
@@ -171,16 +186,20 @@ export default function companyRoutes(db, config) {
     res.json({ ok: true });
   });
 
-  router.post("/accounts/:id/promote", requireAdmin, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-    if (target.role === "admin") return res.json({ ok: true });
-    db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(target.id);
+  /** Rollenwechsel protokollieren — beide Richtungen lesen sich gleich. */
+  const logRolle = (req, target, von, nach) =>
     logAccountChanged(db, req.session.companyId, {
       accountName: target.name, accountId: target.id,
-      message: `Rolle geändert von Mitarbeitende zu Administration, durch ${req.session.name}.`,
+      message: `Rolle geändert von ${von} zu ${nach}, durch ${req.session.name}.`,
       actorAccountId: req.session.accountId,
     });
+
+  router.post("/accounts/:id/promote", requireAdmin, (req, res) => {
+    const target = ziel(req, res, "eingriff");
+    if (!target) return;
+    if (target.role === "admin") return res.json({ ok: true });
+    db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(target.id);
+    logRolle(req, target, "Mitarbeitende", "Administration");
     res.json({ ok: true });
   });
 
@@ -193,7 +212,9 @@ export default function companyRoutes(db, config) {
    * nicht, sonst stünde die Firma ohne da.
    */
   router.post("/accounts/:id/demote", requireCompany, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
+    const target = db
+      .prepare("SELECT id, name, role FROM accounts WHERE id = ? AND company_id = ?")
+      .get(req.params.id, req.session.companyId);
     if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
     if (target.id !== req.session.accountId) {
       return res.status(403).json({ error: "Adminrechte gibt jede Person nur selbst ab." });
@@ -206,11 +227,7 @@ export default function companyRoutes(db, config) {
     }
 
     db.prepare("UPDATE accounts SET role = 'employee' WHERE id = ?").run(target.id);
-    logAccountChanged(db, req.session.companyId, {
-      accountName: target.name, accountId: target.id,
-      message: `Rolle geändert von Administration zu Mitarbeitende, durch ${req.session.name}.`,
-      actorAccountId: req.session.accountId,
-    });
+    logRolle(req, target, "Administration", "Mitarbeitende");
     res.json({ ok: true });
   });
 
@@ -220,12 +237,8 @@ export default function companyRoutes(db, config) {
    * Fällen mit dem *eigenen* Passwort: Das fremde kennt der Admin ja nicht.
    */
   router.post("/accounts/:id/password", requireCompany, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-
-    if (!darfEingreifen(req, target)) {
-      return res.status(403).json({ error: "Ein fremdes Admin-Konto ändert nur die Verwaltung." });
-    }
+    const target = ziel(req, res, "eingriff");
+    if (!target) return;
 
     const password = String(req.body?.password || "");
     const passwortFehler = passwortProblem(password);
@@ -253,14 +266,14 @@ export default function companyRoutes(db, config) {
        selbst und soll nicht mitten in der Arbeit hinausfliegen. Abgemeldet
        werden also alle anderen. */
     const epoche = endeAlleSitzungen(db, target.id);
-    if (target.id === req.session.accountId) {
-      setAccountSession(res, { id: target.id, session_epoch: epoche }, config);
-    }
+    const selbst = target.id === req.session.accountId;
+    if (selbst) setAccountSession(res, { id: target.id, session_epoch: epoche }, config);
+
     // Wer und wann, nie das Passwort selbst — das Logbuch ist kein Tresor dafür.
     logPasswordChanged(db, req.session.companyId, {
       accountName: target.name, accountId: target.id,
       actorName: req.session.name, actorAccountId: req.session.accountId,
-      selbst: target.id === req.session.accountId,
+      selbst,
     });
     res.json({ ok: true });
   });
@@ -272,30 +285,22 @@ export default function companyRoutes(db, config) {
    * gegenüber ihrer Belegschaft geradestehen muss.
    */
   router.get("/accounts/:id/data", requireCompany, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
+    const target = ziel(req, res, "auskunft");
+    if (!target) return;
 
-    const isSelf = target.id === req.session.accountId;
-    if (!isSelf && req.session.role !== "admin") return res.status(403).json({ error: "Nicht erlaubt." });
-
-    const daten = personalData(db, target.id);
     // Der Name geht nur bereinigt in die Kopfzeile — sonst liessen sich weitere einschleusen.
     res.setHeader("Content-Disposition", `attachment; filename="${dateiname(target.name)}"`);
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.send(JSON.stringify(daten, null, 2));
+    res.send(JSON.stringify(personalData(db, target.id), null, 2));
   });
 
   /**
    * Kalenderabo (iCal): aktueller Stand — aus, oder die Adresse zum Kopieren.
-   * Rein persönlich, deshalb ohne die sonstige Admin-Ausnahme: Ein fremdes
-   * Zeichen zu erzeugen, hülfe niemandem, es steht ja nur der Person selbst
-   * zur Verfügung, die es in ihren eigenen Kalender einträgt.
+   * Rein persönlich, deshalb ohne die sonstige Admin-Ausnahme.
    */
   router.get("/accounts/:id/calendar-token", requireCompany, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-    if (target.id !== req.session.accountId) return res.status(403).json({ error: "Nicht erlaubt." });
-
+    const target = ziel(req, res, "selbst");
+    if (!target) return;
     const row = db.prepare("SELECT calendar_token FROM accounts WHERE id = ?").get(target.id);
     res.json({ url: row.calendar_token ? kalenderUrl(req, row.calendar_token) : null });
   });
@@ -306,56 +311,30 @@ export default function companyRoutes(db, config) {
    * vergeben sein kann und hier überschrieben wird.
    */
   router.post("/accounts/:id/calendar-token", requireCompany, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-    if (target.id !== req.session.accountId) return res.status(403).json({ error: "Nicht erlaubt." });
-
+    const target = ziel(req, res, "selbst");
+    if (!target) return;
     const token = crypto.randomBytes(32).toString("base64url");
     db.prepare("UPDATE accounts SET calendar_token = ? WHERE id = ?").run(token, target.id);
     res.json({ url: kalenderUrl(req, token) });
   });
 
   router.delete("/accounts/:id", requireCompany, (req, res) => {
-    const target = ownAccount(db, req, req.params.id);
-    if (!target) return res.status(404).json({ error: "Konto nicht gefunden." });
-
     /* Ein fremdes Admin-Konto löscht niemand aus der Firma heraus — das ist die
        härteste Form des Entmachtens, und sie war bisher als einzige offen. */
-    if (!darfEingreifen(req, target)) {
-      return res.status(403).json({ error: "Ein fremdes Admin-Konto löscht nur die Verwaltung." });
-    }
+    const target = ziel(req, res, "eingriff", "löscht");
+    if (!target) return;
+
     if (target.role === "admin" && adminCount(db, req.session.companyId) <= 1) {
       return res.status(409).json({
         error: "Die letzte Administration lässt sich nicht selbst löschen. Das übernimmt die Verwaltung, die dabei eine Nachfolge bestimmt.",
       });
     }
+
     const isSelf = target.id === req.session.accountId;
-
-    /* Schichten, die dieses Konto besetzt hat, dürfen nicht still an die
-       nächstbeste eingeschriebene Person weitergereicht werden — sie sollen
-       sichtbar unter "Noch offene Plätze" auftauchen. Die Zuordnung muss vor
-       dem Löschen gelesen werden, danach hat das Schema sie weggeräumt. */
-    const frei = db
-      .prepare("SELECT shift_id FROM enrollments WHERE account_id = ? AND assigned = 1")
-      .all(target.id)
-      .map((r) => r.shift_id);
-    const freiRows = frei.length
-      ? db.prepare(`SELECT * FROM shifts WHERE id IN (${frei.map(() => "?").join(", ")})`).all(...frei)
-      : [];
-
-    db.transaction(() => {
-      // Vor dem Löschen protokollieren: actor_account_id/target_account_id
-      // sind Fremdschlüssel und würden ein bereits gelöschtes Konto ablehnen.
-      for (const row of freiRows) {
-        logUnassigned(
-          db, req.session.companyId, toShift(db, row), target.name, target.id,
-          req.session.name, req.session.accountId, "wegen Kontolöschung ausgetragen"
-        );
-      }
-      db.prepare("DELETE FROM accounts WHERE id = ?").run(target.id);
-    })();
-    releaseSeats(db, frei);
-    recompute(db, req.session.companyId);
+    loescheKonto(db, req.session.companyId, target, {
+      actorName: req.session.name,
+      actorAccountId: req.session.accountId,
+    });
     res.json({ ok: true, self: isSelf });
   });
 

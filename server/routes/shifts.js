@@ -4,7 +4,7 @@
 
 import { Router } from "express";
 
-import { HORIZON_DAYS, buildShiftsFromForm, canTakeOver, hasQualification } from "#shared/assignment.js";
+import { HORIZON_DAYS, buildShiftsFromForm, canTakeOver, hasQualifications } from "#shared/assignment.js";
 import { addDays, fromISO, startOfToday, toISO } from "#shared/dates.js";
 import { REPEAT_KEYS } from "#shared/labels.js";
 
@@ -15,7 +15,9 @@ import {
 } from "../conflicts.js";
 import { readAccountsForLogic, toShift } from "../db.js";
 import { uid } from "../ids.js";
-import { logAssigned, logHelp, logReassigned, logShiftCreated, logShiftUpdated, logUnassigned } from "../logbook.js";
+import {
+  logAssigned, logHelp, logReassigned, logShiftCreated, logShiftDeleted, logShiftUpdated, logUnassigned,
+} from "../logbook.js";
 
 /* Dieselbe Liste, die auch das Formular anbietet — zwei Aufzählungen liefen
    sonst auseinander, und eine Wiederholung ohne Beschriftung wäre für niemanden
@@ -31,71 +33,124 @@ function ownShift(db, req, id) {
   return row ? toShift(db, row) : null;
 }
 
+/**
+ * Ist die Schicht vorbei?
+ *
+ * Anlegen und Bearbeiten weisen die Vergangenheit ausdrücklich ab; für
+ * Einschreiben, Hilfegesuch und Übernehmen galt das bisher nicht — über die
+ * API liess sich eine Schicht von vor drei Jahren noch belegen, und die
+ * Auslosung teilte sie prompt zu. Was vorbei ist, ist geschehen: Wer damals
+ * dabei war, steht fest, und wer es nicht war, wird es nachträglich nicht mehr.
+ *
+ * Gerechnet wird auf den Tag genau, wie überall sonst (isFutureOrToday,
+ * readInvolvedPastShifts). Die Schicht von heute Morgen zählt also noch als
+ * heute — für ein Hilfegesuch am selben Tag ist das die richtige Grenze.
+ */
+const istVorbei = (shift) => shift.date < toISO(startOfToday());
+
+/**
+ * Die Felder, die Anlegen und Bearbeiten gemeinsam haben — einmal geprüft.
+ * Gibt entweder { error } zurück (dann ist alles gesagt) oder die geprüften
+ * Werte. `nameFehlt` ist die Meldung für den fehlenden Namen: beim Anlegen
+ * gehört das Datum in denselben Satz, beim Bearbeiten nicht.
+ */
+function gemeinsameFelder(db, req, nameFehlt) {
+  const form = req.body || {};
+  const name = String(form.name || "").trim();
+  const seats = Number(form.seats);
+  const startTime = String(form.startTime || "");
+  const endTime = String(form.endTime || "");
+
+  if (!name) return { error: nameFehlt };
+  /* Ohne diese Prüfung landete eine leere Zeit als "" in der Datenbank. Die
+     Überschneidungsrechnung liest daraus 0:00 bis 0:00, macht daraus eine
+     Schicht über volle 24 Stunden — und die kollidiert mit allem, was an dem
+     Tag sonst noch läuft. */
+  if (!istUhrzeit(startTime) || !istUhrzeit(endTime)) {
+    return { error: "Start- und Endzeit müssen im Format HH:MM angegeben werden." };
+  }
+  if (!Number.isInteger(seats) || seats < 1) return { error: "Ungültige Platzzahl." };
+
+  /* Mehrere Qualifikationen sind erlaubt, keine ist es nicht: Eine Schicht ohne
+     Anforderung könnte niemand übernehmen (siehe hasQualifications). Doppelte
+     Angaben fallen weg, die Reihenfolge gibt ohnehin die Firmenliste vor. */
+  const gewuenscht = [...new Set((Array.isArray(form.qualificationIds) ? form.qualificationIds : []).map(String))];
+  if (gewuenscht.length === 0) return { error: "Mindestens eine Qualifikation ist nötig." };
+
+  const eigene = db
+    .prepare(
+      `SELECT id FROM qualifications
+        WHERE company_id = ? AND id IN (${gewuenscht.map(() => "?").join(", ")})`
+    )
+    .all(req.session.companyId, ...gewuenscht)
+    .map((q) => q.id);
+  if (eigene.length !== gewuenscht.length) return { error: "Qualifikation nicht gefunden." };
+
+  return { form, name, seats, startTime, endTime, qualIds: gewuenscht };
+}
+
 export default function shiftRoutes(db) {
   const router = Router();
   router.use(requireCompany);
 
+  /** Schreibt die Anforderungen einer Schicht neu — vorher weg, nachher hin. */
+  const setzeQualifikationen = (shiftId, qualIds) => {
+    db.prepare("DELETE FROM shift_qualifications WHERE shift_id = ?").run(shiftId);
+    const merke = db.prepare(
+      "INSERT INTO shift_qualifications (shift_id, qualification_id) VALUES (?, ?)"
+    );
+    for (const qualId of qualIds) merke.run(shiftId, qualId);
+  };
+
+  /** Die Serien-IDs, die es in dieser Firma gibt — eine Freigabe darf sich
+   *  nur auf eine davon beziehen. */
+  const bekannteSerien = (companyId) =>
+    new Set(
+      db.prepare("SELECT DISTINCT series_id FROM shifts WHERE company_id = ?")
+        .all(companyId)
+        .map((r) => r.series_id)
+    );
+
   router.post("/", requireAdmin, (req, res) => {
-    const form = req.body || {};
-    const name = String(form.name || "").trim();
-    const seats = Number(form.seats);
+    const felder = gemeinsameFelder(db, req, "Name und Datum sind nötig.");
+    if (felder.error) return res.status(400).json({ error: felder.error });
+    const { form, name, seats, startTime, endTime, qualIds } = felder;
+
     const repeat = String(form.repeat || "once");
     const date = String(form.date || "");
-    const startTime = String(form.startTime || "");
-    const endTime = String(form.endTime || "");
-
-    if (!name || !istDatum(date)) {
-      return res.status(400).json({ error: "Name und Datum sind nötig." });
-    }
-    /* Ohne diese Prüfung landete eine leere Zeit als "" in der Datenbank. Die
-       Überschneidungsrechnung liest daraus 0:00 bis 0:00, macht daraus eine
-       Schicht über volle 24 Stunden — und die kollidiert mit allem, was an dem
-       Tag sonst noch läuft. */
-    if (!istUhrzeit(startTime) || !istUhrzeit(endTime)) {
-      return res.status(400).json({ error: "Start- und Endzeit müssen im Format HH:MM angegeben werden." });
-    }
+    if (!istDatum(date)) return res.status(400).json({ error: "Name und Datum sind nötig." });
     // Wie beim Bearbeiten: rückwirkend anlegen ergibt keine Schicht, die noch jemand übernehmen könnte.
     if (date < toISO(startOfToday())) {
       return res.status(400).json({ error: "Eine Schicht lässt sich nicht in der Vergangenheit anlegen." });
     }
-    if (!Number.isInteger(seats) || seats < 1) return res.status(400).json({ error: "Ungültige Platzzahl." });
     if (!REPEATS.has(repeat)) return res.status(400).json({ error: "Unbekannte Wiederholung." });
 
-    const qual = db
-      .prepare("SELECT id FROM qualifications WHERE id = ? AND company_id = ?")
-      .get(String(form.qualificationId || ""), req.session.companyId);
-    if (!qual) return res.status(400).json({ error: "Qualifikation nicht gefunden." });
-
     const shifts = buildShiftsFromForm(
-      { ...form, name, date, startTime, endTime, seats, repeat, qualificationId: qual.id },
+      { ...form, name, date, startTime, endTime, seats, repeat, qualificationIds: qualIds },
       addDays(startOfToday(), HORIZON_DAYS),
       uid
     );
 
     const insert = db.prepare(
       `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
-                           repeat, seats, qualification_id, end_date, assignment_attempted, assigned_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`
+                           repeat, seats, end_date, assignment_attempted, assigned_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`
     );
     /* Serien, mit denen sich die neue Schicht laut Administration trotz
        Überschneidung zusammen übernehmen lässt. Alles andere schliesst sich
        aus — dafür braucht es keinen Eintrag. */
     const kombinierbar = Array.isArray(form.combinableWith) ? form.combinableWith.map(String) : [];
-    const bekannteSerien = new Set(
-      db.prepare("SELECT DISTINCT series_id FROM shifts WHERE company_id = ?")
-        .all(req.session.companyId)
-        .map((r) => r.series_id)
-    );
-
+    const bekannt = bekannteSerien(req.session.companyId);
     const seriesId = shifts[0]?.seriesId;
     db.transaction(() => {
       for (const s of shifts) {
         insert.run(s.id, req.session.companyId, s.seriesId, s.name, s.date,
-          s.startTime, s.endTime, s.repeat, s.seats, s.qualificationId, s.endDate);
+          s.startTime, s.endTime, s.repeat, s.seats, s.endDate);
+        setzeQualifikationen(s.id, qualIds);
         logShiftCreated(db, req.session.companyId, s, req.session.name, req.session.accountId);
       }
       for (const andere of kombinierbar) {
-        if (bekannteSerien.has(andere)) merkeKombinierbar(db, req.session.companyId, seriesId, andere);
+        if (bekannt.has(andere)) merkeKombinierbar(db, req.session.companyId, seriesId, andere);
       }
     })();
 
@@ -124,24 +179,12 @@ export default function shiftRoutes(db) {
     const shift = ownShift(db, req, req.params.id);
     if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
 
-    const form = req.body || {};
-    const name = String(form.name || "").trim();
-    const seats = Number(form.seats);
-    const startTime = String(form.startTime || "");
-    const endTime = String(form.endTime || "");
+    const felder = gemeinsameFelder(db, req, "Ein Name ist nötig.");
+    if (felder.error) return res.status(400).json({ error: felder.error });
+    const { form, name, seats, startTime, endTime, qualIds } = felder;
+
     const umfang = shift.repeat === "once" ? "einzeln" : String(form.umfang || "einzeln");
-
-    if (!name) return res.status(400).json({ error: "Ein Name ist nötig." });
-    if (!istUhrzeit(startTime) || !istUhrzeit(endTime)) {
-      return res.status(400).json({ error: "Start- und Endzeit müssen im Format HH:MM angegeben werden." });
-    }
-    if (!Number.isInteger(seats) || seats < 1) return res.status(400).json({ error: "Ungültige Platzzahl." });
     if (!UMFAENGE.has(umfang)) return res.status(400).json({ error: "Unbekannter Umfang." });
-
-    const qual = db
-      .prepare("SELECT id FROM qualifications WHERE id = ? AND company_id = ?")
-      .get(String(form.qualificationId || ""), req.session.companyId);
-    if (!qual) return res.status(400).json({ error: "Qualifikation nicht gefunden." });
 
     const heute = toISO(startOfToday());
     let betroffen;
@@ -184,14 +227,25 @@ export default function shiftRoutes(db) {
     /* Wer nur eine Freigabe nachträgt, soll dafür nicht die halbe Belegschaft
        aus der Schicht werfen. Ausgetragen wird deshalb nur, wenn sich an der
        Schicht selbst etwas ändert. */
-    const abweichend = db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM shifts
-          WHERE id IN (${platzhalter})
-            AND NOT (name = ? AND start_time = ? AND end_time = ? AND seats = ? AND qualification_id IS ?)`
-      )
-      .get(...betroffen, name, startTime, endTime, seats, qual.id).n;
-    const geaendert = abweichend > 0 || neuesDatum !== shift.date;
+    const bisher = db
+      .prepare(`SELECT id, name, start_time, end_time, seats FROM shifts WHERE id IN (${platzhalter})`)
+      .all(...betroffen);
+    const gleicheAnforderungen = (shiftId) => {
+      const ist = db
+        .prepare("SELECT qualification_id FROM shift_qualifications WHERE shift_id = ?")
+        .all(shiftId)
+        .map((r) => r.qualification_id);
+      return ist.length === qualIds.length && ist.every((q) => qualIds.includes(q));
+    };
+    const abweichend = bisher.some(
+      (b) =>
+        b.name !== name ||
+        b.start_time !== startTime ||
+        b.end_time !== endTime ||
+        b.seats !== seats ||
+        !gleicheAnforderungen(b.id)
+    );
+    const geaendert = abweichend || neuesDatum !== shift.date;
 
     const ausgetragen = geaendert
       ? db.prepare(`SELECT COUNT(*) AS n FROM enrollments WHERE shift_id IN (${platzhalter})`)
@@ -205,18 +259,15 @@ export default function shiftRoutes(db) {
       form.combinable && typeof form.combinable === "object" ? form.combinable : {}
     ).filter(([andere]) => andere && andere !== eigeneSerie);
 
-    const bekannteSerien = new Set(
-      db.prepare("SELECT DISTINCT series_id FROM shifts WHERE company_id = ?")
-        .all(req.session.companyId)
-        .map((r) => r.series_id)
-    );
+    const bekannt = bekannteSerien(req.session.companyId);
 
     db.transaction(() => {
       db.prepare(
         `UPDATE shifts
-            SET name = ?, start_time = ?, end_time = ?, seats = ?, qualification_id = ?
+            SET name = ?, start_time = ?, end_time = ?, seats = ?
           WHERE id IN (${platzhalter})`
-      ).run(name, startTime, endTime, seats, qual.id, ...betroffen);
+      ).run(name, startTime, endTime, seats, ...betroffen);
+      for (const id of betroffen) setzeQualifikationen(id, qualIds);
 
       if (umfang === "einzeln") {
         db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(neuesDatum, shift.id);
@@ -237,7 +288,7 @@ export default function shiftRoutes(db) {
       }
 
       for (const [andere, erlaubt] of freigaben) {
-        if (!bekannteSerien.has(andere)) continue;
+        if (!bekannt.has(andere)) continue;
         if (erlaubt) merkeKombinierbar(db, req.session.companyId, eigeneSerie, andere);
         else vergissKombinierbar(db, req.session.companyId, eigeneSerie, andere);
       }
@@ -268,6 +319,11 @@ export default function shiftRoutes(db) {
   router.post("/:id/enroll", (req, res) => {
     const shift = ownShift(db, req, req.params.id);
     if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+    if (istVorbei(shift)) {
+      return res.status(409).json({
+        error: "Diese Schicht ist vorbei. Ein- und Austragen geht nur bei kommenden Schichten.",
+      });
+    }
 
     const me = req.session.accountId;
     if (shift.enrolled.includes(me)) {
@@ -284,8 +340,8 @@ export default function shiftRoutes(db) {
     }
 
     const accounts = readAccountsForLogic(db, req.session.companyId);
-    if (!hasQualification(accounts, me, shift.qualificationId)) {
-      return res.status(403).json({ error: "Dir fehlt die nötige Qualifikation." });
+    if (!hasQualifications(accounts, me, shift.qualificationIds)) {
+      return res.status(403).json({ error: "Dir fehlt eine für diese Schicht nötige Qualifikation." });
     }
 
     /* Zwei Schichten zur selben Zeit gehen nur, wenn die Administration sie
@@ -327,9 +383,17 @@ export default function shiftRoutes(db) {
     if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
 
     const enddatum = toISO(addDays(fromISO(shift.date), -1));
+    /* Vor dem Löschen lesen: Danach gibt es die Zeilen nicht mehr, und ohne
+       Eintrag verschwände eine Schicht spurlos aus dem Logbuch. */
+    const betroffen = db
+      .prepare("SELECT * FROM shifts WHERE company_id = ? AND series_id = ? AND date >= ? ORDER BY date")
+      .all(req.session.companyId, shift.seriesId, shift.date);
     let geloescht = 0;
 
     db.transaction(() => {
+      for (const row of betroffen) {
+        logShiftDeleted(db, req.session.companyId, toShift(db, row), req.session.name, req.session.accountId);
+      }
       geloescht = db
         .prepare("DELETE FROM shifts WHERE company_id = ? AND series_id = ? AND date >= ?")
         .run(req.session.companyId, shift.seriesId, shift.date).changes;
@@ -346,7 +410,13 @@ export default function shiftRoutes(db) {
   router.delete("/:id", requireAdmin, (req, res) => {
     const shift = ownShift(db, req, req.params.id);
     if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
-    db.prepare("DELETE FROM shifts WHERE id = ?").run(shift.id);
+
+    db.transaction(() => {
+      // Erst der Eintrag, dann die Schicht: shift_id ist ein Fremdschlüssel und
+      // nimmt keine Zeile an, die es nicht mehr gibt.
+      logShiftDeleted(db, req.session.companyId, shift, req.session.name, req.session.accountId);
+      db.prepare("DELETE FROM shifts WHERE id = ?").run(shift.id);
+    })();
     raeumeFreigaben(db);
     res.json({ deleted: 1 });
   });
@@ -367,8 +437,15 @@ export default function shiftRoutes(db) {
     db.transaction(() => {
       db.prepare("DELETE FROM enrollments WHERE shift_id = ? AND account_id = ?").run(shift.id, accountId);
       db.prepare("DELETE FROM help_requests WHERE shift_id = ? AND account_id = ?").run(shift.id, accountId);
-      if (warAssigned && betroffenePerson) {
-        logUnassigned(db, req.session.companyId, shift, betroffenePerson.name, accountId, req.session.name, req.session.accountId);
+      /* Auch das Streichen von der Warteliste gehört ins Logbuch: Wer sich
+         eingeschrieben hatte und plötzlich nicht mehr dasteht, soll nachlesen
+         können, wer das war. */
+      if (betroffenePerson) {
+        logUnassigned(
+          db, req.session.companyId, shift, betroffenePerson.name, accountId,
+          req.session.name, req.session.accountId,
+          warAssigned ? "ausgetragen" : "aus der Warteliste genommen"
+        );
       }
     })();
     releaseSeats(db, [shift.id]);
@@ -379,6 +456,9 @@ export default function shiftRoutes(db) {
   router.post("/:id/help", (req, res) => {
     const shift = ownShift(db, req, req.params.id);
     if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+    if (istVorbei(shift)) {
+      return res.status(409).json({ error: "Diese Schicht ist vorbei — dafür kann niemand mehr einspringen." });
+    }
 
     const me = req.session.accountId;
     if (!shift.assigned.includes(me)) {
@@ -398,6 +478,9 @@ export default function shiftRoutes(db) {
   router.post("/:id/takeover", (req, res) => {
     const shift = ownShift(db, req, req.params.id);
     if (!shift) return res.status(404).json({ error: "Schicht nicht gefunden." });
+    if (istVorbei(shift)) {
+      return res.status(409).json({ error: "Diese Schicht ist vorbei und lässt sich nicht mehr übernehmen." });
+    }
 
     const me = req.session.accountId;
     const replaceId = req.body?.replaceId || null;

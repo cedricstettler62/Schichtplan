@@ -1,9 +1,11 @@
 import { useState } from "react";
 import Badge from "../../components/Badge.jsx";
 import Chip from "../../components/Chip.jsx";
+import QualFilterChips from "../../components/QualFilterChips.jsx";
 import DateStub from "../../components/DateStub.jsx";
 import { fromISO, isFutureOrToday, monthDiff } from "#shared/dates.js";
-import { hasQualification } from "#shared/assignment.js";
+import { hasQualifications } from "#shared/assignment.js";
+import { qualifikationsListe, qualifikationsNamen } from "#shared/labels.js";
 
 export default function EmployeeShiftsTab({ shifts, qualifications, accounts, currentUser, today, onToggleEnroll }) {
   const [onlyMatching, setOnlyMatching] = useState(false);
@@ -17,16 +19,28 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
     : base.filter((s) => s.assigned.length < s.seats);
 
   const filtered = visible.filter((s) => {
-    if (onlyMatching && !hasQualification(accounts, currentUser.id, s.qualificationId)) return false;
-    if (qualFilter.length > 0 && !qualFilter.includes(s.qualificationId)) return false;
+    if (onlyMatching && !hasQualifications(accounts, currentUser.id, s.qualificationIds)) return false;
+    if (qualFilter.length > 0 && !s.qualificationIds.some((id) => qualFilter.includes(id))) return false;
     return true;
   }).sort((a, b) => a.date.localeCompare(b.date));
 
-  const toggleQual = (id) => setQualFilter((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+  /* Sagt, was genau fehlt: Bei mehreren Anforderungen hilft „dir fehlt eine
+     Qualifikation“ niemandem weiter. */
+  const fehlendeNamen = (s) =>
+    qualifikationsNamen(
+      qualifications,
+      (s.qualificationIds || []).filter((id) => !currentUser.qualifications.includes(id))
+    ).join(", ");
 
-  const handleClick = async (s, qualified, enrolled, qualName) => {
+  const handleClick = async (s, qualified, enrolled) => {
     if (!qualified && !enrolled) {
-      setEnrollError({ shiftId: s.id, message: `Dafür fehlt dir die Qualifikation „${qualName || "der Schicht"}“. Wende dich an einen Admin, wenn das nicht stimmt.` });
+      const fehlt = fehlendeNamen(s);
+      setEnrollError({
+        shiftId: s.id,
+        message: fehlt
+          ? `Dafür fehlt dir: ${fehlt}. Wende dich an einen Admin, wenn das nicht stimmt.`
+          : "Für diese Schicht ist keine Qualifikation hinterlegt — sie lässt sich deshalb nicht übernehmen.",
+      });
       return;
     }
     setEnrollError(null);
@@ -48,11 +62,7 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
           <Chip active={onlyMatching} onClick={() => setOnlyMatching((v) => !v)}>Passende Qualifikationen</Chip>
           <Chip active={onlyEnrolled} onClick={() => setOnlyEnrolled((v) => !v)}>Bereits eingeschrieben</Chip>
         </div>
-        <div className="sb-chip-row">
-          {qualifications.map((q) => (
-            <Chip key={q.id} active={qualFilter.includes(q.id)} onClick={() => toggleQual(q.id)}>{q.name}</Chip>
-          ))}
-        </div>
+        <QualFilterChips qualifications={qualifications} gewaehlt={qualFilter} setGewaehlt={setQualFilter} />
       </div>
 
       <div className="sb-shift-list">
@@ -62,10 +72,10 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
           </p>
         )}
         {filtered.map((s) => {
-          const qual = qualifications.find((q) => q.id === s.qualificationId);
+          const qualNames = qualifikationsListe(qualifications, s.qualificationIds);
           const enrolled = s.enrolled.includes(currentUser.id);
           const assignedToMe = s.assigned.includes(currentUser.id);
-          const qualified = hasQualification(accounts, currentUser.id, s.qualificationId);
+          const qualified = hasQualifications(accounts, currentUser.id, s.qualificationIds);
           return (
             <div key={s.id}>
               <div className="sb-ticket">
@@ -79,7 +89,7 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
                   </div>
                   <div className="sb-ticket-meta">
                     <span className="sb-mono">{s.startTime}–{s.endTime}</span>
-                    <span>{qual ? qual.name : "ohne Qualifikation"}</span>
+                    <span>{qualNames || "ohne Qualifikation"}</span>
                     <span>{s.seats - s.assigned.length} von {s.seats} Plätzen frei</span>
                   </div>
                 </div>
@@ -90,7 +100,7 @@ export default function EmployeeShiftsTab({ shifts, qualifications, accounts, cu
                   <button
                     type="button"
                     className={`sb-btn sb-ticket-action ${enrolled ? "sb-btn-quiet" : "sb-btn-petrol"}`}
-                    onClick={() => handleClick(s, qualified, enrolled, qual ? qual.name : null)}
+                    onClick={() => handleClick(s, qualified, enrolled)}
                   >
                     {enrolled ? "Austragen" : "Einschreiben"}
                   </button>

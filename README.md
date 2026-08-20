@@ -71,6 +71,13 @@ eigenen setzt die Administration unter *Einstellungen*: Sie steht in der
 Mitarbeitendenliste nicht drin, käme sonst an keine und könnte damit auch keine
 Schicht übernehmen.
 
+**Eine Schicht darf mehrere verlangen.** Im Schichtformular sind die
+Qualifikationen antippbare Chips statt einer Auswahlliste; mindestens eine muss
+es sein. Verlangt heisst dabei verlangt: Wer die Schicht übernimmt, braucht
+*alle* angetippten, nicht irgendeine davon. Eine Schicht mit „Erste Hilfe“ und
+„Staplerschein“ bekommt also nur, wer beides mitbringt — und wem etwas fehlt,
+dem sagt die Oberfläche, was genau.
+
 ## Angemeldet bleiben
 
 Angemeldet wird einmal. Danach bleibt das Gerät angemeldet — über das Schliessen
@@ -135,7 +142,8 @@ nachträglich erteilen oder zurücknehmen, ohne die Schicht neu anzulegen.
 
 Wird an der Schicht selbst nichts geändert und nur eine Freigabe umgestellt,
 **wird niemand ausgetragen** — die Rückfrage sagt das auch so. Ausgetragen wird
-erst, wenn sich Name, Zeit, Datum, Plätze oder Qualifikation ändern.
+erst, wenn sich Name, Zeit, Datum, Plätze oder Qualifikationen ändern.
+Dieselbe Liste in anderer Reihenfolge ist keine Änderung.
 
 > **Für bestehende Installationen:** Schichten, die sich schon vor dieser
 > Änderung überschnitten haben, gelten zunächst als sich ausschliessend — für
@@ -145,7 +153,7 @@ erst, wenn sich Name, Zeit, Datum, Plätze oder Qualifikation ändern.
 ## Schichten ändern
 
 Aufgeklappt hat jede Schicht in der Admin-Ansicht einen Knopf *Bearbeiten*.
-Änderbar sind Name, Zeiten, Plätze und Qualifikation, bei einem einzelnen
+Änderbar sind Name, Zeiten, Plätze und Qualifikationen, bei einem einzelnen
 Termin auch das Datum. Wiederholungsrhythmus und Enddatum bleiben — die ändert
 man über *Serie ab hier löschen* und Neuanlegen.
 
@@ -153,6 +161,13 @@ man über *Serie ab hier löschen* und Neuanlegen.
 Frühschicht mit Kassenschulung eingeschrieben hat, hat nicht der Nachtschicht
 mit Staplerschein zugestimmt. Die Schicht gilt danach als frisch
 ausgeschrieben.
+
+**Vergangene Schichten bleiben, wie sie waren** — sie lassen sich nicht mehr
+bearbeiten, und niemand trägt sich dort noch ein oder aus. Löschen kann die
+Administration sie sehr wohl, und genau deshalb steht jedes Löschen im
+Logbuch: mit Schicht, Zeit und Person, und zwar dauerhaft — der Eintrag
+überlebt die Schicht, die er beschreibt. Dasselbe gilt für das Streichen von
+einer Warteliste.
 
 Bei einer Serie fragt das Formular nach dem Umfang:
 
@@ -348,9 +363,6 @@ tests/          Regel-, API- und Oberflächentests
 
 Die Zuteilungsregeln stehen genau einmal — in `shared/assignment.js`. Der Server
 setzt sie durch, die Oberfläche zeigt sie an, die Tests prüfen sie.
-
-`Schichtboard.jsx` im Wurzelverzeichnis ist der ursprüngliche Entwurf aus einer
-einzigen Datei. Er wird nicht mehr benutzt und liegt nur noch zum Nachschlagen dort.
 
 ## Einstellungen
 

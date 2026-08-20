@@ -203,7 +203,7 @@ describe("Schichten", () => {
       endTime: "16:00",
       repeat: "once",
       seats: 1,
-      qualificationId: qualId,
+      qualificationIds: [qualId],
     });
     expect(created.status).toBe(200);
 
@@ -218,7 +218,7 @@ describe("Schichten", () => {
     await lea.login(EMPLOYEE);
     const res = await lea.post("/api/shifts", {
       name: "Heimlich", date: heute(), startTime: "08:00", endTime: "16:00",
-      repeat: "once", seats: 1, qualificationId: "q1",
+      repeat: "once", seats: 1, qualificationIds: ["q1"],
     });
     expect(res.status).toBe(403);
   });
@@ -229,7 +229,7 @@ describe("Schichten", () => {
     const qualId = state.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
 
     const lea = client();
@@ -255,7 +255,7 @@ describe("Schichten", () => {
 
     await admin.post("/api/shifts", {
       name: "Nachtdienst", date: heute(), startTime: "22:00", endTime: "06:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -277,7 +277,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -298,7 +298,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -333,7 +333,7 @@ describe("Schichten", () => {
 
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -372,7 +372,7 @@ describe("Schichten", () => {
 
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -395,7 +395,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -420,7 +420,7 @@ describe("Schichten", () => {
     naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
     await admin.post("/api/shifts", {
       name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -441,7 +441,7 @@ describe("Schichten", () => {
     // läuft beim Anlegen und findet niemanden.
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const offen = (await admin.get("/api/state")).data.company.shifts[0];
     expect(offen.assignmentAttempted).toBe(true);
@@ -466,7 +466,7 @@ describe("Schichten", () => {
 
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -497,7 +497,7 @@ describe("Schichten", () => {
     naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
     await admin.post("/api/shifts", {
       name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -533,7 +533,7 @@ describe("Schichten", () => {
     naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
     await admin.post("/api/shifts", {
       name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -562,7 +562,7 @@ describe("Schichten", () => {
     naechsterMonat.setMonth(naechsterMonat.getMonth() + 1, 15);
     await admin.post("/api/shifts", {
       name: "Spätdienst", date: toISO(naechsterMonat), startTime: "14:00", endTime: "22:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -582,7 +582,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -599,7 +599,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -614,7 +614,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Tagesdienst", date: heute(), startTime: "08:00", endTime: "16:00",
-      repeat: "daily", seats: 1, qualificationId: qualId,
+      repeat: "daily", seats: 1, qualificationIds: [qualId],
     });
     const vorher = (await admin.get("/api/state")).data.company.shifts;
     expect(vorher.length).toBeGreaterThan(50);
@@ -638,7 +638,7 @@ describe("Schichten", () => {
 
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -666,7 +666,7 @@ describe("Schichten", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
 
     const res = await admin.del(`/api/qualifications/${qualId}`);
@@ -675,7 +675,7 @@ describe("Schichten", () => {
     // Sonst stünde die Schicht ohne Qualifikation da und wäre unbesetzbar.
     const state = (await admin.get("/api/state")).data.company;
     expect(state.qualifications.some((q) => q.id === qualId)).toBe(true);
-    expect(state.shifts[0].qualificationId).toBe(qualId);
+    expect(state.shifts[0].qualificationIds).toEqual([qualId]);
 
     const lea = client();
     await lea.login(EMPLOYEE);
@@ -698,7 +698,7 @@ describe("Schichten", () => {
     const fremd = state.company.qualifications[2].id;
     await admin.post("/api/shifts", {
       name: "Lager", date: heute(), startTime: "08:00", endTime: "16:00",
-      repeat: "once", seats: 1, qualificationId: fremd,
+      repeat: "once", seats: 1, qualificationIds: [fremd],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -708,10 +708,92 @@ describe("Schichten", () => {
   });
 });
 
+describe("Vergangene Schichten", () => {
+  /* Anlegen und Bearbeiten weisen die Vergangenheit ab; Einschreiben,
+     Hilfegesuch und Übernehmen taten das nicht. Über die API liess sich eine
+     Schicht von 2020 noch belegen — und die Auslosung teilte sie prompt zu. */
+  const gestern = () => toISO(addDays(startOfToday(), -1));
+
+  /** Legt eine Schicht für heute an und datiert sie danach zurück. */
+  async function vergangeneSchicht(admin, { seats = 1 } = {}) {
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats, qualificationIds: [qualId],
+    });
+    const id = (await admin.get("/api/state")).data.company.shifts[0].id;
+    server.db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(gestern(), id);
+    return id;
+  }
+
+  test("in eine vergangene Schicht schreibt sich niemand mehr ein", async () => {
+    const admin = await asAdmin();
+    const shiftId = await vergangeneSchicht(admin);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const res = await lea.post(`/api/shifts/${shiftId}/enroll`);
+    expect(res.status).toBe(409);
+    expect(res.data.error).toMatch(/vorbei/);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.enrolled).toHaveLength(0);
+    expect(shift.assigned).toHaveLength(0);
+  });
+
+  test("eine vergangene Schicht übernimmt niemand mehr", async () => {
+    const admin = await asAdmin();
+    const shiftId = await vergangeneSchicht(admin);
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const res = await lea.post(`/api/shifts/${shiftId}/takeover`, {});
+    expect(res.status).toBe(409);
+    expect((await admin.get("/api/state")).data.company.shifts[0].assigned).toHaveLength(0);
+  });
+
+  test("für eine vergangene Schicht gibt es kein Hilfegesuch mehr", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    // Erst zuteilen lassen, solange die Schicht noch heute ist ...
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    expect((await lea.get("/api/state")).data.company.shifts[0].assigned).toHaveLength(1);
+
+    // ... dann liegt sie hinter uns.
+    server.db.prepare("UPDATE shifts SET date = ? WHERE id = ?").run(gestern(), shiftId);
+    const res = await lea.post(`/api/shifts/${shiftId}/help`);
+    expect(res.status).toBe(409);
+    expect((await lea.get("/api/state")).data.company.shifts[0].helpRequests).toHaveLength(0);
+  });
+
+  test("die Schicht von heute Morgen zählt noch als heute", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    expect((await lea.post(`/api/shifts/${shiftId}/enroll`)).status).toBe(200);
+    expect((await lea.post(`/api/shifts/${shiftId}/help`)).status).toBe(200);
+  });
+});
+
 describe("Angaben beim Anlegen", () => {
   const grunddaten = (qualId) => ({
     name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-    repeat: "once", seats: 1, qualificationId: qualId,
+    repeat: "once", seats: 1, qualificationIds: [qualId],
   });
 
   const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
@@ -1034,7 +1116,7 @@ describe("Überschneidende Schichten", () => {
   const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
 
   const anlegen = async (admin, qualId, form) =>
-    admin.post("/api/shifts", { repeat: "once", seats: 1, qualificationId: qualId, ...form });
+    admin.post("/api/shifts", { repeat: "once", seats: 1, qualificationIds: [qualId], ...form });
 
   const schichtNamens = async (c, name) =>
     (await c.get("/api/state")).data.company.shifts.find((s) => s.name === name);
@@ -1209,7 +1291,7 @@ describe("Überschneidende Schichten", () => {
     // Freigabe zurücknehmen — die beiden Einschreibungen bleiben stehen.
     await admin.patch(`/api/shifts/${tag.id}`, {
       name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
-      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      seats: tag.seats, qualificationIds: [qualId], umfang: "einzeln",
       combinable: { [frueh.seriesId]: false },
     });
     expect((await schichtNamens(admin, "Tagdienst")).enrolled).toHaveLength(1);
@@ -1257,7 +1339,7 @@ describe("Schichten bearbeiten", () => {
   /** Legt eine Schicht an und gibt Qualifikation und Schichtliste zurück. */
   const anlegen = async (admin, form) => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
-    await admin.post("/api/shifts", { startTime: "08:00", endTime: "16:00", seats: 1, qualificationId: qualId, ...form });
+    await admin.post("/api/shifts", { startTime: "08:00", endTime: "16:00", seats: 1, qualificationIds: [qualId], ...form });
     const shifts = (await admin.get("/api/state")).data.company.shifts;
     return { qualId, shifts };
   };
@@ -1270,7 +1352,7 @@ describe("Schichten bearbeiten", () => {
 
     const res = await admin.patch(`/api/shifts/${shifts[0].id}`, {
       name: "Spätdienst", date: heute(), startTime: "14:00", endTime: "22:00",
-      seats: 3, qualificationId: qualId, umfang: "einzeln",
+      seats: 3, qualificationIds: [qualId], umfang: "einzeln",
     });
 
     expect(res.status).toBe(200);
@@ -1292,7 +1374,7 @@ describe("Schichten bearbeiten", () => {
 
     const res = await admin.patch(`/api/shifts/${shifts[0].id}`, {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      seats: 1, qualificationId: qualId, umfang: "einzeln",
+      seats: 1, qualificationIds: [qualId], umfang: "einzeln",
     });
 
     expect(res.data.ausgetragen).toBe(1);
@@ -1308,7 +1390,7 @@ describe("Schichten bearbeiten", () => {
 
     await admin.patch(`/api/shifts/${shifts[0].id}`, {
       name: "Einmalig anders", date: heute(), startTime: "09:00", endTime: "17:00",
-      seats: 2, qualificationId: qualId, umfang: "einzeln",
+      seats: 2, qualificationIds: [qualId], umfang: "einzeln",
     });
 
     const danach = await alleSchichten(admin);
@@ -1326,7 +1408,7 @@ describe("Schichten bearbeiten", () => {
 
     const res = await admin.patch(`/api/shifts/${shifts[2].id}`, {
       name: "Ab jetzt anders", startTime: "10:00", endTime: "18:00",
-      seats: 4, qualificationId: qualId, umfang: "ab-datum", abDatum,
+      seats: 4, qualificationIds: [qualId], umfang: "ab-datum", abDatum,
     });
 
     expect(res.status).toBe(200);
@@ -1349,7 +1431,7 @@ describe("Schichten bearbeiten", () => {
 
     await admin.patch(`/api/shifts/${shifts[1].id}`, {
       name: "Ab jetzt anders", startTime: "10:00", endTime: "18:00",
-      seats: 4, qualificationId: qualId, umfang: "ab-datum", abDatum: shifts[1].date,
+      seats: 4, qualificationIds: [qualId], umfang: "ab-datum", abDatum: shifts[1].date,
     });
 
     // Was die Serie später nachlegt, darf nicht auf den alten Stand zurückfallen.
@@ -1367,13 +1449,13 @@ describe("Schichten bearbeiten", () => {
     // Sonst liesse sich löschen, wer eine Schicht tatsächlich geleistet hat.
     const res = await admin.patch(`/api/shifts/${shifts[0].id}`, {
       name: "Rückwirkend", startTime: "08:00", endTime: "16:00",
-      seats: 1, qualificationId: qualId, umfang: "ab-datum", abDatum: gestern,
+      seats: 1, qualificationIds: [qualId], umfang: "ab-datum", abDatum: gestern,
     });
     expect(res.status).toBe(400);
 
     const einzeln = await admin.patch(`/api/shifts/${shifts[0].id}`, {
       name: "Rückwirkend", date: gestern, startTime: "08:00", endTime: "16:00",
-      seats: 1, qualificationId: qualId, umfang: "einzeln",
+      seats: 1, qualificationIds: [qualId], umfang: "einzeln",
     });
     expect(einzeln.status).toBe(400);
     expect((await alleSchichten(admin))[0].name).toBe("Tagdienst");
@@ -1382,12 +1464,12 @@ describe("Schichten bearbeiten", () => {
   test("weist unbrauchbare Angaben ab", async () => {
     const admin = await asAdmin();
     const { qualId, shifts } = await anlegen(admin, { name: "Frühdienst", date: heute(), repeat: "once" });
-    const gut = { name: "Neu", date: heute(), startTime: "08:00", endTime: "16:00", seats: 1, qualificationId: qualId };
+    const gut = { name: "Neu", date: heute(), startTime: "08:00", endTime: "16:00", seats: 1, qualificationIds: [qualId] };
 
     expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, name: "  " })).status).toBe(400);
     expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, seats: 0 })).status).toBe(400);
     expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, startTime: "8 Uhr" })).status).toBe(400);
-    expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, qualificationId: "gibtsnicht" })).status).toBe(400);
+    expect((await admin.patch(`/api/shifts/${shifts[0].id}`, { ...gut, qualificationIds: ["gibtsnicht"] })).status).toBe(400);
     expect((await alleSchichten(admin))[0].name).toBe("Frühdienst");
   });
 
@@ -1399,7 +1481,7 @@ describe("Schichten bearbeiten", () => {
     await lea.login(EMPLOYEE);
     const res = await lea.patch(`/api/shifts/${shifts[0].id}`, {
       name: "Selbst gemacht", date: heute(), startTime: "08:00", endTime: "16:00",
-      seats: 9, qualificationId: qualId, umfang: "einzeln",
+      seats: 9, qualificationIds: [qualId], umfang: "einzeln",
     });
 
     expect(res.status).toBe(403);
@@ -1412,15 +1494,15 @@ describe("Schichten bearbeiten", () => {
     });
     server.db.prepare(
       `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
-                           repeat, seats, qualification_id, assignment_attempted)
-       VALUES ('s_fremd', ?, 'serie_fremd', 'Fremddienst', ?, '08:00', '16:00', 'once', 1, NULL, 0)`
+                           repeat, seats, assignment_attempted)
+       VALUES ('s_fremd', ?, 'serie_fremd', 'Fremddienst', ?, '08:00', '16:00', 'once', 1, 0)`
     ).run(fremdeId, heute());
 
     const admin = await asAdmin();
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     const res = await admin.patch("/api/shifts/s_fremd", {
       name: "Übernommen", date: heute(), startTime: "08:00", endTime: "16:00",
-      seats: 1, qualificationId: qualId, umfang: "einzeln",
+      seats: 1, qualificationIds: [qualId], umfang: "einzeln",
     });
 
     expect(res.status).toBe(404);
@@ -1434,7 +1516,7 @@ describe("Freigaben nachträglich ändern", () => {
   const qualVon = async (admin) => (await admin.get("/api/state")).data.company.qualifications[0].id;
 
   const anlegen = async (admin, qualId, form) =>
-    admin.post("/api/shifts", { repeat: "once", seats: 1, qualificationId: qualId, ...form });
+    admin.post("/api/shifts", { repeat: "once", seats: 1, qualificationIds: [qualId], ...form });
 
   const schichtNamens = async (c, name) =>
     (await c.get("/api/state")).data.company.shifts.find((s) => s.name === name);
@@ -1463,7 +1545,7 @@ describe("Freigaben nachträglich ändern", () => {
     // Nichts an der Schicht ändern, nur die Freigabe nachtragen.
     const res = await admin.patch(`/api/shifts/${tag.id}`, {
       name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
-      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      seats: tag.seats, qualificationIds: [qualId], umfang: "einzeln",
       combinable: { [frueh.seriesId]: true },
     });
     expect(res.status).toBe(200);
@@ -1482,7 +1564,7 @@ describe("Freigaben nachträglich ändern", () => {
 
     const res = await admin.patch(`/api/shifts/${tag.id}`, {
       name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
-      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      seats: tag.seats, qualificationIds: [qualId], umfang: "einzeln",
       combinable: { [frueh.seriesId]: true },
     });
 
@@ -1504,7 +1586,7 @@ describe("Freigaben nachträglich ändern", () => {
 
     await admin.patch(`/api/shifts/${tag.id}`, {
       name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
-      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      seats: tag.seats, qualificationIds: [qualId], umfang: "einzeln",
       combinable: { [frueh.seriesId]: false },
     });
 
@@ -1528,7 +1610,7 @@ describe("Freigaben nachträglich ändern", () => {
     // Nur die Platzzahl ändern, kein Wort zu den Freigaben.
     await admin.patch(`/api/shifts/${tag.id}`, {
       name: tag.name, date: tag.date, startTime: tag.startTime, endTime: tag.endTime,
-      seats: 5, qualificationId: qualId, umfang: "einzeln",
+      seats: 5, qualificationIds: [qualId], umfang: "einzeln",
     });
 
     const lea = client();
@@ -1548,7 +1630,7 @@ describe("Freigaben nachträglich ändern", () => {
     // Der Abenddienst rückt vor und überschneidet sich ab jetzt mit dem Frühdienst.
     await admin.patch(`/api/shifts/${abend.id}`, {
       name: abend.name, date: abend.date, startTime: "10:00", endTime: "18:00",
-      seats: abend.seats, qualificationId: qualId, umfang: "einzeln",
+      seats: abend.seats, qualificationIds: [qualId], umfang: "einzeln",
       combinable: { [frueh.seriesId]: true },
     });
 
@@ -1572,7 +1654,7 @@ describe("Freigaben nachträglich ändern", () => {
        muss auf die neue Serie geschrieben werden, sonst ginge sie verloren. */
     await admin.patch(`/api/shifts/${tag.id}`, {
       name: "Tagdienst einmalig", date: tag.date, startTime: "14:00", endTime: "22:00",
-      seats: tag.seats, qualificationId: qualId, umfang: "einzeln",
+      seats: tag.seats, qualificationIds: [qualId], umfang: "einzeln",
       combinable: { [frueh.seriesId]: true },
     });
 
@@ -1618,12 +1700,12 @@ describe("Freigaben aufräumen", () => {
     const qualId = await qualVon(admin);
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "08:00", endTime: "16:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const frueh = await schichtNamens(admin, "Frühdienst");
     await admin.post("/api/shifts", {
       name: "Tagdienst", date: heute(), startTime: "14:00", endTime: "22:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
       combinableWith: [frueh.seriesId], ...zweiter,
     });
     expect(freigaben()).toBe(1);
@@ -1780,7 +1862,7 @@ describe("Auskunft", () => {
     // Eine Schicht, an der Lea eingeschrieben und zugeteilt ist.
     await admin.post("/api/shifts", {
       name: "Spätschicht", date: toISO(addDays(startOfToday(), 3)),
-      startTime: "16:00", endTime: "22:00", repeat: "once", seats: 1, qualificationId: qualId,
+      startTime: "16:00", endTime: "22:00", repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const lea = client();
     await lea.login(EMPLOYEE);
@@ -2118,10 +2200,13 @@ describe("Aufräumen", () => {
       server.db
         .prepare(
           `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
-                               repeat, seats, qualification_id, assignment_attempted, assigned_at)
-           VALUES (?, ?, 'serie_alt', 'Altdienst', ?, '08:00', '16:00', 'once', 1, ?, 1, NULL)`
+                               repeat, seats, assignment_attempted, assigned_at)
+           VALUES (?, ?, 'serie_alt', 'Altdienst', ?, '08:00', '16:00', 'once', 1, 1, NULL)`
         )
-        .run(id, companyId, datum, qualId);
+        .run(id, companyId, datum);
+      server.db
+        .prepare("INSERT INTO shift_qualifications (shift_id, qualification_id) VALUES (?, ?)")
+        .run(id, qualId);
       return id;
     };
 
@@ -2158,6 +2243,188 @@ describe("Neustart", () => {
     const zweit = openDb(file);
     expect(readCompany(zweit, companyId).name).toBe("Bleibt Bestehen AG");
     zweit.close();
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("Mehrere Qualifikationen je Schicht", () => {
+  /** Legt eine zweite Qualifikation an und gibt beide IDs zurück. */
+  async function zweiQualifikationen(admin) {
+    const ersteId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    const { data } = await admin.post("/api/qualifications", { name: "Staplerschein" });
+    return [ersteId, data.id];
+  }
+
+  async function schichtMit(admin, qualificationIds, extra = {}) {
+    const res = await admin.post("/api/shifts", {
+      name: "Doppeldienst", date: heute(), startTime: "08:00", endTime: "16:00",
+      repeat: "once", seats: 1, qualificationIds, ...extra,
+    });
+    return res;
+  }
+
+  test("eine Schicht kann mehrere verlangen — und liefert sie auch so zurück", async () => {
+    const admin = await asAdmin();
+    const [ersteHilfe, stapler] = await zweiQualifikationen(admin);
+    expect((await schichtMit(admin, [ersteHilfe, stapler])).status).toBe(200);
+
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect([...shift.qualificationIds].sort()).toEqual([ersteHilfe, stapler].sort());
+  });
+
+  test("ohne Qualifikation entsteht keine Schicht", async () => {
+    const admin = await asAdmin();
+    const res = await schichtMit(admin, []);
+    expect(res.status).toBe(400);
+    expect(res.data.error).toMatch(/Qualifikation/);
+    expect((await admin.get("/api/state")).data.company.shifts).toHaveLength(0);
+  });
+
+  test("eine fremde Qualifikation kommt nicht durch", async () => {
+    const admin = await asAdmin();
+    const [ersteHilfe] = await zweiQualifikationen(admin);
+    expect((await schichtMit(admin, [ersteHilfe, "gibt-es-nicht"])).status).toBe(400);
+  });
+
+  /* Der Kern der Sache: verlangt heisst verlangt. Wer nur eine der beiden
+     mitbringt, kommt nicht hinein — sonst wäre die zweite Angabe wirkungslos. */
+  test("wer nur eine der beiden mitbringt, kommt nicht hinein", async () => {
+    const admin = await asAdmin();
+    const [ersteHilfe, stapler] = await zweiQualifikationen(admin);
+    await schichtMit(admin, [ersteHilfe, stapler]);
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    // Lea hat aus der Demo nur die ersten beiden Qualifikationen, keinen Stapler.
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    const abgelehnt = await lea.post(`/api/shifts/${shiftId}/enroll`);
+    expect(abgelehnt.status).toBe(403);
+    expect((await admin.get("/api/state")).data.company.shifts[0].enrolled).toHaveLength(0);
+
+    // Mit der fehlenden Qualifikation geht es.
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    await admin.patch(`/api/accounts/${leaId}/qualifications`, { qualificationId: stapler, value: true });
+    expect((await lea.post(`/api/shifts/${shiftId}/enroll`)).status).toBe(200);
+  });
+
+  test("dieselben Anforderungen in anderer Reihenfolge sind keine Änderung", async () => {
+    const admin = await asAdmin();
+    const [ersteHilfe, stapler] = await zweiQualifikationen(admin);
+    await schichtMit(admin, [ersteHilfe, stapler]);
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    await admin.patch(`/api/accounts/${leaId}/qualifications`, { qualificationId: stapler, value: true });
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    expect((await admin.get("/api/state")).data.company.shifts[0].enrolled).toHaveLength(1);
+
+    // Umgedrehte Liste, sonst alles gleich: niemand darf dafür herausfliegen.
+    const res = await admin.patch(`/api/shifts/${shiftId}`, {
+      name: "Doppeldienst", date: heute(), startTime: "08:00", endTime: "16:00",
+      seats: 1, qualificationIds: [stapler, ersteHilfe], umfang: "einzeln",
+    });
+    expect(res.status).toBe(200);
+    expect(res.data.geaendert).toBe(false);
+    expect((await admin.get("/api/state")).data.company.shifts[0].enrolled).toHaveLength(1);
+  });
+
+  test("eine zusätzliche Anforderung ist eine Änderung und trägt aus", async () => {
+    const admin = await asAdmin();
+    const [ersteHilfe, stapler] = await zweiQualifikationen(admin);
+    await schichtMit(admin, [ersteHilfe]);
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = client();
+    await lea.login(EMPLOYEE);
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    expect((await admin.get("/api/state")).data.company.shifts[0].enrolled).toHaveLength(1);
+
+    const res = await admin.patch(`/api/shifts/${shiftId}`, {
+      name: "Doppeldienst", date: heute(), startTime: "08:00", endTime: "16:00",
+      seats: 1, qualificationIds: [ersteHilfe, stapler], umfang: "einzeln",
+    });
+    expect(res.data.geaendert).toBe(true);
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.enrolled).toHaveLength(0);
+    expect(shift.qualificationIds).toHaveLength(2);
+  });
+
+  test("nachgefüllte Serientermine erben alle Anforderungen", async () => {
+    const admin = await asAdmin();
+    const [ersteHilfe, stapler] = await zweiQualifikationen(admin);
+    await schichtMit(admin, [ersteHilfe, stapler], { repeat: "daily" });
+
+    // Horizont vorschieben, indem die Serie künstlich gekürzt wird.
+    const alle = (await admin.get("/api/state")).data.company.shifts;
+    const behalten = alle[0].id;
+    server.db.prepare("DELETE FROM shifts WHERE id != ?").run(behalten);
+
+    extendSeries(server.db);
+    const nachher = (await admin.get("/api/state")).data.company.shifts;
+    expect(nachher.length).toBeGreaterThan(1);
+    for (const s of nachher) {
+      expect([...s.qualificationIds].sort()).toEqual([ersteHilfe, stapler].sort());
+    }
+  });
+
+  test("eine noch verlangte Qualifikation lässt sich nicht löschen", async () => {
+    const admin = await asAdmin();
+    const [ersteHilfe, stapler] = await zweiQualifikationen(admin);
+    await schichtMit(admin, [ersteHilfe, stapler]);
+
+    expect((await admin.del(`/api/qualifications/${stapler}`)).status).toBe(409);
+  });
+});
+
+describe("Migration: aus der einen Qualifikation werden mehrere", () => {
+  /* Eine Datenbank aus der Zeit vor shift_qualifications: Die Anforderung stand
+     als Spalte an der Schicht. Beim Öffnen soll sie in die Tabelle wandern —
+     ohne dass eine Schicht ihre Anforderung verliert. */
+  test("shifts.qualification_id wandert beim Öffnen in shift_qualifications", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "schichtboard-qual-migration-"));
+    const file = path.join(dir, "test.db");
+
+    const alt = new Database(file);
+    alt.exec(`
+      CREATE TABLE companies (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, assignment_day INTEGER NOT NULL DEFAULT 7);
+      CREATE TABLE qualifications (id TEXT PRIMARY KEY, company_id TEXT NOT NULL, name TEXT NOT NULL);
+      CREATE TABLE shifts (
+        id TEXT PRIMARY KEY, company_id TEXT NOT NULL, series_id TEXT NOT NULL, name TEXT NOT NULL,
+        date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, repeat TEXT NOT NULL,
+        seats INTEGER NOT NULL, qualification_id TEXT, end_date TEXT,
+        assignment_attempted INTEGER NOT NULL DEFAULT 0, assigned_at TEXT,
+        no_auto_assign INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    alt.prepare("INSERT INTO companies (id, code, name) VALUES ('c1', '999999', 'Alt AG')").run();
+    alt.prepare("INSERT INTO qualifications (id, company_id, name) VALUES ('q1', 'c1', 'Erste Hilfe')").run();
+    alt.prepare(
+      `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time, repeat, seats, qualification_id)
+       VALUES ('s1', 'c1', 'serie1', 'Altdienst', '2026-01-05', '08:00', '16:00', 'once', 1, 'q1')`
+    ).run();
+    // Eine ohne Anforderung — die soll auch keine bekommen.
+    alt.prepare(
+      `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time, repeat, seats, qualification_id)
+       VALUES ('s2', 'c1', 'serie2', 'Ohne', '2026-01-06', '08:00', '16:00', 'once', 1, NULL)`
+    ).run();
+    alt.close();
+
+    const db = openDb(file);
+    expect(db.prepare("SELECT qualification_id FROM shift_qualifications WHERE shift_id = 's1'").get())
+      .toEqual({ qualification_id: "q1" });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM shift_qualifications WHERE shift_id = 's2'").get().n).toBe(0);
+    /* Die alte Spalte ist weg — zwei Antworten auf dieselbe Frage soll es nicht
+       geben. Und mit ihr `no_auto_assign`, ein Rest einer noch früheren
+       Fassung, den niemand mehr liest. */
+    const spalten = db.prepare("PRAGMA table_info(shifts)").all().map((c) => c.name);
+    expect(spalten).not.toContain("qualification_id");
+    expect(spalten).not.toContain("no_auto_assign");
+    db.close();
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -2256,11 +2523,11 @@ describe("Kalenderabo", () => {
 
     await admin.post("/api/shifts", {
       name: "Zugeteilt", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     await admin.post("/api/shifts", {
       name: "Nur eingeschrieben", date: heute(), startTime: "14:00", endTime: "18:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shifts = (await admin.get("/api/state")).data.company.shifts;
     const zugeteiltId = shifts.find((s) => s.name === "Zugeteilt").id;
@@ -2288,7 +2555,7 @@ describe("Kalenderabo", () => {
     const qualId = await qualVon(admin);
     await admin.post("/api/shifts", {
       name: "Eigene Schicht", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
     await admin.post(`/api/shifts/${shiftId}/enroll`);
@@ -2302,8 +2569,8 @@ describe("Kalenderabo", () => {
     const fremdesKonto = readCompany(server.db, fremdeId).accounts[0].id;
     server.db.prepare(
       `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
-                           repeat, seats, qualification_id, assignment_attempted, assigned_at)
-       VALUES ('s_fremd', ?, 'serie_fremd', 'Fremde Schicht', ?, '06:00', '12:00', 'once', 1, NULL, 1, ?)`
+                           repeat, seats, assignment_attempted, assigned_at)
+       VALUES ('s_fremd', ?, 'serie_fremd', 'Fremde Schicht', ?, '06:00', '12:00', 'once', 1, 1, ?)`
     ).run(fremdeId, heute(), heute());
     server.db.prepare("INSERT INTO enrollments (shift_id, account_id, assigned) VALUES ('s_fremd', ?, 1)")
       .run(fremdesKonto);
@@ -2337,7 +2604,7 @@ describe("Kalenderabo", () => {
     const qualId = await qualVon(admin);
     await admin.post("/api/shifts", {
       name: "Nachtdienst", date: heute(), startTime: "22:00", endTime: "06:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
     await admin.post(`/api/shifts/${shiftId}/enroll`);
@@ -2355,7 +2622,7 @@ describe("Kalenderabo", () => {
     const qualId = await qualVon(admin);
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
     await admin.post(`/api/shifts/${shiftId}/enroll`);

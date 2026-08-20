@@ -24,6 +24,10 @@ import { startOfToday } from "#shared/dates.js";
  * Jede Änderung geht an den Server und wird danach frisch geladen — so sehen
  * alle dasselbe, auch wenn zwei Personen gleichzeitig arbeiten.
  */
+/* Nachlader für Listen, die nicht im Gesamtbündel stecken. Ein Fehlschlag
+   ergibt eine leere Liste — die Ansichten zeigen dann schlicht nichts. */
+const laden = (pfad) => api.get(pfad).catch(() => []);
+
 /** Die App kommt ohne Router aus; die eine feste Adresse reicht als Weiche. */
 function istDatenschutzSeite() {
   return typeof window !== "undefined" && window.location.pathname === "/datenschutz";
@@ -54,36 +58,30 @@ export default function App() {
   // damit mit heute, nicht mit gestern.
   const today = startOfToday();
 
-  /** Aktion ausführen und danach den Serverzustand neu laden. */
-  const act = (fn) => async (...args) => {
-    try {
-      return await fn(...args);
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      return null;
-    } finally {
-      await refresh();
-    }
-  };
-
   /**
-   * Wie `act`, gibt aber die Meldung des Servers zurück — null heisst geklappt.
+   * Aktion ausführen und danach den Serverzustand neu laden.
    *
-   * Für alles, was in einem Formular steht: Eine Änderung, die stumm scheitert,
-   * sieht für die Bedienung genauso aus wie eine, die durchgegangen ist. Die
-   * Oberfläche meldete daraufhin Erfolg, obwohl nichts gespeichert war.
+   * `act` liefert zurück, was der Server geschickt hat (null, wenn es
+   * schiefging). `actMitMeldung` liefert stattdessen die Meldung des Servers —
+   * null heisst geklappt. Für alles, was in einem Formular steht: Eine
+   * Änderung, die stumm scheitert, sieht für die Bedienung genauso aus wie
+   * eine, die durchgegangen ist. Die Oberfläche meldete daraufhin Erfolg,
+   * obwohl nichts gespeichert war.
    */
-  const actMitMeldung = (fn, { neuLaden = true } = {}) => async (...args) => {
+  const lauf = (fn, alsMeldung, neuLaden) => async (...args) => {
     try {
-      await fn(...args);
-      return null;
+      const res = await fn(...args);
+      return alsMeldung ? null : res;
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
-      return err.message;
+      return alsMeldung ? err.message : null;
     } finally {
       if (neuLaden) await refresh();
     }
   };
+
+  const act = (fn) => lauf(fn, false, true);
+  const actMitMeldung = (fn, { neuLaden = true } = {}) => lauf(fn, true, neuLaden);
 
   /* --- Session --- */
   const handleLogin = async (code, name, password) => {
@@ -140,15 +138,18 @@ export default function App() {
   );
 
   /* --- Logbuch --- */
-  const handleLoadLogbook = () => api.get("/logbook").catch(() => []);
-  const handleLoadShiftLogbook = (shiftId) => api.get(`/logbook?shiftId=${shiftId}`).catch(() => []);
-  const handleLoadEligibleShifts = () => api.get("/logbook/eligible-shifts").catch(() => []);
+  /* Fest verdrahtet (useCallback), weil diese Funktionen in
+     useEffect-Abhängigkeiten stehen: eine bei jedem Rendern neue Funktion
+     liesse die jeweilige Liste nach jeder Aktion neu laden. */
+  const handleLoadLogbook = useCallback(() => laden("/logbook"), []);
+  const handleLoadShiftLogbook = useCallback((shiftId) => laden(`/logbook?shiftId=${shiftId}`), []);
+  const handleLoadEligibleShifts = useCallback(() => laden("/logbook/eligible-shifts"), []);
   const handleRequestLogbookAccess = actMitMeldung((shiftId, note) =>
     api.post("/logbook/requests", { shiftId, note })
   );
   const handleApproveLogbookRequest = act((id) => api.post(`/logbook/requests/${id}/approve`));
   const handleDeclineLogbookRequest = act((id) => api.post(`/logbook/requests/${id}/decline`));
-  const handleLoadCompanyLogbook = (companyId) => api.get(`/companies/${companyId}/logbook`).catch(() => []);
+  const handleLoadCompanyLogbook = useCallback((companyId) => laden(`/companies/${companyId}/logbook`), []);
 
   /* --- Konten --- */
   const handleAddEmployee = actMitMeldung((data) => api.post("/employees", data));
@@ -191,11 +192,8 @@ export default function App() {
     return res;
   };
 
-  const handleLoadCompanyAdmins = (companyId) =>
-    api.get(`/companies/${companyId}/admins`).catch(() => []);
-
-  const handleLoadCompanyEmployees = (companyId) =>
-    api.get(`/companies/${companyId}/employees`).catch(() => []);
+  const handleLoadCompanyAdmins = useCallback((companyId) => laden(`/companies/${companyId}/admins`), []);
+  const handleLoadCompanyEmployees = useCallback((companyId) => laden(`/companies/${companyId}/employees`), []);
 
   /* Der einzige Weg an ein Admin-Konto: Innerhalb der Firma darf niemand ein
      fremdes anfassen. Beim letzten muss eine Nachfolge mitkommen. */

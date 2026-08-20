@@ -30,6 +30,15 @@ export function shiftSpan(shift) {
   return { start, end: ende <= start ? ende + TAG : ende };
 }
 
+/**
+ * Reihenfolgeunabhängiger Schlüssel für ein Serienpaar. Eine Freigabe gilt für
+ * beide Richtungen; ohne feste Reihenfolge fände jede Abfrage sie nur halb.
+ * Steht hier, damit Server und Formular denselben Schlüssel bilden.
+ */
+export function paarSchluessel(a, b) {
+  return a <= b ? `${a}|${b}` : `${b}|${a}`;
+}
+
 /** Berühren sich zwei Schichten zeitlich? Ein gemeinsamer Endpunkt zählt nicht. */
 export function shiftsOverlap(a, b) {
   const x = shiftSpan(a);

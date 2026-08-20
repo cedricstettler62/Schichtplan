@@ -3,6 +3,7 @@ import Badge from "../../components/Badge.jsx";
 import DateStub from "../../components/DateStub.jsx";
 import { assignmentDateOf } from "#shared/assignment.js";
 import { fmtDate } from "#shared/dates.js";
+import { qualifikationsListe } from "#shared/labels.js";
 
 /*
  * Dieselbe Zeile für alle drei Listen: `onAskForHelp` für eine feste Zuteilung,
@@ -14,7 +15,7 @@ export default function MyShiftRow({
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
-  const qual = qualifications.find((q) => q.id === shift.qualificationId);
+  const qualNames = qualifikationsListe(qualifications, shift.qualificationIds);
   const wartend = !!onWithdraw;
   const vergangen = !onWithdraw && !onAskForHelp;
 
@@ -36,7 +37,7 @@ export default function MyShiftRow({
           </div>
           <div className="sb-ticket-meta">
             <span className="sb-mono">{shift.startTime}–{shift.endTime}</span>
-            <span>{qual ? qual.name : "ohne Qualifikation"}</span>
+            <span>{qualNames || "ohne Qualifikation"}</span>
             <span>
               {wartend
                 ? `${freiePlaetze} von ${shift.seats} Plätzen noch frei`
@@ -52,7 +53,7 @@ export default function MyShiftRow({
         <div className="sb-ticket-detail">
           <div className="sb-detail-grid">
             <div><span className="sb-detail-label">Datum</span>{fmtDate(shift.date)}</div>
-            <div><span className="sb-detail-label">Qualifikation</span>{qual ? qual.name : "keine"}</div>
+            <div><span className="sb-detail-label">Qualifikationen</span>{qualNames || "keine"}</div>
             <div><span className="sb-detail-label">Plätze</span>{shift.assigned.length} von {shift.seats} besetzt</div>
             {wartend ? (
               <div>

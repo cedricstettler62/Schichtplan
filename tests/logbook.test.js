@@ -44,7 +44,7 @@ describe("Logbuch", () => {
 
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -67,11 +67,11 @@ describe("Logbuch", () => {
 
     await admin.post("/api/shifts", {
       name: "Spätdienst", date: heute(), startTime: "14:00", endTime: "22:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
     await admin.patch(`/api/shifts/${shiftId}`, {
-      name: "Spätdienst (angepasst)", startTime: "15:00", endTime: "22:00", seats: 1, qualificationId: qualId,
+      name: "Spätdienst (angepasst)", startTime: "15:00", endTime: "22:00", seats: 1, qualificationIds: [qualId],
     });
 
     const tomId = (
@@ -106,7 +106,7 @@ describe("Logbuch", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Nachtdienst", date: heute(), startTime: "22:00", endTime: "06:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -130,7 +130,7 @@ describe("Logbuch", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -216,7 +216,7 @@ describe("Logbuch", () => {
     const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
     await admin.post("/api/shifts", {
       name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
-      repeat: "once", seats: 1, qualificationId: qualId,
+      repeat: "once", seats: 1, qualificationIds: [qualId],
     });
     const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
 
@@ -232,5 +232,113 @@ describe("Logbuch", () => {
 
     const { data: state } = await lea.get("/api/state");
     expect(state.company.logbookAccessRequests[0].status).toBe("declined");
+  });
+  test("die Notiz einer fremden Anfrage steht in keinem fremden Zustand", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = await asLea();
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    backdate(shiftId, gestern());
+    await lea.post("/api/logbook/requests", { shiftId, note: "Vertraulicher Grund." });
+
+    // Ein zweites Mitarbeitendenkonto sieht die Anfrage samt Notiz nicht.
+    await admin.post("/api/employees", { name: "Tom Klein", password: "tomsPasswort1" });
+    const tom = c();
+    await tom.login({ code: ADMIN.code, name: "Tom Klein", password: "tomsPasswort1" });
+
+    const { data: tomState } = await tom.get("/api/state");
+    expect(tomState.company.logbookAccessRequests).toHaveLength(0);
+    expect(JSON.stringify(tomState)).not.toContain("Vertraulicher Grund.");
+
+    // Die eigene sieht Lea weiterhin, die Administration ohnehin.
+    expect((await lea.get("/api/state")).data.company.logbookAccessRequests).toHaveLength(1);
+    expect((await admin.get("/api/state")).data.company.logbookAccessRequests[0].note)
+      .toBe("Vertraulicher Grund.");
+  });
+  test("eine gelöschte Schicht hinterlässt einen Eintrag, der sie überlebt", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Frühdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    expect((await admin.del(`/api/shifts/${shiftId}`)).status).toBe(200);
+    expect((await admin.get("/api/state")).data.company.shifts).toHaveLength(0);
+
+    const eintrag = (await admin.get("/api/logbook")).data.find((e) => e.type === "deleted");
+    expect(eintrag.message).toBe("Schicht gelöscht von Mara Vogt.");
+    // Die Schicht gibt es nicht mehr, ihre Beschriftung schon.
+    expect(eintrag.shiftLabel).toContain("Frühdienst");
+    expect(eintrag.shiftId).toBe(null);
+  });
+
+  /* Vergangene Schichten lassen sich nicht mehr ändern — löschen kann die
+     Administration sie aber sehr wohl, und genau dann muss es nachlesbar sein. */
+  test("auch das Löschen einer vergangenen Schicht steht im Logbuch", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Altdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+    backdate(shiftId, gestern());
+
+    expect((await admin.del(`/api/shifts/${shiftId}`)).status).toBe(200);
+    const eintraege = (await admin.get("/api/logbook")).data.filter((e) => e.type === "deleted");
+    expect(eintraege).toHaveLength(1);
+    expect(eintraege[0].shiftLabel).toContain("Altdienst");
+  });
+
+  test("beim Löschen einer Serie bekommt jeder Termin seinen Eintrag", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    await admin.post("/api/shifts", {
+      name: "Tagesdienst", date: heute(), startTime: "06:00", endTime: "12:00",
+      repeat: "daily", seats: 1, qualificationIds: [qualId],
+    });
+    const shifts = (await admin.get("/api/state")).data.company.shifts;
+    expect(shifts.length).toBeGreaterThan(2);
+
+    const res = await admin.del(`/api/shifts/${shifts[0].id}/series`);
+    expect(res.data.deleted).toBe(shifts.length);
+
+    const eintraege = (await admin.get("/api/logbook")).data.filter((e) => e.type === "deleted");
+    expect(eintraege).toHaveLength(shifts.length);
+  });
+
+  test("auch von der Warteliste genommen zu werden steht im Logbuch", async () => {
+    const admin = await asAdmin();
+    const qualId = (await admin.get("/api/state")).data.company.qualifications[0].id;
+    /* Weit genug voraus (70 Tage sind immer mehr als zwei Monatsgrenzen): Dort
+       ist die Auslosung noch nicht gelaufen, die Einschreibung bleibt also eine
+       Einschreibung ohne Zuteilung. */
+    const spaeter = toISO(addDays(startOfToday(), 70));
+    await admin.post("/api/shifts", {
+      name: "Spätdienst", date: spaeter, startTime: "16:00", endTime: "22:00",
+      repeat: "once", seats: 1, qualificationIds: [qualId],
+    });
+    const shiftId = (await admin.get("/api/state")).data.company.shifts[0].id;
+
+    const lea = await asLea();
+    await lea.post(`/api/shifts/${shiftId}/enroll`);
+    const shift = (await admin.get("/api/state")).data.company.shifts[0];
+    expect(shift.enrolled).toHaveLength(1);
+    expect(shift.assigned).toHaveLength(0);
+
+    const leaId = (await admin.get("/api/state")).data.company.accounts
+      .find((a) => a.name === "Lea Brunner").id;
+    expect((await admin.del(`/api/shifts/${shiftId}/enrollments/${leaId}`)).status).toBe(200);
+
+    const eintrag = (await admin.get("/api/logbook")).data.find((e) => e.type === "unassigned");
+    expect(eintrag.message).toBe("Lea Brunner wurde von Mara Vogt aus der Warteliste genommen.");
   });
 });

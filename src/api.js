@@ -36,8 +36,14 @@ export const api = {
 /* Die Datei-Übertragungen gehen am JSON-Wrapper vorbei — mal kommt eine Datei
    zurück, mal geht eine hin. */
 
-/** Legt die Antwort im Download-Ordner ab und gibt den Dateinamen zurück. */
-async function alsDateiSpeichern(res, ersatzName) {
+/** Holt eine Datei, legt sie im Download-Ordner ab und gibt den Dateinamen zurück. */
+async function holeDatei(pfad, ersatzName, fehlertext) {
+  const res = await fetch(pfad, { credentials: "same-origin" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(data?.error || fehlertext, res.status);
+  }
+
   const zuordnung = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "");
   const name = zuordnung ? zuordnung[1] : ersatzName;
 
@@ -53,34 +59,18 @@ async function alsDateiSpeichern(res, ersatzName) {
 }
 
 /** Lädt die Datenbank als Datei herunter und gibt den Dateinamen zurück. */
-export async function downloadDatabase() {
-  const res = await fetch("/api/admin/db/export", { credentials: "same-origin" });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new ApiError(data?.error || "Der Export ist fehlgeschlagen.", res.status);
-  }
-  return alsDateiSpeichern(res, "schichtplan.db");
-}
-
-/** Kalenderabo (iCal): aktueller Stand — aus, oder die Adresse zum Kopieren. */
-export function calendarStatus(accountId) {
-  return api.get(`/accounts/${accountId}/calendar-token`);
-}
-
-/** Schaltet das eigene Kalenderabo ein oder erzeugt eine neue Adresse. */
-export function renewCalendarToken(accountId) {
-  return api.post(`/accounts/${accountId}/calendar-token`);
-}
+export const downloadDatabase = () =>
+  holeDatei("/api/admin/db/export", "schichtplan.db", "Der Export ist fehlgeschlagen.");
 
 /** Auskunft über ein Konto als Datei — alles, was zu der Person gespeichert ist. */
-export async function downloadPersonalData(accountId) {
-  const res = await fetch(`/api/accounts/${accountId}/data`, { credentials: "same-origin" });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new ApiError(data?.error || "Die Auskunft ist fehlgeschlagen.", res.status);
-  }
-  return alsDateiSpeichern(res, "auskunft.json");
-}
+export const downloadPersonalData = (accountId) =>
+  holeDatei(`/api/accounts/${accountId}/data`, "auskunft.json", "Die Auskunft ist fehlgeschlagen.");
+
+/** Kalenderabo (iCal): aktueller Stand — aus, oder die Adresse zum Kopieren. */
+export const calendarStatus = (accountId) => api.get(`/accounts/${accountId}/calendar-token`);
+
+/** Schaltet das eigene Kalenderabo ein oder erzeugt eine neue Adresse. */
+export const renewCalendarToken = (accountId) => api.post(`/accounts/${accountId}/calendar-token`);
 
 /** Schickt eine Sicherungsdatei an den Server, der sie einspielt. */
 export async function uploadDatabase(file) {

@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS logbook_entries (
   shift_id           TEXT REFERENCES shifts(id) ON DELETE SET NULL,
   shift_label        TEXT NOT NULL,
   type               TEXT NOT NULL CHECK (type IN
-                        ('created', 'updated', 'assigned', 'unassigned', 'reassigned', 'help_requested', 'help_withdrawn',
-                         'account_updated', 'password_changed')),
+                        ('created', 'updated', 'deleted', 'assigned', 'unassigned', 'reassigned',
+                         'help_requested', 'help_withdrawn', 'account_updated', 'password_changed')),
   message            TEXT NOT NULL,
   actor_account_id   TEXT REFERENCES accounts(id) ON DELETE SET NULL,
   target_account_id  TEXT REFERENCES accounts(id) ON DELETE SET NULL,
@@ -85,13 +85,25 @@ CREATE TABLE IF NOT EXISTS shifts (
   end_time            TEXT NOT NULL,
   repeat              TEXT NOT NULL,
   seats               INTEGER NOT NULL,
-  qualification_id    TEXT REFERENCES qualifications(id) ON DELETE SET NULL,
+  /* Welche Qualifikationen nötig sind, steht in shift_qualifications. */
   end_date            TEXT,
   assignment_attempted INTEGER NOT NULL DEFAULT 0,
   assigned_at         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_shifts_company ON shifts(company_id, date);
 CREATE INDEX IF NOT EXISTS idx_shifts_series ON shifts(company_id, series_id);
+
+/* Was eine Schicht an Qualifikationen verlangt. Eigene Tabelle statt einer
+   Spalte, seit es mehrere sein können — und verlangt heisst verlangt: Wer
+   übernimmt, braucht sie alle, nicht eine davon. */
+CREATE TABLE IF NOT EXISTS shift_qualifications (
+  shift_id         TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
+  qualification_id TEXT NOT NULL REFERENCES qualifications(id) ON DELETE CASCADE,
+  PRIMARY KEY (shift_id, qualification_id)
+);
+/* Für die Rückfrage „verlangt eine kommende Schicht diese Qualifikation noch?“
+   beim Löschen einer Qualifikation — der Primärschlüssel hilft dort nicht. */
+CREATE INDEX IF NOT EXISTS idx_shift_qual ON shift_qualifications(qualification_id);
 
 CREATE TABLE IF NOT EXISTS enrollments (
   shift_id   TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
@@ -165,7 +177,9 @@ function ensureLogbookTypes(db) {
   const row = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'logbook_entries'")
     .get();
-  if (!row || row.sql.includes("account_updated")) return;
+  // Der jüngste hinzugekommene Wert steht stellvertretend für alle: Enthält die
+  // Tabelle ihn, ist sie auf dem aktuellen Stand.
+  if (!row || row.sql.includes("'deleted'")) return;
 
   db.transaction(() => {
     db.exec("ALTER TABLE logbook_entries RENAME TO logbook_entries_alt");
@@ -175,6 +189,28 @@ function ensureLogbookTypes(db) {
   })();
 }
 
+/**
+ * Eine Schicht verlangte früher genau eine Qualifikation (shifts.qualification_id).
+ * Jetzt sind es mehrere, und die stehen in shift_qualifications. Der bisherige
+ * Inhalt wandert einmalig hinüber, danach ist die Spalte überflüssig — sie
+ * stehen zu lassen hiesse, zwei Antworten auf dieselbe Frage aufzubewahren.
+ */
+function ensureShiftQualifications(db) {
+  const hatSpalte = db
+    .prepare("PRAGMA table_info(shifts)")
+    .all()
+    .some((c) => c.name === "qualification_id");
+  if (!hatSpalte) return;
+
+  db.transaction(() => {
+    db.exec(
+      `INSERT OR IGNORE INTO shift_qualifications (shift_id, qualification_id)
+            SELECT id, qualification_id FROM shifts WHERE qualification_id IS NOT NULL`
+    );
+  })();
+  dropColumn(db, "shifts", "qualification_id");
+}
+
 export function openDb(file) {
   if (file !== ":memory:") fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   const db = new Database(file);
@@ -182,6 +218,7 @@ export function openDb(file) {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
   ensureLogbookTypes(db);
+  ensureShiftQualifications(db);
   ensureColumn(db, "shifts", "end_date", "TEXT");
   ensureColumn(db, "accounts", "session_epoch", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "accounts", "calendar_token", "TEXT");
@@ -201,6 +238,10 @@ export function openDb(file) {
      sie niemand mehr einlösen kann. */
   dropColumn(db, "accounts", "email");
   db.exec("DROP TABLE IF EXISTS password_resets");
+  /* Rest einer früheren Fassung: Keine Zeile im Programm liest diese Spalte
+     noch. Stehen zu lassen hiesse, bei jedem Blick ins Schema neu zu fragen,
+     wofür sie gut ist — und die Antwort wäre jedes Mal: für nichts. */
+  dropColumn(db, "shifts", "no_auto_assign");
   return db;
 }
 
@@ -246,69 +287,34 @@ export class DbHandle {
 
 /* --- Lesen --- */
 
-/** Die Firma in genau der Form, die das Frontend erwartet — ohne Passwörter. */
-export function readCompany(db, companyId) {
-  const row = db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId);
-  if (!row) return null;
-
-  const qualifications = db
-    .prepare("SELECT id, name FROM qualifications WHERE company_id = ? ORDER BY rowid")
-    .all(companyId);
-
-  const accounts = db
-    .prepare("SELECT id, name, role FROM accounts WHERE company_id = ? ORDER BY rowid")
-    .all(companyId)
-    .map((a) => ({
-      ...a,
-      qualifications: db
-        .prepare("SELECT qualification_id FROM account_qualifications WHERE account_id = ?")
-        .all(a.id)
-        .map((q) => q.qualification_id),
-    }));
-
-  const shifts = db
-    .prepare("SELECT * FROM shifts WHERE company_id = ? ORDER BY date, start_time")
-    .all(companyId)
-    .map((s) => toShift(db, s));
-
-  /* Damit das Bearbeiten-Formular zeigen kann, was bereits freigegeben ist —
-     sonst nähme jede Änderung einer Schicht eine alte Freigabe stillschweigend
-     zurück. */
-  const combinableSeries = db
-    .prepare("SELECT series_a, series_b FROM combinable_series WHERE company_id = ?")
-    .all(companyId)
-    .map((r) => [r.series_a, r.series_b]);
-
-  /* Klein genug fürs Gesamtbündel — anders als logbook_entries, die auf
-     Wunsch pro Tab bzw. pro freigegebener Schicht nachgeladen werden. */
-  const logbookAccessRequests = db
-    .prepare(
-      `SELECT r.id, r.shift_id AS shiftId, r.shift_label AS shiftLabel, r.account_id AS accountId,
-              a.name AS accountName, r.note, r.status, r.created_at AS createdAt, r.decided_at AS decidedAt
-         FROM logbook_access_requests r
-         JOIN accounts a ON a.id = r.account_id
-        WHERE r.company_id = ?
-        ORDER BY r.created_at DESC`
-    )
-    .all(companyId);
-
-  return {
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    qualifications,
-    accounts,
-    shifts,
-    combinableSeries,
-    logbookAccessRequests,
-    settings: { assignmentDay: row.assignment_day },
-  };
+/* Sammelt Zeilen zu Listen je Schlüssel. Damit kommt eine ganze Firma mit
+   einer Handvoll Abfragen aus; vorher lief /api/state mit zwei Abfragen pro
+   Schicht und einer pro Konto. */
+function gruppiere(rows, key, wert) {
+  const map = new Map();
+  for (const r of rows) map.set(r[key], [...(map.get(r[key]) || []), wert(r)]);
+  return map;
 }
 
-export function toShift(db, s) {
-  const enrollments = db
-    .prepare("SELECT account_id, assigned FROM enrollments WHERE shift_id = ?")
-    .all(s.id);
+/** Konten einer Firma samt Qualifikationen; `spalten` bestimmt, was mitkommt. */
+function readAccounts(db, companyId, spalten) {
+  const quals = gruppiere(
+    db.prepare(
+      `SELECT aq.account_id, aq.qualification_id FROM account_qualifications aq
+         JOIN accounts a ON a.id = aq.account_id
+        WHERE a.company_id = ? ORDER BY aq.rowid`
+    ).all(companyId),
+    "account_id",
+    (r) => r.qualification_id
+  );
+  return db
+    .prepare(`SELECT ${spalten} FROM accounts WHERE company_id = ? ORDER BY rowid`)
+    .all(companyId)
+    .map((a) => ({ ...a, qualifications: quals.get(a.id) || [] }));
+}
+
+/** Die Schicht in der Form, die Frontend und Zuteilungslogik erwarten. */
+function alsSchicht(s, enrolled = [], assigned = [], helpRequests = [], qualificationIds = []) {
   return {
     id: s.id,
     seriesId: s.series_id,
@@ -318,72 +324,140 @@ export function toShift(db, s) {
     endTime: s.end_time,
     repeat: s.repeat,
     seats: s.seats,
-    qualificationId: s.qualification_id,
+    qualificationIds,
     endDate: s.end_date,
-    enrolled: enrollments.map((e) => e.account_id),
-    assigned: enrollments.filter((e) => e.assigned).map((e) => e.account_id),
-    helpRequests: db
-      .prepare("SELECT account_id FROM help_requests WHERE shift_id = ?")
-      .all(s.id)
-      .map((h) => h.account_id),
+    enrolled,
+    assigned,
+    helpRequests,
     assignmentAttempted: !!s.assignment_attempted,
     assignedAt: s.assigned_at,
   };
 }
 
+/** Eine einzelne Schicht-Zeile — für die Stellen, die genau eine anfassen. */
+export function toShift(db, s) {
+  const e = db.prepare("SELECT account_id, assigned FROM enrollments WHERE shift_id = ?").all(s.id);
+  const h = db.prepare("SELECT account_id FROM help_requests WHERE shift_id = ?").all(s.id);
+  const q = db.prepare(
+    `SELECT sq.qualification_id FROM shift_qualifications sq
+       JOIN qualifications x ON x.id = sq.qualification_id
+      WHERE sq.shift_id = ? ORDER BY x.rowid`
+  ).all(s.id);
+  return alsSchicht(
+    s,
+    e.map((r) => r.account_id),
+    e.filter((r) => r.assigned).map((r) => r.account_id),
+    h.map((r) => r.account_id),
+    q.map((r) => r.qualification_id)
+  );
+}
+
+/** Alle Schichten einer Firma — drei Abfragen, unabhängig von der Menge. */
+export function readShifts(db, companyId, sortiert = false) {
+  const einschreibungen = db.prepare(
+    `SELECT e.shift_id, e.account_id, e.assigned FROM enrollments e
+       JOIN shifts s ON s.id = e.shift_id WHERE s.company_id = ?`
+  ).all(companyId);
+  const hilfegesuche = db.prepare(
+    `SELECT h.shift_id, h.account_id FROM help_requests h
+       JOIN shifts s ON s.id = h.shift_id WHERE s.company_id = ?`
+  ).all(companyId);
+
+  /* Nach der Reihenfolge der Qualifikationsliste sortiert, damit zwei Schichten
+     mit denselben Anforderungen sie auch gleich aufzählen. */
+  const anforderungen = db.prepare(
+    `SELECT sq.shift_id, sq.qualification_id FROM shift_qualifications sq
+       JOIN shifts s ON s.id = sq.shift_id
+       JOIN qualifications q ON q.id = sq.qualification_id
+      WHERE s.company_id = ? ORDER BY q.rowid`
+  ).all(companyId);
+
+  const konto = (r) => r.account_id;
+  const enrolled = gruppiere(einschreibungen, "shift_id", konto);
+  const assigned = gruppiere(einschreibungen.filter((r) => r.assigned), "shift_id", konto);
+  const hilfe = gruppiere(hilfegesuche, "shift_id", konto);
+  const quals = gruppiere(anforderungen, "shift_id", (r) => r.qualification_id);
+
+  return db
+    .prepare(`SELECT * FROM shifts WHERE company_id = ?${sortiert ? " ORDER BY date, start_time" : ""}`)
+    .all(companyId)
+    .map((s) => alsSchicht(s, enrolled.get(s.id), assigned.get(s.id), hilfe.get(s.id), quals.get(s.id)));
+}
+
+/**
+ * Einsichtsanfragen ins Logbuch. Klein genug fürs Gesamtbündel — anders als
+ * logbook_entries, die auf Wunsch pro Tab bzw. pro freigegebener Schicht
+ * nachgeladen werden.
+ *
+ * `accountId` schränkt auf die eigenen ein: Die Notiz einer Anfrage geht
+ * niemanden ausser der anfragenden Person und der Administration etwas an.
+ */
+function readAccessRequests(db, companyId, accountId = null) {
+  return db
+    .prepare(
+      `SELECT r.id, r.shift_id AS shiftId, r.shift_label AS shiftLabel, r.account_id AS accountId,
+              a.name AS accountName, r.note, r.status, r.created_at AS createdAt, r.decided_at AS decidedAt
+         FROM logbook_access_requests r
+         JOIN accounts a ON a.id = r.account_id
+        WHERE r.company_id = ?${accountId ? " AND r.account_id = ?" : ""}
+        ORDER BY r.created_at DESC`
+    )
+    .all(...(accountId ? [companyId, accountId] : [companyId]));
+}
+
+/**
+ * Die Firma in genau der Form, die das Frontend erwartet — ohne Passwörter.
+ * `anfragenVon` schränkt die Einsichtsanfragen auf ein Konto ein; ohne die
+ * Angabe kommen alle mit (für die Administration).
+ */
+export function readCompany(db, companyId, { anfragenVon = null } = {}) {
+  const row = db.prepare("SELECT * FROM companies WHERE id = ?").get(companyId);
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    qualifications: db
+      .prepare("SELECT id, name FROM qualifications WHERE company_id = ? ORDER BY rowid")
+      .all(companyId),
+    accounts: readAccounts(db, companyId, "id, name, role"),
+    shifts: readShifts(db, companyId, true),
+    /* Damit das Bearbeiten-Formular zeigen kann, was bereits freigegeben ist —
+       sonst nähme jede Änderung einer Schicht eine alte Freigabe stillschweigend
+       zurück. */
+    combinableSeries: db
+      .prepare("SELECT series_a, series_b FROM combinable_series WHERE company_id = ?")
+      .all(companyId)
+      .map((r) => [r.series_a, r.series_b]),
+    logbookAccessRequests: readAccessRequests(db, companyId, anfragenVon),
+    settings: { assignmentDay: row.assignment_day },
+  };
+}
+
 /** Alle Konten einer Firma inklusive Qualifikationen — für die Zuteilungslogik. */
 export function readAccountsForLogic(db, companyId) {
-  return db
-    .prepare("SELECT id, role FROM accounts WHERE company_id = ?")
-    .all(companyId)
-    .map((a) => ({
-      ...a,
-      qualifications: db
-        .prepare("SELECT qualification_id FROM account_qualifications WHERE account_id = ?")
-        .all(a.id)
-        .map((q) => q.qualification_id),
-    }));
+  return readAccounts(db, companyId, "id, role");
 }
 
-export function readShiftsForLogic(db, companyId) {
-  return db
-    .prepare("SELECT * FROM shifts WHERE company_id = ?")
-    .all(companyId)
-    .map((s) => toShift(db, s));
-}
-
-export function companySummaries(db) {
+/**
+ * Kurzfassungen für die Verwaltung. `archiviert` schaltet auf die Unternehmen
+ * um, deren Zugang gelöscht wurde — ihre Daten bleiben bis zur endgültigen
+ * Löschung erhalten, siehe server/routes/companies.js.
+ */
+export function companySummaries(db, { archiviert = false } = {}) {
   return db
     .prepare(
-      `SELECT c.id, c.code, c.name, c.paused_at AS pausedAt,
-              SUM(CASE WHEN a.role = 'admin'    THEN 1 ELSE 0 END) AS adminCount,
-              SUM(CASE WHEN a.role = 'employee' THEN 1 ELSE 0 END) AS employeeCount
+      `SELECT c.id, c.code, c.name, c.paused_at AS pausedAt, c.archived_at AS archivedAt,
+              COUNT(CASE WHEN a.role = 'admin'    THEN 1 END) AS adminCount,
+              COUNT(CASE WHEN a.role = 'employee' THEN 1 END) AS employeeCount
          FROM companies c
     LEFT JOIN accounts a ON a.company_id = c.id
-        WHERE c.archived_at IS NULL
+        WHERE c.archived_at IS ${archiviert ? "NOT NULL" : "NULL"}
      GROUP BY c.id
-     ORDER BY c.rowid`
+     ORDER BY ${archiviert ? "c.archived_at DESC" : "c.rowid"}`
     )
-    .all()
-    .map((r) => ({ ...r, adminCount: r.adminCount || 0, employeeCount: r.employeeCount || 0 }));
-}
-
-/** Unternehmen, deren Zugang gelöscht wurde — Daten bleiben bis zur endgültigen
- *  Löschung erhalten, siehe purgeCompany() in server/routes/companies.js. */
-export function archivedCompanySummaries(db) {
-  return db
-    .prepare(
-      `SELECT c.id, c.code, c.name, c.archived_at AS archivedAt,
-              SUM(CASE WHEN a.role = 'admin'    THEN 1 ELSE 0 END) AS adminCount,
-              SUM(CASE WHEN a.role = 'employee' THEN 1 ELSE 0 END) AS employeeCount
-         FROM companies c
-    LEFT JOIN accounts a ON a.company_id = c.id
-        WHERE c.archived_at IS NOT NULL
-     GROUP BY c.id
-     ORDER BY c.archived_at DESC`
-    )
-    .all()
-    .map((r) => ({ ...r, adminCount: r.adminCount || 0, employeeCount: r.employeeCount || 0 }));
+    .all();
 }
 
 /* --- Schreiben --- */

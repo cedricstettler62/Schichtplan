@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
-import LogbookEntryRow from "../logbook/LogbookEntryRow.jsx";
+import LogbookLoader from "../../components/LogbookLoader.jsx";
 import { PASSWORD_HINWEIS, passwortProblem } from "#shared/password.js";
 
 const MENU = [
@@ -39,14 +39,7 @@ export default function CompanyRow({
   const [superPw, setSuperPw] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetSaved, setResetSaved] = useState(false);
-  const [logbook, setLogbook] = useState(null); // null = noch nicht geladen
-
   const wähleAbschnitt = (key) => setSection((s) => (s === key ? null : key));
-
-  const logbuchLaden = async () => {
-    if (logbook !== null) { setLogbook(null); return; }
-    setLogbook(await onLoadLogbook(company.id));
-  };
 
   /* Erst laden, wenn ein Bereich es tatsächlich braucht: Die Übersicht zeigt
      oft viele Unternehmen, und die Admin-Konten braucht nur, wer eines
@@ -302,18 +295,7 @@ export default function CompanyRow({
               <p className="sb-status">
                 Anlegen, Ändern, Zu-/Umteilungen und Hilfegesuche dieses Unternehmens — nur auf Wunsch geladen.
               </p>
-              <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={logbuchLaden}>
-                {logbook !== null ? "Logbuch ausblenden" : "Logbuch laden"}
-              </button>
-              {logbook !== null && (
-                logbook.length === 0 ? (
-                  <p className="sb-empty">Noch keine Einträge.</p>
-                ) : (
-                  <div className="sb-log-list">
-                    {logbook.map((e) => <LogbookEntryRow key={e.id} entry={e} />)}
-                  </div>
-                )
-              )}
+              <LogbookLoader onLoad={() => onLoadLogbook(company.id)} />
             </div>
           )}
         </div>

@@ -27,10 +27,12 @@ export default function calendarRoutes(db) {
     const shifts = db
       .prepare(
         `SELECT s.id, s.name, s.date, s.start_time AS startTime, s.end_time AS endTime,
-                q.name AS qualificationName
+                (SELECT group_concat(q.name, ', ')
+                   FROM shift_qualifications sq
+                   JOIN qualifications q ON q.id = sq.qualification_id
+                  WHERE sq.shift_id = s.id) AS qualificationName
            FROM enrollments e
            JOIN shifts s ON s.id = e.shift_id
-      LEFT JOIN qualifications q ON q.id = s.qualification_id
           WHERE e.account_id = ? AND e.assigned = 1
        ORDER BY s.date, s.start_time`
       )

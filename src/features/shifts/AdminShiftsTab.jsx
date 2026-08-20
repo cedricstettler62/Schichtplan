@@ -1,9 +1,10 @@
 import { useState } from "react";
-import Chip from "../../components/Chip.jsx";
+import QualFilterChips from "../../components/QualFilterChips.jsx";
 import AdminShiftRow from "./AdminShiftRow.jsx";
 import NewShiftForm from "./NewShiftForm.jsx";
 import { addDays, fromISO, isFutureOrToday, monthDiff } from "#shared/dates.js";
 import { HORIZON_DAYS } from "#shared/assignment.js";
+import { qualifikationsListe } from "#shared/labels.js";
 
 export default function AdminShiftsTab({
   shifts, qualifications, accounts, combinableSeries, today,
@@ -21,11 +22,10 @@ export default function AdminShiftsTab({
     if (status === "assigned" && s.assigned.length < s.seats) return false;
     if (status === "open" && s.assigned.length >= s.seats) return false;
     if (status === "future" && monthDiff(today, fromISO(s.date)) < 2) return false;
-    if (qualFilter.length > 0 && !qualFilter.includes(s.qualificationId)) return false;
+    // Gezeigt wird, was mindestens eine der angetippten Qualifikationen verlangt.
+    if (qualFilter.length > 0 && !s.qualificationIds.some((id) => qualFilter.includes(id))) return false;
     return true;
   }).sort((a, b) => a.date.localeCompare(b.date));
-
-  const toggleQual = (id) => setQualFilter((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
   return (
     <div className="sb-tab">
@@ -60,11 +60,7 @@ export default function AdminShiftsTab({
           <option value="open">Nur mit freien Plätzen</option>
           <option value="future">Erst ab übernächstem Monat</option>
         </select>
-        <div className="sb-chip-row">
-          {qualifications.map((q) => (
-            <Chip key={q.id} active={qualFilter.includes(q.id)} onClick={() => toggleQual(q.id)}>{q.name}</Chip>
-          ))}
-        </div>
+        <QualFilterChips qualifications={qualifications} gewaehlt={qualFilter} setGewaehlt={setQualFilter} />
       </div>
 
       <div className="sb-shift-list">
@@ -73,7 +69,7 @@ export default function AdminShiftsTab({
           <AdminShiftRow
             key={s.id}
             shift={s}
-            qualName={qualifications.find((q) => q.id === s.qualificationId)?.name}
+            qualNames={qualifikationsListe(qualifications, s.qualificationIds)}
             accounts={accounts}
             qualifications={qualifications}
             /* Nur kommende Termine: Vergangene lassen sich ohnehin nicht ändern. */

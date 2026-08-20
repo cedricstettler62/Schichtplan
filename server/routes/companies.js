@@ -3,9 +3,9 @@
 import { Router } from "express";
 
 import { endeAlleSitzungen, hashPassword, kontoWaereUnerreichbar, requireSuper, safeEqual } from "../auth.js";
-import { releaseSeats, recompute } from "../assignment.js";
-import { createCompany, toShift } from "../db.js";
-import { logPasswordChanged, logUnassigned, readLogbook } from "../logbook.js";
+import { loescheKonto } from "../accounts.js";
+import { createCompany } from "../db.js";
+import { logPasswordChanged, readLogbook } from "../logbook.js";
 import { passwortProblem } from "#shared/password.js";
 
 export default function companiesRoutes(db, config) {
@@ -35,18 +35,23 @@ export default function companiesRoutes(db, config) {
     res.json({ id });
   });
 
-  /** Ein archiviertes Unternehmen ist eingefroren — nur restore() oder die
-   *  endgültige Löschung wirken noch darauf. Gibt bei Erfolg null zurück,
-   *  sonst schon die fertige Fehlerantwort. */
-  const requireNichtArchiviert = (req, res) => {
-    const company = db.prepare("SELECT archived_at FROM companies WHERE id = ?").get(req.params.id);
-    if (!company) { res.status(404).json({ error: "Unternehmen nicht gefunden." }); return false; }
-    if (company.archived_at) { res.status(409).json({ error: "Dieses Unternehmen ist archiviert." }); return false; }
-    return true;
+  /**
+   * Die Firma zu :id — oder schon die fertige Fehlerantwort (null).
+   * Ein archiviertes Unternehmen ist eingefroren: Nur Wiederherstellen, die
+   * endgültige Löschung und das Nachlesen (`auchArchiviert`) wirken noch.
+   */
+  const firma = (req, res, { auchArchiviert = false } = {}) => {
+    const row = db.prepare("SELECT id, archived_at FROM companies WHERE id = ?").get(req.params.id);
+    if (!row) { res.status(404).json({ error: "Unternehmen nicht gefunden." }); return null; }
+    if (!auchArchiviert && row.archived_at) {
+      res.status(409).json({ error: "Dieses Unternehmen ist archiviert." });
+      return null;
+    }
+    return row;
   };
 
   router.patch("/:id", (req, res) => {
-    if (!requireNichtArchiviert(req, res)) return;
+    if (!firma(req, res)) return;
     const name = String(req.body?.name || "").trim();
     if (!name) return res.status(400).json({ error: "Name fehlt." });
     db.prepare("UPDATE companies SET name = ? WHERE id = ?").run(name, req.params.id);
@@ -60,16 +65,14 @@ export default function companiesRoutes(db, config) {
    * Verwaltung sieht das Unternehmen danach nur noch unter „Archiviert“.
    */
   router.post("/:id/archive", (req, res) => {
-    const company = db.prepare("SELECT id FROM companies WHERE id = ?").get(req.params.id);
-    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
+    if (!firma(req, res, { auchArchiviert: true })) return;
     db.prepare("UPDATE companies SET archived_at = ? WHERE id = ?").run(new Date().toISOString(), req.params.id);
     res.json({ ok: true });
   });
 
   /** Macht ein archiviertes Unternehmen wieder zugänglich — ohne Datenverlust. */
   router.post("/:id/restore", (req, res) => {
-    const company = db.prepare("SELECT id FROM companies WHERE id = ?").get(req.params.id);
-    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
+    if (!firma(req, res, { auchArchiviert: true })) return;
     db.prepare("UPDATE companies SET archived_at = NULL WHERE id = ?").run(req.params.id);
     res.json({ ok: true });
   });
@@ -80,8 +83,8 @@ export default function companiesRoutes(db, config) {
    * hängen per ON DELETE CASCADE daran und verschwinden mit.
    */
   router.delete("/:id", (req, res) => {
-    const company = db.prepare("SELECT archived_at FROM companies WHERE id = ?").get(req.params.id);
-    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
+    const company = firma(req, res, { auchArchiviert: true });
+    if (!company) return;
     if (!company.archived_at) {
       return res.status(409).json({ error: "Erst archivieren, dann endgültig löschen." });
     }
@@ -91,44 +94,35 @@ export default function companiesRoutes(db, config) {
 
   /** Sperrt den Zugang reversibel, ohne das Unternehmen zu archivieren — z. B. bei offenen Rückfragen. */
   router.post("/:id/pause", (req, res) => {
-    if (!requireNichtArchiviert(req, res)) return;
+    if (!firma(req, res)) return;
     db.prepare("UPDATE companies SET paused_at = ? WHERE id = ?").run(new Date().toISOString(), req.params.id);
     res.json({ ok: true });
   });
 
   router.post("/:id/unpause", (req, res) => {
-    if (!requireNichtArchiviert(req, res)) return;
+    if (!firma(req, res)) return;
     db.prepare("UPDATE companies SET paused_at = NULL WHERE id = ?").run(req.params.id);
     res.json({ ok: true });
   });
 
   /* --- Ausgesperrte Admins --- */
 
+  const konten = (companyId, rolle) =>
+    db.prepare("SELECT id, name FROM accounts WHERE company_id = ? AND role = ? ORDER BY rowid").all(companyId, rolle);
+
   /** Die Mitarbeitendenkonten einer Firma — daraus kommt eine Nachfolge. */
-  router.get("/:id/employees", (req, res) => {
-    res.json(
-      db
-        .prepare("SELECT id, name FROM accounts WHERE company_id = ? AND role = 'employee' ORDER BY rowid")
-        .all(req.params.id)
-    );
-  });
+  router.get("/:id/employees", (req, res) => res.json(konten(req.params.id, "employee")));
 
   /** Das volle Logbuch einer Firma — nur auf Wunsch geladen, nicht mit der Firmenliste. */
   router.get("/:id/logbook", (req, res) => {
-    const company = db.prepare("SELECT id FROM companies WHERE id = ?").get(req.params.id);
-    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
-    res.json(readLogbook(db, company.id));
+    const company = firma(req, res, { auchArchiviert: true });
+    if (company) res.json(readLogbook(db, company.id));
   });
 
   /** Die Admin-Konten einer Firma, damit die Verwaltung weiss, wen sie befreit. */
   router.get("/:id/admins", (req, res) => {
-    const company = db.prepare("SELECT id FROM companies WHERE id = ?").get(req.params.id);
-    if (!company) return res.status(404).json({ error: "Unternehmen nicht gefunden." });
-    res.json(
-      db
-        .prepare("SELECT id, name FROM accounts WHERE company_id = ? AND role = 'admin' ORDER BY rowid")
-        .all(company.id)
-    );
+    const company = firma(req, res, { auchArchiviert: true });
+    if (company) res.json(konten(company.id, "admin"));
   });
 
   /**
@@ -140,7 +134,7 @@ export default function companiesRoutes(db, config) {
    * Browser soll nicht reichen, um sich in jede Firma zu setzen.
    */
   router.post("/:id/admins/:accountId/password", (req, res) => {
-    if (!requireNichtArchiviert(req, res)) return;
+    if (!firma(req, res)) return;
     const target = db
       .prepare("SELECT id, name FROM accounts WHERE id = ? AND company_id = ? AND role = 'admin'")
       .get(req.params.accountId, req.params.id);
@@ -185,7 +179,7 @@ export default function companiesRoutes(db, config) {
    * verwalten, und ihre Mitarbeitenden kämen an keine Schicht mehr.
    */
   router.delete("/:id/admins/:accountId", (req, res) => {
-    if (!requireNichtArchiviert(req, res)) return;
+    if (!firma(req, res)) return;
     const target = db
       .prepare("SELECT id, name FROM accounts WHERE id = ? AND company_id = ? AND role = 'admin'")
       .get(req.params.accountId, req.params.id);
@@ -213,32 +207,10 @@ export default function companiesRoutes(db, config) {
       }
     }
 
-    /* Schichten, die das Konto besetzt hat, werden frei und sichtbar offen —
-       genau wie beim Löschen innerhalb der Firma. */
-    const frei = db
-      .prepare("SELECT shift_id FROM enrollments WHERE account_id = ? AND assigned = 1")
-      .all(target.id)
-      .map((r) => r.shift_id);
-    const freiRows = frei.length
-      ? db.prepare(`SELECT * FROM shifts WHERE id IN (${frei.map(() => "?").join(", ")})`).all(...frei)
-      : [];
-
-    db.transaction(() => {
-      if (nachfolge) {
-        db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(nachfolge.id);
-      }
-      // Vor dem Löschen protokollieren, sonst lehnt der Fremdschlüssel auf
-      // target_account_id ein schon gelöschtes Konto ab.
-      for (const row of freiRows) {
-        logUnassigned(
-          db, req.params.id, toShift(db, row), target.name, target.id,
-          config.superAdmin.name, null, "wegen Kontolöschung ausgetragen"
-        );
-      }
-      db.prepare("DELETE FROM accounts WHERE id = ?").run(target.id);
-    })();
-    releaseSeats(db, frei);
-    recompute(db, req.params.id);
+    loescheKonto(db, req.params.id, target, {
+      actorName: config.superAdmin.name,
+      nachfolgerId: nachfolge?.id,
+    });
 
     res.json({ ok: true, nachfolge: nachfolge ? nachfolge.name : null });
   });

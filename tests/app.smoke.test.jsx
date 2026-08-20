@@ -40,6 +40,15 @@ async function login(user, { code, name, password }) {
   await user.click(screen.getByRole("button", { name: "Anmelden" }));
 }
 
+/**
+ * Qualifikation im Schichtformular antippen. Seit eine Schicht mehrere
+ * verlangen kann, ist die Auswahl eine Reihe von Chips statt einer Liste.
+ */
+async function waehleQualifikation(user, name = "Erste Hilfe") {
+  const gruppe = screen.getByRole("group", { name: "Erforderliche Qualifikationen" });
+  await user.click(within(gruppe).getByRole("button", { name }));
+}
+
 describe("Anmeldung", () => {
   test("zeigt den Login-Bildschirm", async () => {
     await openApp();
@@ -130,6 +139,25 @@ describe("Admin", () => {
     expect(screen.getByRole("heading", { name: "Passwort ändern" })).toBeInTheDocument();
   });
 
+  test("verlangt auf Wunsch mehrere Qualifikationen", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+
+    await user.click(within(nav).getByRole("button", { name: "Schichten" }));
+    await user.click(screen.getByRole("button", { name: "Neue Schicht" }));
+
+    await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Doppeldienst");
+    await user.type(screen.getByLabelText("Datum"), new Date().toISOString().slice(0, 10));
+    await waehleQualifikation(user, "Erste Hilfe");
+    await waehleQualifikation(user, "Kassensystem");
+    await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
+
+    // Beide stehen an der Schicht — und zwar so, wie die Firma sie führt.
+    const ticket = (await screen.findByText("Doppeldienst")).closest(".sb-ticket");
+    expect(within(ticket).getByText("Erste Hilfe, Kassensystem")).toBeInTheDocument();
+  });
+
   test("legt eine Schicht an, die auch die Mitarbeiterin sieht", async () => {
     const user = await openApp();
     await login(user, ADMIN);
@@ -145,10 +173,7 @@ describe("Admin", () => {
 
     await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Spätschicht Verkauf");
     await user.type(document.querySelector('input[type="date"]'), iso);
-    await user.selectOptions(
-      screen.getByLabelText(/Erforderliche Qualifikation/),
-      screen.getByRole("option", { name: "Erste Hilfe" })
-    );
+    await waehleQualifikation(user);
     await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
 
     const ticket = (await screen.findByText("Spätschicht Verkauf")).closest(".sb-ticket");
@@ -169,10 +194,7 @@ describe("Schicht bearbeiten", () => {
     const heute = new Date().toISOString().slice(0, 10);
     await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Frühdienst");
     await user.type(document.querySelector('input[type="date"]'), heute);
-    await user.selectOptions(
-      screen.getByLabelText(/Erforderliche Qualifikation/),
-      screen.getByRole("option", { name: "Erste Hilfe" })
-    );
+    await waehleQualifikation(user);
     await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
 
     const ticket = (await screen.findByText("Frühdienst")).closest(".sb-ticket");
@@ -225,10 +247,7 @@ describe("Meldungen statt Stille", () => {
 
     await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Rückwirkend");
     await user.type(screen.getByLabelText("Datum"), "2020-01-06");
-    await user.selectOptions(
-      screen.getByLabelText(/Erforderliche Qualifikation/),
-      screen.getByRole("option", { name: "Erste Hilfe" })
-    );
+    await waehleQualifikation(user);
     await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
 
     /* Vorher schloss sich das Formular auch bei einem Fehler, leerte alle
@@ -247,10 +266,7 @@ describe("Meldungen statt Stille", () => {
     await user.type(screen.getByPlaceholderText("z. B. Spätschicht Verkauf"), "Ohne Zeit");
     await user.type(screen.getByLabelText("Datum"), new Date().toISOString().slice(0, 10));
     await user.clear(screen.getByLabelText("Endzeit"));
-    await user.selectOptions(
-      screen.getByLabelText(/Erforderliche Qualifikation/),
-      screen.getByRole("option", { name: "Erste Hilfe" })
-    );
+    await waehleQualifikation(user);
     await user.click(screen.getByRole("button", { name: "Schicht anlegen" }));
 
     expect(await screen.findByText("Bitte Start- und Endzeit angeben.")).toBeInTheDocument();
@@ -323,9 +339,11 @@ describe("Wer befördert wird, behält seine Schichten", () => {
     const anlegen = (id, datum) => {
       server.db.prepare(
         `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
-                             repeat, seats, qualification_id, end_date, assignment_attempted, assigned_at)
-         VALUES (?, ?, ?, ?, ?, '08:00', '16:00', 'once', 1, ?, NULL, 1, ?)`
-      ).run(id, companyId, `serie_${id}`, id === "s_alt" ? "Alter Dienst" : "Neuer Dienst", datum, qualId, datum);
+                             repeat, seats, end_date, assignment_attempted, assigned_at)
+         VALUES (?, ?, ?, ?, ?, '08:00', '16:00', 'once', 1, NULL, 1, ?)`
+      ).run(id, companyId, `serie_${id}`, id === "s_alt" ? "Alter Dienst" : "Neuer Dienst", datum, datum);
+      server.db.prepare("INSERT INTO shift_qualifications (shift_id, qualification_id) VALUES (?, ?)")
+        .run(id, qualId);
       server.db.prepare("INSERT INTO enrollments (shift_id, account_id, assigned) VALUES (?, ?, 1)").run(id, leaId);
     };
     const tage = (n) => {
@@ -497,10 +515,7 @@ describe("Überschneidungen", () => {
     await user.type(screen.getByLabelText("Startzeit"), von);
     await user.clear(screen.getByLabelText("Endzeit"));
     await user.type(screen.getByLabelText("Endzeit"), bis);
-    await user.selectOptions(
-      screen.getByLabelText(/Erforderliche Qualifikation/),
-      screen.getByRole("option", { name: "Erste Hilfe" })
-    );
+    await waehleQualifikation(user);
   };
 
   const schichtAnlegen = async (user, daten) => {

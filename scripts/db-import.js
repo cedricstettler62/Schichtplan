@@ -11,8 +11,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 
 import { loadConfig } from "../server/config.js";
-
-const REQUIRED_TABLES = ["companies", "accounts", "qualifications", "shifts", "enrollments", "help_requests"];
+import { pruefeDatenbank } from "../server/dbCheck.js";
 
 const source = process.argv[2];
 if (!source) {
@@ -25,24 +24,12 @@ if (!fs.existsSync(source)) {
 }
 
 // Erst prüfen, ob es überhaupt eine Schichtboard-Datenbank ist.
-let check;
-try {
-  check = new Database(source, { readonly: true });
-  const tables = new Set(check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
-  const missing = REQUIRED_TABLES.filter((t) => !tables.has(t));
-  if (missing.length) {
-    console.error(`Das sieht nicht nach einer Schichtboard-Datenbank aus. Es fehlen: ${missing.join(", ")}`);
-    process.exit(1);
-  }
-  const companies = check.prepare("SELECT COUNT(*) AS n FROM companies").get().n;
-  const accounts = check.prepare("SELECT COUNT(*) AS n FROM accounts").get().n;
-  console.log(`Quelle geprüft: ${companies} Unternehmen, ${accounts} Konten.`);
-} catch (err) {
-  console.error(`Datei konnte nicht gelesen werden: ${err.message}`);
+const geprueft = pruefeDatenbank(source);
+if (!geprueft.ok) {
+  console.error(geprueft.error);
   process.exit(1);
-} finally {
-  check?.close();
 }
+console.log(`Quelle geprüft: ${geprueft.companies} Unternehmen, ${geprueft.accounts} Konten.`);
 
 const config = loadConfig();
 const target = path.resolve(config.dbPath);

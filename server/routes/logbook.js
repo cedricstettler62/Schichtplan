@@ -54,17 +54,15 @@ export default function logbookRoutes(db) {
     res.json({ id });
   });
 
-  router.post("/requests/:id/approve", requireAdmin, (req, res) => {
-    const ok = decideAccessRequest(db, { id: req.params.id, companyId: req.session.companyId, status: "approved" });
-    if (!ok) return res.status(404).json({ error: "Anfrage nicht gefunden oder schon entschieden." });
-    res.json({ ok: true });
-  });
-
-  router.post("/requests/:id/decline", requireAdmin, (req, res) => {
-    const ok = decideAccessRequest(db, { id: req.params.id, companyId: req.session.companyId, status: "declined" });
-    if (!ok) return res.status(404).json({ error: "Anfrage nicht gefunden oder schon entschieden." });
-    res.json({ ok: true });
-  });
+  /* Entscheiden heisst hier nur: den Status setzen. Beide Wege laufen gleich,
+     nur mit anderem Ergebnis. */
+  for (const [weg, status] of [["approve", "approved"], ["decline", "declined"]]) {
+    router.post(`/requests/:id/${weg}`, requireAdmin, (req, res) => {
+      const ok = decideAccessRequest(db, { id: req.params.id, companyId: req.session.companyId, status });
+      if (!ok) return res.status(404).json({ error: "Anfrage nicht gefunden oder schon entschieden." });
+      res.json({ ok: true });
+    });
+  }
 
   return router;
 }

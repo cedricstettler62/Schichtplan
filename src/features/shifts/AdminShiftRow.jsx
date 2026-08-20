@@ -48,7 +48,7 @@ function PersonList({ title, people, emptyText, helpRequests, onRemove }) {
   );
 }
 export default function AdminShiftRow({
-  shift, qualName, accounts, qualifications, seriesShifts, shifts, combinableSeries,
+  shift, qualNames, accounts, qualifications, seriesShifts, shifts, combinableSeries,
   onForceAssign, onRemoveEnrollment, onUpdateShift, onDeleteShift, onDeleteSeries,
 }) {
   const [open, setOpen] = useState(false);
@@ -73,7 +73,7 @@ export default function AdminShiftRow({
           </div>
           <div className="sb-ticket-meta">
             <span className="sb-mono">{shift.startTime}–{shift.endTime}</span>
-            <span>{qualName || "ohne Qualifikation"}</span>
+            <span>{qualNames || "ohne Qualifikation"}</span>
             <span>{shift.assigned.length} von {shift.seats} Plätzen besetzt</span>
             {waiting.length > 0 && <span>{waiting.length} auf der Warteliste</span>}
           </div>

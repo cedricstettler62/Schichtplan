@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { overlappingSeries } from "#shared/overlap.js";
-import { fmtDate } from "#shared/dates.js";
+import OverlapRow from "../../components/OverlapRow.jsx";
+import QualificationPicker from "../../components/QualificationPicker.jsx";
+import { overlappingSeries, paarSchluessel } from "#shared/overlap.js";
 
 /*
  * Eine bestehende Schicht ändern.
@@ -15,9 +16,6 @@ import { fmtDate } from "#shared/dates.js";
  * machen; verbindlich gerechnet wird auf dem Server.
  */
 
-/** Reihenfolgeunabhängig, sonst fände der Vergleich ein Paar nur halb. */
-const paarSchluessel = (a, b) => (a <= b ? `${a}|${b}` : `${b}|${a}`);
-
 export default function EditShiftForm({
   shift, seriesShifts = [], shifts = [], combinableSeries = [], qualifications, onSave, onCancel,
 }) {
@@ -26,7 +24,7 @@ export default function EditShiftForm({
   const [startTime, setStartTime] = useState(shift.startTime);
   const [endTime, setEndTime] = useState(shift.endTime);
   const [seats, setSeats] = useState(shift.seats);
-  const [qualificationId, setQualificationId] = useState(shift.qualificationId || "");
+  const [qualificationIds, setQualificationIds] = useState(shift.qualificationIds || []);
   const [umfang, setUmfang] = useState("einzeln");
   const [abDatum, setAbDatum] = useState(shift.date);
   const [freigaben, setFreigaben] = useState({});
@@ -40,6 +38,13 @@ export default function EditShiftForm({
   const betroffen = nurDiese ? [shift] : seriesShifts.filter((s) => s.date >= abDatum);
   const personen = betroffen.reduce((n, s) => n + s.enrolled.length, 0);
 
+  /* Reihenfolgeunabhängig: Dieselben Anforderungen in anderer Folge sind
+     dieselben Anforderungen — daraus darf keine Änderung werden, die alle
+     Eingetragenen austrägt. */
+  const gleicheQualifikationen = (ids) =>
+    (ids || []).length === qualificationIds.length &&
+    (ids || []).every((id) => qualificationIds.includes(id));
+
   const geaendert =
     betroffen.some(
       (s) =>
@@ -47,7 +52,7 @@ export default function EditShiftForm({
         s.startTime !== startTime ||
         s.endTime !== endTime ||
         Number(s.seats) !== Number(seats) ||
-        (s.qualificationId || "") !== qualificationId
+        !gleicheQualifikationen(s.qualificationIds)
     ) || (nurDiese && date !== shift.date);
 
   /* Die Termine so, wie sie nach dem Speichern lägen — nur zum Vergleichen.
@@ -81,7 +86,7 @@ export default function EditShiftForm({
 
   const pruefen = () => {
     if (!name.trim()) { setError("Bitte einen Namen angeben."); return; }
-    if (!qualificationId) { setError("Bitte eine Qualifikation wählen."); return; }
+    if (qualificationIds.length === 0) { setError("Bitte mindestens eine Qualifikation wählen."); return; }
     if (Number(seats) < 1) { setError("Mindestens ein Platz."); return; }
     if (nurDiese && !date) { setError("Bitte ein Datum angeben."); return; }
     if (!nurDiese && !abDatum) { setError("Bitte angeben, ab wann die Änderung gilt."); return; }
@@ -96,7 +101,7 @@ export default function EditShiftForm({
       startTime,
       endTime,
       seats: Number(seats),
-      qualificationId,
+      qualificationIds,
       umfang: nurDiese ? "einzeln" : "ab-datum",
       ...(nurDiese ? { date } : { abDatum }),
       // Vollständiger Stand für alles, was gerade dasteht — auch die Neins.
@@ -147,14 +152,13 @@ export default function EditShiftForm({
           <span>Plätze</span>
           <input type="number" min="1" value={seats} onChange={(e) => { setSeats(e.target.value); setConfirming(false); }} />
         </label>
-        <label className="sb-field">
-          <span>Erforderliche Qualifikation</span>
-          <select value={qualificationId} onChange={(e) => { setQualificationId(e.target.value); setConfirming(false); }}>
-            <option value="">– bitte wählen –</option>
-            {qualifications.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
-          </select>
-        </label>
       </div>
+
+      <QualificationPicker
+        qualifications={qualifications}
+        gewaehlt={qualificationIds}
+        onChange={(ids) => { setQualificationIds(ids); setConfirming(false); }}
+      />
 
       {wiederkehrend && (
         <div className="sb-form-grid">
@@ -190,32 +194,16 @@ export default function EditShiftForm({
             Eine Änderung hier trägt für sich allein niemanden aus.
           </p>
           {ueberschneidungen.map((u) => (
-            <div key={u.seriesId} className="sb-overlap-row">
-              <div className="sb-overlap-info">
-                <span className="sb-overlap-name">
-                  {u.name}
-                  {neueFreigabe(u.seriesId) && geaendert && <span className="sb-overlap-neu">neu</span>}
-                </span>
-                <span className="sb-overlap-meta">
-                  <span className="sb-mono">{u.startTime}–{u.endTime}</span>
-                  {" · "}
-                  {u.termine === 1 ? fmtDate(u.erster) : `${u.termine} Termine ab ${fmtDate(u.erster)}`}
-                </span>
-              </div>
-              <label className="sb-field sb-field-compact">
-                <span>Zusammen übernehmbar?</span>
-                <select
-                  value={istErlaubt(u.seriesId) ? "ja" : "nein"}
-                  onChange={(e) => {
-                    setFreigaben((f) => ({ ...f, [u.seriesId]: e.target.value === "ja" }));
-                    setConfirming(false);
-                  }}
-                >
-                  <option value="nein">Nein – schliessen einander aus</option>
-                  <option value="ja">Ja – beides zusammen möglich</option>
-                </select>
-              </label>
-            </div>
+            <OverlapRow
+              key={u.seriesId}
+              serie={u}
+              erlaubt={istErlaubt(u.seriesId)}
+              neu={neueFreigabe(u.seriesId) && geaendert}
+              onChange={(ja) => {
+                setFreigaben((f) => ({ ...f, [u.seriesId]: ja }));
+                setConfirming(false);
+              }}
+            />
           ))}
         </div>
       )}

@@ -23,7 +23,7 @@ const shift = (over = {}) => ({
   id: "s1",
   date: "2026-03-10",
   seats: 1,
-  qualificationId: "q1",
+  qualificationIds: ["q1"],
   enrolled: [],
   assigned: [],
   helpRequests: [],

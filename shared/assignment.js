@@ -7,12 +7,20 @@ import { toISO, fromISO, addDays, monthDiff } from "./dates.js";
 /** Wie weit im Voraus Serien überhaupt erzeugt werden. */
 export const HORIZON_DAYS = 92;
 
-export function hasQualification(accounts, userId, qualId) {
+/**
+ * Bringt dieses Konto mit, was die Schicht verlangt?
+ *
+ * Verlangt heisst verlangt: Stehen zwei Qualifikationen an der Schicht,
+ * braucht es beide. Eine Schicht ohne jede Anforderung kann niemand
+ * übernehmen — sonst wäre „erforderlich“ eine Empfehlung.
+ */
+export function hasQualifications(accounts, userId, qualIds) {
   const acc = accounts.find((a) => a.id === userId);
-  return !!acc && !!qualId && acc.qualifications.includes(qualId);
+  const noetig = qualIds || [];
+  return !!acc && noetig.length > 0 && noetig.every((q) => acc.qualifications.includes(q));
 }
 
-export function shuffle(arr, random = Math.random) {
+function shuffle(arr, random = Math.random) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
@@ -64,7 +72,7 @@ export function attemptAssign(shift, accounts, today, assignmentDay, force = fal
     shift.enrolled.filter(
       (id) =>
         !shift.assigned.includes(id) &&
-        hasQualification(accounts, id, shift.qualificationId) &&
+        hasQualifications(accounts, id, shift.qualificationIds) &&
         !(blockiert && blockiert(id))
     ),
     random
@@ -180,7 +188,7 @@ export function buildShiftsFromForm(form, horizonDate, makeId) {
     endTime: form.endTime,
     repeat: form.repeat,
     seats: form.seats,
-    qualificationId: form.qualificationId,
+    qualificationIds: form.qualificationIds,
     endDate: form.endDate || null,
     enrolled: [],
     assigned: [],
@@ -192,7 +200,7 @@ export function buildShiftsFromForm(form, horizonDate, makeId) {
 
 /** Kann `helperId` diese Schicht übernehmen? Ersetzt ggf. `replaceId`. */
 export function canTakeOver(shift, accounts, helperId, replaceId) {
-  if (!hasQualification(accounts, helperId, shift.qualificationId)) return false;
+  if (!hasQualifications(accounts, helperId, shift.qualificationIds)) return false;
   if (shift.assigned.includes(helperId)) return false;
   if (replaceId) return shift.assigned.includes(replaceId);
   return shift.assigned.length < shift.seats;

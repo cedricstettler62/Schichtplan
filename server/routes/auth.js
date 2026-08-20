@@ -10,7 +10,7 @@ import {
   setAccountSession,
   setSession,
 } from "../auth.js";
-import { archivedCompanySummaries, companySummaries, readCompany } from "../db.js";
+import { companySummaries, readCompany } from "../db.js";
 
 export default function authRoutes(db, config) {
   const router = Router();
@@ -85,11 +85,15 @@ export default function authRoutes(db, config) {
         type: "super",
         name: config.superAdmin.name,
         companies: companySummaries(db),
-        archivedCompanies: archivedCompanySummaries(db),
+        archivedCompanies: companySummaries(db, { archiviert: true }),
       });
     }
     if (req.session?.type === "company") {
-      const company = readCompany(db, req.session.companyId);
+      /* Mitarbeitende bekommen nur ihre eigenen Einsichtsanfragen — die Notiz
+         einer fremden Anfrage geht ausser der Administration niemanden an. */
+      const company = readCompany(db, req.session.companyId, {
+        anfragenVon: req.session.role === "admin" ? null : req.session.accountId,
+      });
       if (!company) return res.status(401).json({ error: "Nicht angemeldet." });
       return res.json({ type: "company", userId: req.session.accountId, company });
     }

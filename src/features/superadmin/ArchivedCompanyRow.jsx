@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ConfirmDelete from "../../components/ConfirmDelete.jsx";
-import LogbookEntryRow from "../logbook/LogbookEntryRow.jsx";
+import LogbookLoader from "../../components/LogbookLoader.jsx";
 
 function fmtDatum(iso) {
   if (!iso) return "–";
@@ -16,8 +16,6 @@ export default function ArchivedCompanyRow({ company, onRestore, onPurge, onLoad
   const [open, setOpen] = useState(false);
   const [admins, setAdmins] = useState(null); // null = noch nicht geladen
   const [employees, setEmployees] = useState(null);
-  const [logbook, setLogbook] = useState(null); // null = noch nicht geladen
-
   useEffect(() => {
     if (!open || admins !== null) return;
     let abgebrochen = false;
@@ -28,11 +26,6 @@ export default function ArchivedCompanyRow({ company, onRestore, onPurge, onLoad
     });
     return () => { abgebrochen = true; };
   }, [open, admins, company.id, onLoadAdmins, onLoadEmployees]);
-
-  const logbuchLaden = async () => {
-    if (logbook !== null) { setLogbook(null); return; }
-    setLogbook(await onLoadLogbook(company.id));
-  };
 
   return (
     <div className="sb-manage-row">
@@ -63,18 +56,7 @@ export default function ArchivedCompanyRow({ company, onRestore, onPurge, onLoad
             <p className="sb-status">
               Anlegen, Ändern, Zu-/Umteilungen und Hilfegesuche dieses Unternehmens.
             </p>
-            <button type="button" className="sb-btn sb-btn-quiet sb-btn-sm" onClick={logbuchLaden}>
-              {logbook !== null ? "Logbuch ausblenden" : "Logbuch laden"}
-            </button>
-            {logbook !== null && (
-              logbook.length === 0 ? (
-                <p className="sb-empty">Keine Einträge.</p>
-              ) : (
-                <div className="sb-log-list">
-                  {logbook.map((e) => <LogbookEntryRow key={e.id} entry={e} />)}
-                </div>
-              )
-            )}
+            <LogbookLoader onLoad={() => onLoadLogbook(company.id)} emptyText="Keine Einträge." />
           </div>
 
           <div className="sb-manage-actions">

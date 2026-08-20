@@ -18,7 +18,7 @@ function pad(n) {
 }
 
 /** \, ; , und Zeilenumbrüche maskieren (RFC 5545) — Schichtnamen und Qualifikationen kommen von Menschen. */
-export function escapeText(value) {
+function escapeText(value) {
   return String(value)
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
@@ -30,7 +30,7 @@ export function escapeText(value) {
  * Bricht eine Zeile bei 75 Oktett (nicht Zeichen — Umlaute zählen mehrfach).
  * Die Folgezeile beginnt mit einem Leerzeichen, das selbst mitzählt.
  */
-export function foldLine(line) {
+function foldLine(line) {
   const bytes = Buffer.byteLength(line, "utf8");
   if (bytes <= 75) return line + CRLF;
 

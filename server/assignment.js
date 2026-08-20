@@ -3,9 +3,9 @@
 
 import { HORIZON_DAYS, extendSeriesDates, runAssignmentPass } from "#shared/assignment.js";
 import { addDays, addMonths, startOfToday, toISO } from "#shared/dates.js";
-import { shiftsOverlap } from "#shared/overlap.js";
+import { paarSchluessel, shiftsOverlap } from "#shared/overlap.js";
 import { raeumeFreigaben } from "./conflicts.js";
-import { readAccountsForLogic, readShiftsForLogic } from "./db.js";
+import { readAccountsForLogic, readShifts } from "./db.js";
 import { uid } from "./ids.js";
 import { logAssigned } from "./logbook.js";
 
@@ -25,12 +25,10 @@ function ausschlussRegel(db, companyId) {
       .all(companyId)
       .map((r) => `${r.series_a}|${r.series_b}`)
   );
-  const schluessel = (a, b) => (a <= b ? `${a}|${b}` : `${b}|${a}`);
-
-  return (a, b) => shiftsOverlap(a, b) && !freigegeben.has(schluessel(a.seriesId, b.seriesId));
+  return (a, b) => shiftsOverlap(a, b) && !freigegeben.has(paarSchluessel(a.seriesId, b.seriesId));
 }
 
-export function assignmentDayOf(db, companyId) {
+function assignmentDayOf(db, companyId) {
   const row = db.prepare("SELECT assignment_day FROM companies WHERE id = ?").get(companyId);
   return row ? row.assignment_day : 7;
 }
@@ -42,7 +40,7 @@ export function assignmentDayOf(db, companyId) {
  */
 export function recompute(db, companyId, forceIds = []) {
   const today = startOfToday();
-  const before = readShiftsForLogic(db, companyId);
+  const before = readShifts(db, companyId);
   const accounts = readAccountsForLogic(db, companyId);
   const after = runAssignmentPass(
     before, accounts, today, assignmentDayOf(db, companyId), forceIds,
@@ -128,10 +126,14 @@ export function purgeOldShifts(db, monate = 60) {
 export function extendSeries(db) {
   const today = startOfToday();
   const horizon = addDays(today, HORIZON_DAYS);
+  /* MAX(date) zieht in SQLite die übrigen Spalten aus genau der Zeile mit dem
+     höchsten Datum — die nachgefüllten Termine erben also den zuletzt gültigen
+     Stand der Serie, nicht irgendeinen. `last_id` deshalb mit: An ihr hängen
+     die Qualifikationen, die die neuen Termine übernehmen sollen. */
   const series = db
     .prepare(
       `SELECT series_id, company_id, name, start_time, end_time, repeat, seats,
-              qualification_id, end_date, MAX(date) AS last_date
+              end_date, id AS last_id, MAX(date) AS last_date
          FROM shifts
         WHERE repeat != 'once'
         GROUP BY series_id`
@@ -140,18 +142,27 @@ export function extendSeries(db) {
 
   const insert = db.prepare(
     `INSERT INTO shifts (id, company_id, series_id, name, date, start_time, end_time,
-                          repeat, seats, qualification_id, end_date, assignment_attempted, assigned_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`
+                          repeat, seats, end_date, assignment_attempted, assigned_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`
+  );
+  const anforderungen = db.prepare("SELECT qualification_id FROM shift_qualifications WHERE shift_id = ?");
+  const merkeAnforderung = db.prepare(
+    "INSERT INTO shift_qualifications (shift_id, qualification_id) VALUES (?, ?)"
   );
 
   db.transaction(() => {
     for (const s of series) {
       const newDates = extendSeriesDates(s.repeat, s.last_date, s.end_date, horizon, today);
+      if (newDates.length === 0) continue;
+      const quals = anforderungen.all(s.last_id).map((r) => r.qualification_id);
+
       for (const date of newDates) {
+        const id = uid("s");
         insert.run(
-          uid("s"), s.company_id, s.series_id, s.name, date,
-          s.start_time, s.end_time, s.repeat, s.seats, s.qualification_id, s.end_date
+          id, s.company_id, s.series_id, s.name, date,
+          s.start_time, s.end_time, s.repeat, s.seats, s.end_date
         );
+        for (const qualId of quals) merkeAnforderung.run(id, qualId);
       }
     }
   })();

@@ -11,43 +11,14 @@ import os from "node:os";
 import path from "node:path";
 import { Router } from "express";
 import express from "express";
-import Database from "better-sqlite3";
+
+import { zeitstempel } from "#shared/dates.js";
 
 import { requireSuper } from "../auth.js";
+import { pruefeDatenbank } from "../dbCheck.js";
 import { readVersion } from "../version.js";
 
-const PFLICHTTABELLEN = ["companies", "accounts", "qualifications", "shifts", "enrollments", "help_requests"];
 const MAX_UPLOAD = 64 * 1024 * 1024;
-
-function zeitstempel() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
-}
-
-/** Prüft, ob die hochgeladene Datei wirklich eine Schichtboard-Datenbank ist. */
-function pruefeDatenbank(datei) {
-  let db;
-  try {
-    db = new Database(datei, { readonly: true });
-    const tabellen = new Set(
-      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name)
-    );
-    const fehlend = PFLICHTTABELLEN.filter((t) => !tabellen.has(t));
-    if (fehlend.length) {
-      return { ok: false, error: `Das ist keine Schichtboard-Datenbank. Es fehlen: ${fehlend.join(", ")}` };
-    }
-    return {
-      ok: true,
-      companies: db.prepare("SELECT COUNT(*) AS n FROM companies").get().n,
-      accounts: db.prepare("SELECT COUNT(*) AS n FROM accounts").get().n,
-    };
-  } catch (err) {
-    return { ok: false, error: `Die Datei liess sich nicht lesen: ${err.message}` };
-  } finally {
-    db?.close();
-  }
-}
 
 export default function adminRoutes(db, config) {
   const router = Router();

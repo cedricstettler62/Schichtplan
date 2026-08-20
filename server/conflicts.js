@@ -6,15 +6,13 @@
    etwa weil sie am selben Ort stattfinden. Nur dieses "ja" landet in der
    Tabelle. Alles, worüber nie entschieden wurde, schliesst sich aus. */
 
-import { shiftsOverlap } from "#shared/overlap.js";
+import { paarSchluessel, shiftsOverlap } from "#shared/overlap.js";
 import { addDays, fromISO, toISO } from "#shared/dates.js";
 
 import { toShift } from "./db.js";
 
 /** Reihenfolgeunabhängig ablegen, sonst fände die Abfrage das Paar nur halb. */
-function paar(a, b) {
-  return a <= b ? [a, b] : [b, a];
-}
+const paar = (a, b) => paarSchluessel(a, b).split("|");
 
 /** Hält fest, dass sich zwei Serien trotz Überschneidung zusammen übernehmen lassen. */
 export function merkeKombinierbar(db, companyId, seriesA, seriesB) {
@@ -59,7 +57,7 @@ export function raeumeFreigaben(db) {
     .run().changes;
 }
 
-export function istKombinierbar(db, companyId, seriesA, seriesB) {
+function istKombinierbar(db, companyId, seriesA, seriesB) {
   const [a, b] = paar(seriesA, seriesB);
   return !!db
     .prepare("SELECT 1 FROM combinable_series WHERE company_id = ? AND series_a = ? AND series_b = ?")

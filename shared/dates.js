@@ -41,3 +41,8 @@ export function startOfToday() {
   d.setHours(0, 0, 0, 0);
   return d;
 }
+
+/** Zeitstempel für Dateinamen: 2026-08-19_1435. */
+export function zeitstempel(d = new Date()) {
+  return `${toISO(d)}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+}

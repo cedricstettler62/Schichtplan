@@ -3,6 +3,7 @@ import Badge from "../../components/Badge.jsx";
 const TYPE_INFO = {
   created: ["Angelegt", "petrol"],
   updated: ["Bearbeitet", "ink"],
+  deleted: ["Gelöscht", "rust"],
   assigned: ["Zugeteilt", "petrol"],
   unassigned: ["Ausgetragen", "rust"],
   reassigned: ["Übernommen", "amber"],

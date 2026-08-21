@@ -78,6 +78,20 @@ es sein. Verlangt heisst dabei verlangt: Wer die Schicht übernimmt, braucht
 „Staplerschein“ bekommt also nur, wer beides mitbringt — und wem etwas fehlt,
 dem sagt die Oberfläche, was genau.
 
+## Zuteilungstag
+
+Unter *Einstellungen* steht, an welchem Tag jedes Monats die Schichten des
+Folgemonats ausgelost werden. Zur Wahl stehen der 1. bis 28. — nur diese Tage
+gibt es in jedem Monat — und daneben ein Kästchen **am letzten Tag des
+Monats**. Damit fällt die Auslosung im Februar auf den 28. oder 29., im April
+auf den 30. und im Mai auf den 31.
+
+Beides steht als eine einzige Zahl in der Datenbank (`companies.assignment_day`):
+Der letzte Tag ist die 31, weil ein Zuteilungstag hinter dem Monatsende ohnehin
+auf dessen letzten Tag gekappt wird (`effectiveAssignmentDay` in
+[shared/assignment.js](shared/assignment.js)). Ein eigenes Kennzeichen daneben
+gäbe eine zweite Wahrheit über denselben Termin.
+
 ## Angemeldet bleiben
 
 Angemeldet wird einmal. Danach bleibt das Gerät angemeldet — über das Schliessen
@@ -256,17 +270,21 @@ das und bleibt ohne `VTIMEZONE`-Block einfacher. Die Erzeugung des Feeds
 steht in [server/ical.js](server/ical.js), bewusst von Hand geschrieben statt
 mit einem zusätzlichen Paket.
 
-## Datenschutz
+## Datenschutz und Impressum
 
-Die Datenschutzerklärung liegt unter **`/datenschutz`** und ist von der Fussleiste
-jedes Bildschirms aus erreichbar, auch ohne Anmeldung.
+Die Datenschutzerklärung liegt unter **`/datenschutz`**, das Impressum unter
+**`/impressum`**. Beide sind von der Fussleiste jedes Bildschirms aus
+erreichbar, auch ohne Anmeldung, und verlinken einander.
 
-> **Vor dem ersten Einsatz ausfüllen:** Ganz oben in
-> [src/features/legal/PrivacyScreen.jsx](src/features/legal/PrivacyScreen.jsx) steht
-> ein `BETREIBER`-Block. Nötig sind `name`, `kontakt`, `serverstandort` und
-> `stand`; solange dort Platzhalter stehen, ist die Seite nicht
-> veröffentlichungsreif. Die Postanschrift (`adresse`) ist **freiwillig** —
-> bleibt sie leer, fällt die Zeile weg.
+> **Vor dem ersten Einsatz ausfüllen:** Die Angaben zum Betreiber stehen für
+> beide Seiten gemeinsam in
+> [src/features/legal/betreiber.js](src/features/legal/betreiber.js). Pflicht
+> sind `name`, `adresse` und `kontakt` (ein Impressum verlangt eine erkennbare
+> Identität, eine Anschrift und einen Weg, den Betreiber zu erreichen) sowie
+> `serverstandort` und `stand` für die Datenschutzerklärung. Freiwillig sind
+> `telefon`, `vertretung`, `register` und `mehrwertsteuer` — leer bleiben sie
+> weg. Solange dort Platzhalter stehen, sind die Seiten nicht
+> veröffentlichungsreif.
 
 Der Text beschreibt, was das Programm tatsächlich speichert. Ändert sich die
 Datenhaltung, gehört er mit angepasst.

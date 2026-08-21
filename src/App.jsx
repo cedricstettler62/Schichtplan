@@ -13,6 +13,7 @@ import AccountTab from "./features/account/AccountTab.jsx";
 import SettingsTab from "./features/settings/SettingsTab.jsx";
 import LogbookTab from "./features/logbook/LogbookTab.jsx";
 import SuperAdminView from "./features/superadmin/SuperAdminView.jsx";
+import ImprintScreen from "./features/legal/ImprintScreen.jsx";
 import PrivacyScreen from "./features/legal/PrivacyScreen.jsx";
 import Footer from "./components/Footer.jsx";
 import UpdateBanner from "./components/UpdateBanner.jsx";
@@ -30,9 +31,18 @@ import { startOfToday } from "#shared/dates.js";
    ergibt eine leere Liste — die Ansichten zeigen dann schlicht nichts. */
 const laden = (pfad) => api.get(pfad).catch(() => []);
 
-/** Die App kommt ohne Router aus; die eine feste Adresse reicht als Weiche. */
-function istDatenschutzSeite() {
-  return typeof window !== "undefined" && window.location.pathname === "/datenschutz";
+/* Die App kommt ohne Router aus; zwei feste Adressen reichen als Weiche. Beide
+   Rechtsseiten stehen offen — sie müssen auch ohne Anmeldung erreichbar sein. */
+const RECHTSSEITEN = {
+  "/datenschutz": PrivacyScreen,
+  "/impressum": ImprintScreen,
+};
+
+/** Die aufgerufene Rechtsseite — oder null für alles andere. */
+function rechtsSeitePfad() {
+  if (typeof window === "undefined") return null;
+  const pfad = window.location.pathname;
+  return RECHTSSEITEN[pfad] ? pfad : null;
 }
 
 /** Das Zeichen aus dem Einladungslink (/passwort-einrichten/:token) — oder null. */
@@ -46,7 +56,7 @@ export default function App() {
   const [state, setState] = useState(null); // null = nicht angemeldet
   const [ready, setReady] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
-  const [datenschutzSeite] = useState(istDatenschutzSeite);
+  const [rechtsPfad] = useState(rechtsSeitePfad);
   const [setupToken] = useState(passwortEinrichtenToken);
 
   const refresh = useCallback(async () => {
@@ -60,10 +70,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Auf der Datenschutzseite und dem Einladungslink gibt es nichts zu laden —
+    // Auf den Rechtsseiten und dem Einladungslink gibt es nichts zu laden —
     // beide stehen offen, ganz ohne Anmeldung.
-    if (!datenschutzSeite && !setupToken) refresh();
-  }, [refresh, datenschutzSeite, setupToken]);
+    if (!rechtsPfad && !setupToken) refresh();
+  }, [refresh, rechtsPfad, setupToken]);
 
   // Wird bei jedem Rendern neu bestimmt — ein über Nacht offener Tab rechnet
   // damit mit heute, nicht mit gestern.
@@ -275,12 +285,13 @@ export default function App() {
   );
 
   /* --- Rendering --- */
-  /* Die Datenschutzerklärung steht vor allem anderen: Sie muss auch ohne
-     Anmeldung und ohne geladenen Zustand lesbar sein. */
-  if (datenschutzSeite) {
+  /* Datenschutzerklärung und Impressum stehen vor allem anderen: Sie müssen
+     auch ohne Anmeldung und ohne geladenen Zustand lesbar sein. */
+  if (rechtsPfad) {
+    const RechtsSeite = RECHTSSEITEN[rechtsPfad];
     return (
       <div className="sb-root">
-        <PrivacyScreen />
+        <RechtsSeite />
       </div>
     );
   }

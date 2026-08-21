@@ -855,6 +855,21 @@ describe("Direkte Zuweisung durch die Administration", () => {
   });
 });
 
+describe("Zuteilungstag", () => {
+  test("der letzte Tag des Monats wird als 31 gespeichert", async () => {
+    const admin = await asAdmin();
+    expect((await admin.patch("/api/settings", { assignmentDay: 31 })).status).toBe(200);
+    expect((await admin.get("/api/state")).data.company.settings.assignmentDay).toBe(31);
+  });
+
+  test("ein Tag, den es nicht in jedem Monat gibt, wird abgelehnt", async () => {
+    const admin = await asAdmin();
+    expect((await admin.patch("/api/settings", { assignmentDay: 29 })).status).toBe(400);
+    expect((await admin.patch("/api/settings", { assignmentDay: 0 })).status).toBe(400);
+    expect((await admin.patch("/api/settings", { assignmentDay: 32 })).status).toBe(400);
+  });
+});
+
 describe("Fairness-Einstellungen", () => {
   test("lassen sich unabhängig vom Zuteilungstag speichern und werden zurückgegeben", async () => {
     const admin = await asAdmin();

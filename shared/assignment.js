@@ -102,25 +102,40 @@ function weightedSample(candidates, hoursByEmployee, count, options) {
 }
 
 /**
+ * „Am letzten Tag des Monats“ steht als Tag 31 in den Einstellungen: Ein
+ * Zuteilungstag hinter dem Monatsende fällt immer auf dessen letzten Tag
+ * (siehe effectiveAssignmentDay), und 31 liegt in keinem Monat davor. Ein
+ * eigenes Kennzeichen neben dem Tag gäbe eine zweite Wahrheit über denselben
+ * Termin — hier bleibt es bei einer Zahl.
+ */
+export const LAST_DAY_OF_MONTH = 31;
+
+/**
+ * Der eingestellte Zuteilungstag, wie er in *diesem* Monat tatsächlich fällt.
+ * Kürzere Monate kappen ihn, damit der 31. im Februar nicht in den März rutscht
+ * — und damit ein Tag hinterm Monatsende überhaupt je erreicht wird.
+ */
+export function effectiveAssignmentDay(assignmentDay, date) {
+  const letzter = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return Math.min(assignmentDay, letzter);
+}
+
+/**
  * Schichten des laufenden Monats sind immer zuteilbar; die des Folgemonats
  * erst ab dem eingestellten Zuteilungstag. Alles danach noch nicht.
  */
 export function isAssignable(shiftDateISO, today, assignmentDay) {
   const diff = monthDiff(today, fromISO(shiftDateISO));
   if (diff <= 0) return true;
-  if (diff === 1 && today.getDate() >= assignmentDay) return true;
+  if (diff === 1 && today.getDate() >= effectiveAssignmentDay(assignmentDay, today)) return true;
   return false;
 }
 
-/**
- * Wann für diese Schicht ausgelost wird: am Zuteilungstag des Vormonats.
- * Kürzere Monate kappen den Tag, damit der 30. im Februar nicht in den März rutscht.
- */
+/** Wann für diese Schicht ausgelost wird: am Zuteilungstag des Vormonats. */
 export function assignmentDateOf(shiftDateISO, assignmentDay) {
   const d = fromISO(shiftDateISO);
   const vormonat = new Date(d.getFullYear(), d.getMonth() - 1, 1);
-  const letzter = new Date(vormonat.getFullYear(), vormonat.getMonth() + 1, 0).getDate();
-  vormonat.setDate(Math.min(assignmentDay, letzter));
+  vormonat.setDate(effectiveAssignmentDay(assignmentDay, vormonat));
   return toISO(vormonat);
 }
 

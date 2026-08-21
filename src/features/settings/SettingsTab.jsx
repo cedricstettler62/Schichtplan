@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useKurzeMeldung } from "../../hooks.js";
+import { LAST_DAY_OF_MONTH } from "#shared/assignment.js";
 import { FAIRNESS_WINDOW_KEYS, FAIRNESS_WINDOW_LABELS } from "#shared/labels.js";
 import PasswordForm from "../../components/PasswordForm.jsx";
 import { QualToggles } from "../../components/Toggle.jsx";
@@ -17,7 +18,12 @@ export default function SettingsTab({
   qualifications, onAddQualification, onDeleteQualification, onSetOwnQualification,
   onChangeAssignmentDay, onChangeFairnessSettings, onChangeOwnPassword, onChangeOwnEmail, onDeleteOwnAccount, onLogout,
 }) {
-  const [value, setValue] = useState(settings.assignmentDay);
+  /* Der letzte Tag des Monats steht als 31 in den Einstellungen (siehe
+     shared/assignment.js). Im Zahlenfeld hat er nichts verloren — es zeigt
+     dann den 28. als höchsten Tag, den es in jedem Monat gibt, damit nach dem
+     Abwählen des Kästchens ein gültiger Tag dasteht. */
+  const [value, setValue] = useState(Math.min(settings.assignmentDay, 28));
+  const [letzterTag, setLetzterTag] = useState(settings.assignmentDay >= LAST_DAY_OF_MONTH);
   const [newQual, setNewQual] = useState("");
   const [qualError, setQualError] = useState("");
   const [rolleError, setRolleError] = useState("");
@@ -28,7 +34,7 @@ export default function SettingsTab({
 
   const save = async () => {
     const n = Math.min(28, Math.max(1, Number(value) || 1));
-    await onChangeAssignmentDay(n);
+    await onChangeAssignmentDay(letzterTag ? LAST_DAY_OF_MONTH : n);
     setValue(n);
     zeigeGespeichert();
   };
@@ -58,13 +64,27 @@ export default function SettingsTab({
       <TabHead titel="Einstellungen" intro="Regeln für dieses Unternehmen und dein eigenes Admin-Konto." />
 
       <Karte titel="Zuteilungstag" intro="An diesem Tag jedes Monats werden alle Schichten des Folgemonats automatisch zugeteilt, sobald jemand eingeschrieben ist.">
-        <div className="sb-inline-add">
+        <div className="sb-stack">
           <label className="sb-field sb-field-compact">
             <span>Tag im Monat (1–28)</span>
-            <input type="number" min="1" max="28" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+            <input
+              type="number" min="1" max="28" value={value} disabled={letzterTag}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && save()}
+            />
           </label>
-          <button type="button" className="sb-btn sb-btn-ink" onClick={save}>Speichern</button>
-          {saved && <span className="sb-saved-note">Gespeichert.</span>}
+          {/* Der 29., 30. und 31. fehlen im Feld, weil es sie nicht in jedem
+              Monat gibt — wer bis zum Monatsende warten will, nimmt das
+              Kästchen. */}
+          <label className="sb-check-row">
+            <input type="checkbox" checked={letzterTag} onChange={(e) => setLetzterTag(e.target.checked)} />
+            <span>Stattdessen am letzten Tag des Monats</span>
+          </label>
+          <p className="sb-field-hint">Je nach Monat der 28., 29., 30. oder 31.</p>
+          <div className="sb-inline-add">
+            <button type="button" className="sb-btn sb-btn-ink" onClick={save}>Speichern</button>
+            {saved && <span className="sb-saved-note">Gespeichert.</span>}
+          </div>
         </div>
       </Karte>
 

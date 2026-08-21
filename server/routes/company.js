@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 
 import { Router } from "express";
 
+import { LAST_DAY_OF_MONTH } from "#shared/assignment.js";
 import { startOfToday, toISO } from "#shared/dates.js";
 import { emailProblem } from "#shared/email.js";
 import { FAIRNESS_WINDOW_KEYS } from "#shared/labels.js";
@@ -414,10 +415,17 @@ export default function companyRoutes(db, config) {
     const updates = [];
     const params = [];
 
+    /* 1–28 ist der Tag, der in jedem Monat vorkommt; 31 steht für „letzter Tag
+       des Monats“ (LAST_DAY_OF_MONTH) und wird je Monat auf den 28. bis 31.
+       gekappt. Dazwischen liegende Werte kappen genauso, taugen aber nicht als
+       Wahl — sie wären in kurzen Monaten dasselbe wie 31, in langen etwas
+       anderes. Die Oberfläche bietet deshalb nur 1–28 und das Kästchen an. */
     if (req.body?.assignmentDay !== undefined) {
       const day = Number(req.body.assignmentDay);
-      if (!Number.isInteger(day) || day < 1 || day > 28) {
-        return res.status(400).json({ error: "Zuteilungstag muss zwischen 1 und 28 liegen." });
+      if (!Number.isInteger(day) || day < 1 || (day > 28 && day !== LAST_DAY_OF_MONTH)) {
+        return res
+          .status(400)
+          .json({ error: "Zuteilungstag muss zwischen 1 und 28 liegen oder der letzte Tag des Monats sein." });
       }
       updates.push("assignment_day = ?");
       params.push(day);

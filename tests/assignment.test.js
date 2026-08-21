@@ -4,8 +4,11 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  LAST_DAY_OF_MONTH,
+  assignmentDateOf,
   attemptAssign,
   canTakeOver,
+  effectiveAssignmentDay,
   expandShiftDates,
   extendSeriesDates,
   fairnessWindowRange,
@@ -50,6 +53,34 @@ describe("Zuteilungsfenster", () => {
 
   test("übernächster Monat noch nicht", () => {
     expect(isAssignable("2026-05-05", today, 1)).toBe(false);
+  });
+});
+
+describe("Zuteilung am letzten Tag des Monats", () => {
+  test("der Tag fällt je Monat auf dessen letzten", () => {
+    expect(effectiveAssignmentDay(LAST_DAY_OF_MONTH, fromISO("2026-02-01"))).toBe(28);
+    expect(effectiveAssignmentDay(LAST_DAY_OF_MONTH, fromISO("2024-02-01"))).toBe(29); // Schaltjahr
+    expect(effectiveAssignmentDay(LAST_DAY_OF_MONTH, fromISO("2026-04-01"))).toBe(30);
+    expect(effectiveAssignmentDay(LAST_DAY_OF_MONTH, fromISO("2026-05-01"))).toBe(31);
+  });
+
+  test("ein Tag innerhalb des Monats bleibt, wie er ist", () => {
+    expect(effectiveAssignmentDay(7, fromISO("2026-02-01"))).toBe(7);
+  });
+
+  /* Vor der Kappung stand hier `today.getDate() >= 31` — in einem Monat mit 30
+     Tagen wurde der Folgemonat damit nie zuteilbar, die Auslosung fiele aus. */
+  test("der 30. April löst den Folgemonat aus", () => {
+    expect(isAssignable("2026-05-05", fromISO("2026-04-29"), LAST_DAY_OF_MONTH)).toBe(false);
+    expect(isAssignable("2026-05-05", fromISO("2026-04-30"), LAST_DAY_OF_MONTH)).toBe(true);
+  });
+
+  test("der Auslosungstermin ist das Monatsende davor", () => {
+    expect(assignmentDateOf("2026-05-05", LAST_DAY_OF_MONTH)).toBe("2026-04-30");
+    expect(assignmentDateOf("2026-03-05", LAST_DAY_OF_MONTH)).toBe("2026-02-28");
+    expect(assignmentDateOf("2024-03-05", LAST_DAY_OF_MONTH)).toBe("2024-02-29");
+    // Ein gewöhnlicher Tag bleibt, wo er war.
+    expect(assignmentDateOf("2026-05-05", 7)).toBe("2026-04-07");
   });
 });
 

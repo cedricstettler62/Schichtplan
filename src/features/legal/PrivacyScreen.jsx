@@ -2,21 +2,10 @@
  * Datenschutzerklärung. Der Text beschreibt, was das Programm tatsächlich tut —
  * wird an der Datenhaltung etwas geändert, gehört er mit angepasst.
  *
- * Die Angaben zum Betreiber stehen bewusst an einer Stelle beisammen: Sie sind
- * für jede Installation andere und müssen vor dem ersten Einsatz ausgefüllt
- * werden.
- *
- * Nötig sind `name` und `kontakt` — verlangt ist eine erkennbare Identität und
- * ein Weg, den Betreiber tatsächlich zu erreichen. Die Postanschrift ist
- * freiwillig: Bleibt `adresse` leer, fällt die Zeile weg.
+ * Die Angaben zum Betreiber kommen aus betreiber.js, gemeinsam mit dem
+ * Impressum.
  */
-const BETREIBER = {
-  name: "[Name des Betreibers]",
-  adresse: "", // optional — leer lassen, wenn keine Postanschrift stehen soll
-  kontakt: "[Kontaktadresse für Datenschutzanliegen]",
-  serverstandort: "[Standort des Servers, z. B. Schweiz]",
-  stand: "[Monat Jahr]",
-};
+import { BETREIBER, gefuellteZeilen } from "./betreiber.js";
 
 export default function PrivacyScreen() {
   return (
@@ -41,11 +30,9 @@ export default function PrivacyScreen() {
           technisch betreut wird Schichtboard von:
         </p>
         <p className="sb-legal-adresse">
-          {[BETREIBER.name, BETREIBER.adresse, BETREIBER.kontakt]
-            .filter((zeile) => zeile && zeile.trim())
-            .map((zeile, i) => (
-              <span key={zeile}>{i > 0 && <br />}{zeile}</span>
-            ))}
+          {gefuellteZeilen(BETREIBER.name, BETREIBER.adresse, BETREIBER.kontakt).map((zeile, i) => (
+            <span key={zeile}>{i > 0 && <br />}{zeile}</span>
+          ))}
         </p>
         <p>
           Der Betreiber bearbeitet die Daten ausschliesslich im Auftrag der Unternehmen
@@ -191,6 +178,7 @@ export default function PrivacyScreen() {
 
       <div className="sb-legal-back">
         <a className="sb-btn sb-btn-quiet" href="/">Zurück zum Schichtboard</a>
+        <a className="sb-btn sb-btn-quiet" href="/impressum">Impressum</a>
       </div>
     </div>
   );

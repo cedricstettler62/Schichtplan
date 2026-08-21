@@ -190,6 +190,25 @@ describe("Admin", () => {
     expect(screen.getByRole("heading", { name: "Passwort ändern" })).toBeInTheDocument();
   });
 
+  test("stellt den Zuteilungstag auf das Monatsende um", async () => {
+    const user = await openApp();
+    await login(user, ADMIN);
+    const nav = await screen.findByRole("navigation");
+    await user.click(within(nav).getByRole("button", { name: "Einstellungen" }));
+
+    // Die Fairness-Karte hat ebenfalls ein „Speichern“ — deshalb Karte für Karte.
+    const karte = screen.getByRole("heading", { name: "Zuteilungstag" }).closest(".sb-card");
+    const feld = within(karte).getByLabelText("Tag im Monat (1–28)");
+    expect(feld).toBeEnabled();
+
+    // Das Kästchen ersetzt den Tag, deshalb ist das Feld danach ausser Betrieb.
+    await user.click(within(karte).getByLabelText("Stattdessen am letzten Tag des Monats"));
+    expect(feld).toBeDisabled();
+
+    await user.click(within(karte).getByRole("button", { name: "Speichern" }));
+    expect(await within(karte).findByText("Gespeichert.")).toBeInTheDocument();
+  });
+
   test("verlangt auf Wunsch mehrere Qualifikationen", async () => {
     const user = await openApp();
     await login(user, ADMIN);
@@ -665,6 +684,28 @@ describe("Überschneidungen", () => {
     // Freigegeben, also geht beides — und keine Fehlermeldung dazwischen.
     expect(await within(tag).findByText("Austragen")).toBeInTheDocument();
     expect(screen.queryByText(/lassen sich nicht gleichzeitig übernehmen/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Impressum", () => {
+  test("die Fussleiste verlinkt es", async () => {
+    await openApp();
+    expect(screen.getByRole("link", { name: "Impressum" })).toHaveAttribute("href", "/impressum");
+  });
+
+  test("es ist ohne Anmeldung lesbar und verweist auf die Erklärung", async () => {
+    window.history.pushState({}, "", "/impressum");
+    await openApp();
+
+    expect(screen.getByText("Impressum")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Kontakt" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Zurück zum Schichtboard" })).toHaveAttribute("href", "/");
+    // Zweimal verlinkt: im Text und als Knopf darunter — beide führen zur Erklärung.
+    for (const link of screen.getAllByRole("link", { name: "Datenschutzerklärung" })) {
+      expect(link).toHaveAttribute("href", "/datenschutz");
+    }
+    // Kein Anmeldeformular davor.
+    expect(screen.queryByRole("button", { name: "Anmelden" })).not.toBeInTheDocument();
   });
 });
 
